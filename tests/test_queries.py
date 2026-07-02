@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timezone, timedelta
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
-from mcp.queries import (
+from mcpserver.queries import (
     search_items,
     get_recent,
     list_regulators,
