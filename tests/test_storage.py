@@ -3,6 +3,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
+from sqlalchemy import text
 from collector.schema import Item, make_item_id
 from collector.storage import (
     init_db,
@@ -14,6 +15,13 @@ from collector.storage import (
     reset_source_errors,
 )
 from mcpserver.queries import get_recent
+
+
+def _make_engine():
+    f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    f.close()
+    engine = init_db(f.name)
+    return engine, f.name
 
 
 def make_test_item(url="https://example.com/1", regulator_id="esma"):
@@ -175,5 +183,31 @@ def test_concurrent_read_write_no_lock_error():
 
         assert not reader_errors, f"Reader raised errors: {reader_errors}"
         assert len(reader_results) > 0
+    finally:
+        os.unlink(db_path)
+
+
+def test_init_db_creates_items_fts_table():
+    engine, db_path = _make_engine()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='items_fts'")
+            ).fetchone()
+        assert row is not None
+    finally:
+        os.unlink(db_path)
+
+
+def test_init_db_is_idempotent_for_items_fts():
+    engine, db_path = _make_engine()
+    try:
+        init_db(db_path)
+        init_db(db_path)
+        with engine.connect() as conn:
+            count = conn.execute(
+                text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='items_fts'")
+            ).scalar()
+        assert count == 1
     finally:
         os.unlink(db_path)

@@ -82,6 +82,11 @@ def init_db(db_path: str):
     with engine.connect() as conn:
         conn.execute(text("PRAGMA journal_mode=WAL"))
         conn.execute(text("PRAGMA synchronous=NORMAL"))
+        conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5("
+            "item_id UNINDEXED, title, content_snippet, raw_content, "
+            "tokenize='unicode61')"
+        ))
         conn.commit()
     Base.metadata.create_all(engine)
     return engine
