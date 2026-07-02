@@ -159,3 +159,60 @@ def test_get_warnings_days_zero_returns_all():
         assert len(results) == 1
     finally:
         os.unlink(db_path)
+
+
+def test_search_items_non_numeric_limit():
+    engine, db_path = setup_engine()
+    try:
+        results = search_items(engine, query="MiCA", limit="abc")
+        assert isinstance(results, list)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_non_numeric_limit():
+    engine, db_path = setup_engine()
+    try:
+        results = get_recent(engine, limit="abc")
+        assert isinstance(results, list)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_warnings_negative_days():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(tags=["warnings"], days_ago=100))
+        results_negative = get_warnings(engine, days=-5)
+        results_zero = get_warnings(engine, days=0)
+        assert results_negative == results_zero
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_warnings_non_numeric_days():
+    engine, db_path = setup_engine()
+    try:
+        results = get_warnings(engine, days="abc")
+        assert isinstance(results, list)
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_percent_wildcard():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        results = search_items(engine, query="%")
+        assert len(results) == 0
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_warnings_days_clamp():
+    engine, db_path = setup_engine()
+    try:
+        results = get_warnings(engine, days=9999)
+        assert isinstance(results, list)
+    finally:
+        os.unlink(db_path)

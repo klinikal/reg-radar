@@ -7,10 +7,18 @@ def _row_to_dict(row, keys):
     return dict(zip(keys, row))
 
 
+def _escape_like(value: str) -> str:
+    # Escape LIKE special chars using ! as the escape character.
+    return value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+
+
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
-    limit = min(int(limit), 100)
-    conditions = ["(title LIKE :q OR content_snippet LIKE :q)"]
-    params = {"q": f"%{query}%", "limit": limit}
+    try:
+        limit = min(int(limit), 100)
+    except (TypeError, ValueError):
+        limit = 20
+    conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!')"]
+    params = {"q": f"%{_escape_like(query)}%", "limit": limit}
     if regulator_id:
         conditions.append("regulator_id = :regulator_id")
         params["regulator_id"] = regulator_id
@@ -19,8 +27,8 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         params["language"] = language
     if tags:
         for i, tag in enumerate(tags):
-            conditions.append(f"tags LIKE :tag_{i}")
-            params[f"tag_{i}"] = f'%"{tag}"%'
+            conditions.append(f"tags LIKE :tag_{i} ESCAPE '!'")
+            params[f"tag_{i}"] = f'%"{_escape_like(tag)}"%'
     if date_from:
         conditions.append("published_at >= :date_from")
         params["date_from"] = date_from
@@ -44,7 +52,10 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
 
 
 def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=None) -> list[dict]:
-    limit = min(int(limit), 100)
+    try:
+        limit = min(int(limit), 100)
+    except (TypeError, ValueError):
+        limit = 20
     conditions = []
     params = {"limit": limit}
     if regulator_id:
@@ -55,8 +66,8 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=N
         params["language"] = language
     if tags:
         for i, tag in enumerate(tags):
-            conditions.append(f"tags LIKE :rtag_{i}")
-            params[f"rtag_{i}"] = f'%"{tag}"%'
+            conditions.append(f"tags LIKE :rtag_{i} ESCAPE '!'")
+            params[f"rtag_{i}"] = f'%"{_escape_like(tag)}"%'
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
@@ -114,7 +125,10 @@ def get_item(engine, item_id: str) -> dict | None:
 
 
 def get_run_log(engine, limit: int = 10) -> list[dict]:
-    limit = min(int(limit), 100)
+    try:
+        limit = min(int(limit), 100)
+    except (TypeError, ValueError):
+        limit = 10
     sql = """
         SELECT run_id, started_at, completed_at, status,
                total_fetched, total_new, total_errors, error_detail
@@ -130,7 +144,10 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
 
 
 def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
-    days = min(int(days), 365)
+    try:
+        days = max(0, min(int(days), 365))
+    except (TypeError, ValueError):
+        days = 30
     conditions = ['tags LIKE \'%"warnings"%\'']
     params: dict = {}
     if days > 0:
