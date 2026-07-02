@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}casp-radar{% endblock %}
+{% block content %}
+
+<div class="layout">
+<form class="filters" method="get" action="/">
+  <input type="text" name="q" value="{{ q }}" placeholder='Search... "exact phrase" or word1 word2 (AND)' size="40">
+  <label class="checkbox"><input type="checkbox" name="exact" value="true" {% if exact %}checked{% endif %}> exact match (whole query as one phrase)</label>
+
+  <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>
+  <label>To <input type="date" name="date_to" value="{{ date_to }}"></label>
+
+  <button type="submit">Search</button>
+  <a class="clear" href="/">Clear all</a>
+
+  <div class="reg-select">
+    <button type="button" class="reg-select-toggle">
+      Regulators{% if regulator_id %} ({{ regulator_id|length }} selected){% endif %} &#9662;
+    </button>
+    <div class="reg-select-panel"{% if not regulator_id %} hidden{% endif %}>
+      <input type="text" class="reg-filter" placeholder="Filter regulators..." autocomplete="off">
+      <div class="reg-select-list">
+        {% for r in regulators %}
+        <label class="checkbox reg" data-search="{{ (r.name ~ ' ' ~ r.jurisdiction ~ ' ' ~ r.id) | lower }}">
+          <input type="checkbox" name="regulator_id" value="{{ r.id }}" {% if r.id in regulator_id %}checked{% endif %}> {{ r.name }} <span class="jur">({{ r.jurisdiction }})</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% if regulator_id %}<a class="clear-sub" href="/?{{ filter_qs_no_regulator }}">Clear selected</a>{% endif %}
+    </div>
+  </div>
+</form>
+
+<aside class="months">
+  <h3>By month</h3>
+  <ul>
+    {% for m in months %}
+    <li class="{{ 'active' if m.active else '' }}">
+      <a href="/?{{ filter_qs_no_date }}{{ '&' if filter_qs_no_date else '' }}date_from={{ m.date_from }}&date_to={{ m.date_to }}">{{ m.month }}</a>
+      <span class="count">{{ m.count }}</span>
+    </li>
+    {% else %}
+    <li class="empty">No dated items yet.</li>
+    {% endfor %}
+  </ul>
+</aside>
+
+<div class="results">
+  <div class="meta">{{ total }} result{{ "s" if total != 1 else "" }} — page {{ page }} of {{ total_pages }}</div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th>Published</th>
+        <th>Regulator</th>
+        <th>Title</th>
+        <th>Tags</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="date">{{ item.published_at[:10] if item.published_at else (item.fetched_at[:10] + "*") }}</td>
+        <td class="regulator">{{ regulator_names.get(item.regulator_id, item.regulator_id) }}</td>
+        <td class="title"><a href="/item/{{ item.id }}">{{ item.title or "(untitled)" }}</a></td>
+        <td class="tags">{{ item.tag_list | join(", ") }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty">No items match these filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    {% if page > 1 %}<a href="/?{{ filter_qs }}{{ "&" if filter_qs else "" }}page={{ page - 1 }}">&laquo; Prev</a>{% endif %}
+    <span>page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a href="/?{{ filter_qs }}{{ "&" if filter_qs else "" }}page={{ page + 1 }}">Next &raquo;</a>{% endif %}
+  </div>
+
+  <p class="note">* fetched date shown where no published date is available.</p>
+</div>
+</div>
+
+{% endblock %}

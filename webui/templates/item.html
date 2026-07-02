@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title or "casp-radar" }}{% endblock %}
+{% block html_lang %}{{ item.language or "en" }}{% endblock %}
+{% block content %}
+
+<a class="back" href="/">&laquo; back to list</a>
+
+<article class="reader">
+  <h1>{{ item.title or "(untitled)" }}</h1>
+  <div class="byline">
+    <span>{{ regulator_name or item.regulator_id }}</span>
+    {% if item.published_at %}<span>{{ item.published_at[:19] }}</span>{% endif %}
+    {% if item.language %}<span>{{ item.language }}</span>{% endif %}
+    {% if item.tag_list %}<span>{{ item.tag_list | join(", ") }}</span>{% endif %}
+  </div>
+  <p class="source-link"><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">View original at source &rarr;</a></p>
+
+  {% if not item.has_full_text %}
+  <p class="note">Only an RSS snippet was collected for this item — no full text was scraped. Showing what's available; see the source link above for the full article.</p>
+  {% endif %}
+
+  <div class="body">{{ item.clean_text }}</div>
+</article>
+
+{% endblock %}

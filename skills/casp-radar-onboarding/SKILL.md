@@ -33,14 +33,17 @@ All commands below assume you're running from the repo root (the directory conta
    ```bash
    docker compose up -d
    ```
-   This starts `collector`, `mcp`, and `flaresolverr`. If any service fails to start, read its logs (`docker compose logs <service>`) and fix the actual problem before continuing — don't tell the operator it's "probably fine."
+   This starts `collector`, `mcp`, `webui`, and `flaresolverr`. If any service fails to start, read its logs (`docker compose logs <service>`) and fix the actual problem before continuing — don't tell the operator it's "probably fine."
 
-   **Common failure — port conflict:** if `mcp` fails to bind because host port 8000 is already in use by something else on the machine, don't touch the committed `docker-compose.yml`. Instead create an untracked `docker-compose.override.yml` (already covered by `.gitignore`) remapping the port, e.g.:
+   **Common failure — port conflict:** if `mcp` (host port 8000) or `webui` (host port 8080) fails to bind because the port is already in use by something else on the machine, don't touch the committed `docker-compose.yml`. Instead create an untracked `docker-compose.override.yml` (already covered by `.gitignore`) remapping whichever port(s) clashed, e.g.:
    ```yaml
    services:
      mcp:
        ports: !override
          - "127.0.0.1:8001:8000"
+     webui:
+       ports: !override
+         - "127.0.0.1:8081:8080"
    ```
    Use the `!override` merge tag specifically — a plain list under `ports:` gets *appended* to the base port mapping by Compose, not replaced, and both would then try to bind and fail. Adjust the port number if 8001 is also taken. Track which port you actually land on — you'll need it in Phase 1 and when telling the operator how to connect their own agent later.
 
@@ -58,15 +61,16 @@ All commands below assume you're running from the repo root (the directory conta
    ```
    Don't finish onboarding without at least one successful run — an operator with an empty database can't verify anything works.
 
-## Phase 1 — MCP server check
+## Phase 1 — MCP server and web UI check
 
-Confirm the server actually answers before telling the operator it's ready:
+Confirm both actually answer before telling the operator it's ready — a running container isn't the same as a working service:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/mcp \
+curl -s -o /dev/null -w "MCP:   %{http_code}\n" -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"onboarding-check","version":"1.0"}}}'
+curl -s -o /dev/null -w "webui: %{http_code}\n" http://localhost:8080/
 ```
-(Adjust the port if you remapped it in Phase 0.) Expect `200`. If you get a connection error, go back to Phase 0 — don't proceed to the interview with a broken server underneath it.
+Expect `200` from both (adjust the ports if you remapped either in Phase 0). The web UI at `http://localhost:8080` is worth mentioning to the operator regardless of what MCP client they end up using — it's a plain browsable list/search view, useful for a human to sanity-check what's actually in the database. If either check fails, go back to Phase 0 — don't proceed to the interview with a broken service underneath it.
 
 ## Phase 2 — Connect your own MCP client
 
@@ -103,7 +107,7 @@ If you (the agent running this skill) have a way to register a remote MCP server
    git check-ignore -v skills/casp-radar-operator/refs/context.md
    ```
    If that command doesn't report the file as ignored, stop and fix `.gitignore` (should already have `skills/*/refs/context.md`) before telling the operator you're done — don't finish an onboarding run with an unprotected private file sitting in a public repo's working tree.
-9. **Confirm completion** — tell the operator: the stack is up, data is flowing, the MCP server answered, and `casp-radar-operator` now has their context in place and will use it automatically. If Phase 2 was skipped, remind them to connect their own client per the README.
+9. **Confirm completion** — tell the operator: the stack is up, data is flowing, the MCP server and web UI both answered, the web UI is browsable at `http://localhost:8080`, and `casp-radar-operator` now has their context in place and will use it automatically. If Phase 2 was skipped, remind them to connect their own client per the README.
 
 ## Notes
 

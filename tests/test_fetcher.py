@@ -169,6 +169,46 @@ def test_parse_scrape_date_parsed():
     assert items[0].date_inferred is False
 
 
+def test_parse_scrape_date_dayfirst_not_misread_as_month_first():
+    # "02/07/2026" is ambiguous: DD/MM/YYYY (2 July) vs MM/DD/YYYY (7 Feb).
+    # EEA/UK sources use DD/MM/YYYY - dateutil defaults to month-first without
+    # dayfirst=True, which would silently misparse this as 7 February.
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Title</h2>
+        <a href="https://example.com/page">link</a>
+        <span class="date">02/07/2026</span>
+      </div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].date_inferred is False
+    assert items[0].published_at.month == 7
+    assert items[0].published_at.day == 2
+
+
+def test_parse_scrape_date_fuzzy_strips_surrounding_text():
+    # FCA's search results render "Published: 02/07/2026" with no clean
+    # sub-element isolating just the date - fuzzy=True must tolerate the
+    # "Published: " prefix rather than failing to parse entirely.
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Title</h2>
+        <a href="https://example.com/page">link</a>
+        <span class="date">Published: 02/07/2026</span>
+      </div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].date_inferred is False
+    assert items[0].published_at.month == 7
+    assert items[0].published_at.day == 2
+
+
 def test_parse_scrape_no_date_inferred():
     html = """
     <html><body>

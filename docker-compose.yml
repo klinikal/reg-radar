@@ -24,6 +24,19 @@ services:
     depends_on:
       - collector
 
+  webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    depends_on:
+      - collector
+
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     environment:

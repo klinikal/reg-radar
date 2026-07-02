@@ -1,0 +1,190 @@
+import calendar
+import json
+import logging
+import os
+from urllib.parse import urlencode
+
+from bs4 import BeautifulSoup
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from collector.storage import init_db
+from mcpserver.queries import get_item, get_month_facets, list_regulators, search_items_advanced
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+
+_HERE = os.path.dirname(__file__)
+
+app = FastAPI(title="casp-radar")
+app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
+
+PAGE_SIZE = 50
+
+_engine = None
+
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+        _engine = init_db(db_path)
+    return _engine
+
+
+def _clean_text(raw_content: str | None, fallback: str | None) -> str:
+    # raw_content is scraped third-party HTML - never render it as HTML.
+    # Strip to plain text here; Jinja2 autoescapes on top as a second layer.
+    if raw_content:
+        return BeautifulSoup(raw_content, "lxml").get_text(separator="\n\n").strip()
+    return fallback or ""
+
+
+def _parse_tags(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+
+
+def _with_tags(item: dict) -> dict:
+    item["tag_list"] = _parse_tags(item.get("tags"))
+    return item
+
+
+def _search(q, exact, regulator_ids, date_from, date_to, page):
+    offset = (page - 1) * PAGE_SIZE
+    items, total = search_items_advanced(
+        get_engine(),
+        query=q,
+        exact=exact,
+        regulator_ids=regulator_ids or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        limit=PAGE_SIZE,
+        offset=offset,
+    )
+    return items, total
+
+
+def _month_bounds(month: str) -> tuple[str, str]:
+    year, mon = (int(p) for p in month.split("-"))
+    last_day = calendar.monthrange(year, mon)[1]
+    return f"{month}-01", f"{month}-{last_day:02d}"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index(
+    request: Request,
+    q: str = "",
+    exact: bool = False,
+    regulator_id: list[str] = Query([]),
+    date_from: str = "",
+    date_to: str = "",
+    page: int = Query(1, ge=1),
+):
+    items, total = _search(q, exact, regulator_id, date_from, date_to, page)
+    items = [_with_tags(i) for i in items]
+    regulators = list_regulators(get_engine())
+    regulator_names = {r["id"]: r["name"] for r in regulators}
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    months = get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=regulator_id or None)
+    for m in months:
+        m["date_from"], m["date_to"] = _month_bounds(m["month"])
+        m["active"] = date_from == m["date_from"] and date_to == m["date_to"]
+
+    def qs(**overrides):
+        base = {"q": q, "exact": "true" if exact else "", "regulator_id": regulator_id,
+                "date_from": date_from, "date_to": date_to}
+        base.update(overrides)
+        return urlencode({k: v for k, v in base.items() if v}, doseq=True)
+
+    filter_qs = qs()
+    filter_qs_no_date = qs(date_from="", date_to="")
+    filter_qs_no_regulator = qs(regulator_id=[])
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "items": items,
+            "regulators": regulators,
+            "regulator_names": regulator_names,
+            "total": total,
+            "page": page,
+            "total_pages": total_pages,
+            "page_size": PAGE_SIZE,
+            "filter_qs": filter_qs,
+            "filter_qs_no_date": filter_qs_no_date,
+            "filter_qs_no_regulator": filter_qs_no_regulator,
+            "months": months,
+            "q": q,
+            "exact": exact,
+            "regulator_id": regulator_id,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+    )
+
+
+@app.get("/item/{item_id}", response_class=HTMLResponse)
+def item_view(request: Request, item_id: str):
+    item = get_item(get_engine(), item_id)
+    if item is None:
+        return templates.TemplateResponse(
+            "not_found.html", {"request": request, "item_id": item_id}, status_code=404
+        )
+    item["has_full_text"] = bool(item.get("raw_content"))
+    item["clean_text"] = _clean_text(item.get("raw_content"), item.get("content_snippet"))
+    item = _with_tags(item)
+    regulators = {r["id"]: r["name"] for r in list_regulators(get_engine())}
+    return templates.TemplateResponse(
+        "item.html", {"request": request, "item": item, "regulator_name": regulators.get(item["regulator_id"])}
+    )
+
+
+# JSON API - same query layer as the HTML views, so a future non-HTML
+# frontend (or a script) can use this without duplicating query logic.
+@app.get("/api/items")
+def api_items(
+    q: str = "",
+    exact: bool = False,
+    regulator_id: list[str] = Query([]),
+    date_from: str = "",
+    date_to: str = "",
+    page: int = Query(1, ge=1),
+):
+    items, total = _search(q, exact, regulator_id, date_from, date_to, page)
+    return {"items": items, "total": total, "page": page, "page_size": PAGE_SIZE}
+
+
+@app.get("/api/months")
+def api_months(q: str = "", exact: bool = False, regulator_id: list[str] = Query([])):
+    return {"months": get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=regulator_id or None)}
+
+
+@app.get("/api/items/{item_id}")
+def api_item(item_id: str):
+    item = get_item(get_engine(), item_id)
+    if item is None:
+        return {"error": "not found"}
+    return item
+
+
+@app.get("/api/regulators")
+def api_regulators():
+    return {"regulators": list_regulators(get_engine())}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8080)

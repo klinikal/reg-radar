@@ -195,7 +195,12 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
                 if date_str:
                     try:
                         from dateutil.parser import parse as parse_date
-                        parsed = parse_date(date_str)
+                        # fuzzy: tolerates surrounding text like "Published: 02/07/2026".
+                        # dayfirst: EEA/UK sources use DD/MM/YYYY: without this, ambiguous
+                        # dates like 02/07/2026 silently misparse as 2 July -> 7 Feb.
+                        # Safe for existing sources - they all use unambiguous ISO
+                        # datetime attributes, which dayfirst/fuzzy don't affect.
+                        parsed = parse_date(date_str, fuzzy=True, dayfirst=True)
                         published_at = parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
                         date_inferred = False
                     except Exception:

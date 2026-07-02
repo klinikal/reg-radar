@@ -26,7 +26,7 @@ If nothing's running:
 docker compose up -d
 ```
 
-This starts three services: `collector` (scheduled fetcher, default 06:00 UTC daily — see `SCHEDULE` in `.env`), `mcp` (the query server), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources). To force an immediate collection pass instead of waiting for the schedule:
+This starts four services: `collector` (scheduled fetcher, default 06:00 UTC daily — see `SCHEDULE` in `.env`), `mcp` (the query server), `webui` (a browsable list/search/reader view at `http://localhost:8080` — useful for a human to sanity-check what's actually in the database, or as a quick way to eyeball something before querying it via MCP), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources). To force an immediate collection pass instead of waiting for the schedule:
 
 ```bash
 docker compose exec collector python -m collector.main --once
@@ -48,6 +48,10 @@ Use the `!override` merge tag — a plain list under `ports:` gets *appended* to
 ## What's in the data
 
 Registry with per-source status lives at `config/regulators.yaml`. Each item has `tags` (e.g. `casp`, `mica`, `warnings`, `dora`, `news`, `publications`) assigned at the *feed* level, not per-article — treat tags as "this feed generally covers X," not a precise per-item classifier. This tool deliberately does no AI classification or relevance scoring (by design — "bring your own agent"). When asked whether something is actually relevant, read the item and judge it; don't expect pre-filtered data.
+
+**Non-EEA note:** `regulator_id` `uk-fca` (FCA) is included as a deliberate exception to this tool's core EEA/MiCA scope — see the "Non-EEA Additions" section at the bottom of `config/regulators.yaml`. If an operator's context (`refs/context.md`) is EEA/MiCA-only, weigh UK items accordingly rather than assuming they're automatically relevant.
+
+**Historic backfills:** the daily collector only picks up the newest page of any scrape-type source — full historic archives are pulled separately via one-off scripts in `scripts/` (`backfill_esma_library.py`, `backfill_fca_publications.py`), not run automatically. If asked "why is there a gap in older data" for a scrape-type source, check whether its backfill script has actually been run — see the README's "Historic backfills" section for what's been run and what hasn't.
 
 ## MCP tools
 

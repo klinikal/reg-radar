@@ -20,14 +20,14 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
    cp .env.example .env
    docker compose up -d
    ```
-   This starts three services: `collector` (fetches on a schedule — see [Configuration](#configuration)), `mcp` (the query server, exposed at `http://localhost:8000/mcp`), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources).
+   This starts four services: `collector` (fetches on a schedule — see [Configuration](#configuration)), `mcp` (the query server, exposed at `http://localhost:8000/mcp`), `webui` (a browsable list/search view at `http://localhost:8080` — see [Web UI](#web-ui)), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources).
 
 2. **Get some data in.** The collector runs on its own schedule (default 06:00 UTC daily), so on a fresh install the database is empty until the first run. To collect immediately instead of waiting:
    ```bash
    docker compose exec collector python -m collector.main --once
    ```
 
-3. **Connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
+3. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
 
 4. **Give your agent the onboarding skill.** Point it at [`skills/casp-radar-onboarding/SKILL.md`](skills/casp-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/casp-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating all ~33 regulators as equally important.
 
@@ -40,6 +40,19 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
 Sources with confirmed working RSS/Atom feeds: 25+. Scrape targets: ~8. Disabled entries (Cloudflare/SPA-protected): ~10 — documented in `regulators.yaml` so the gap is visible.
 
 Optional: the `flaresolverr` service (included in Docker Compose by default) enables collection from Cloudflare-protected sources (e.g. Lithuania's lb.lt).
+
+### Non-EEA additions
+
+The UK's FCA is included as a deliberate exception to the EEA/MiCA scope above — see the "Non-EEA Additions" section at the bottom of `config/regulators.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance). It's kept structurally separate so the EEA coverage numbers above stay accurate.
+
+### Historic backfills
+
+The regular collector only scrapes the first page of each scrape-type source on every run (newest-first) — enough to catch new publications going forward, but not the historic archive behind a source that only recently got added here. Two one-off backfill scripts exist for that, both under `scripts/`, both read their URLs/selectors straight from `config/regulators.yaml` (no duplicated config to drift out of sync), both support `--dry-run`, and neither runs automatically — running one is a deliberate decision, not a side effect of adding a source:
+
+- `backfill_esma_library.py` — ESMA's document library, ~7,260 documents across ~363 pages. Has been run; that data is in the default dataset once you clone and run the collector's normal `--once`/scheduled pass — no need to re-run this unless you're rebuilding from an empty database.
+- `backfill_fca_publications.py` — FCA's notices/decisions (~5,980 documents) and policy/guidance (~3,743 documents). **Has not been run** — built and tested (`--dry-run --max-pages N`) but the full historic crawl is left to you to trigger deliberately, since FCA is a non-EEA addition and a larger crawl than ESMA's.
+
+Always `--dry-run` first — both scripts fetch and parse every page exactly as a real run would, just without writing to the database, so you can sanity-check counts before committing to a multi-hundred-request crawl of someone else's site.
 
 ## MCP server
 
@@ -64,6 +77,17 @@ services:
       - "127.0.0.1:8001:8000"
 ```
 Use the `!override` merge tag — a plain list under `ports:` gets *appended* to the base port mapping by Compose, not replaced, and both would then try to bind and fail.
+
+## Web UI
+
+A minimal, functional list/search/reader view — no build step, no JS framework, just server-rendered HTML — at **`http://localhost:8080`**:
+
+- **List view** shows every collected item, most recent first, with keyword search, an exact match toggle, a regulator filter, and a date range filter.
+- **Search syntax:** unquoted words are AND-ed (`bafin fines` matches items containing both, in either order); `+` behaves the same as a space (`bafin+fines`); wrap a phrase in quotes for adjacency (`"administrative fines"` only matches that exact phrase, not the two words scattered separately); check "exact match" to treat the entire query box as one literal phrase.
+- **Reader view** (click any title) strips the item down to title, regulator, date, tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source.
+- **JSON API** at `/api/items`, `/api/items/{id}`, and `/api/regulators` — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
+
+This is intentionally plain — a functional first pass, not a finished design. The query/data layer (`mcpserver/queries.py`) is decoupled from presentation, so upgrading the look (or swapping in a JS frontend against the JSON API) later doesn't require touching how data is fetched or filtered.
 
 ## Connecting an agent
 

@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r collector/requirements.txt
 
 COPY collector/ ./collector/
 COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 RUN mkdir -p /app/data && \
     addgroup --system appgroup && \

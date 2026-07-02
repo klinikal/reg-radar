@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY webui/requirements.txt ./webui/requirements.txt
+RUN pip install --no-cache-dir -r webui/requirements.txt
+
+COPY collector/ ./collector/
+COPY mcpserver/ ./mcpserver/
+COPY webui/ ./webui/
+
+RUN addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+ENV DB_PATH=/app/data/casp_radar.db \
+    LOG_LEVEL=INFO
+
+CMD ["uvicorn", "webui.app:app", "--host", "0.0.0.0", "--port", "8080"]

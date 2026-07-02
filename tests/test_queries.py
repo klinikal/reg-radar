@@ -6,6 +6,8 @@ from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
 from mcpserver.queries import (
     search_items,
+    search_items_advanced,
+    get_month_facets,
     get_recent,
     list_regulators,
     get_item,
@@ -49,6 +51,124 @@ def test_search_items_finds_by_title():
         results = search_items(engine, "MiCA warning")
         assert len(results) == 1
         assert "MiCA warning" in results[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_multi_term_and():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="Bafin imposes administrative fines", url="https://example.com/1"))
+        insert_item(engine, make_item(title="Bafin issues guidance note", url="https://example.com/2"))
+        insert_item(engine, make_item(title="ESMA imposes administrative fines", url="https://example.com/3"))
+        items, total = search_items_advanced(engine, query="Bafin fines")
+        assert total == 1
+        assert "administrative fines" in items[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_plus_separator_same_as_space():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="Bafin imposes administrative fines", url="https://example.com/1"))
+        plus_result, plus_total = search_items_advanced(engine, query="Bafin+fines")
+        space_result, space_total = search_items_advanced(engine, query="Bafin fines")
+        assert plus_total == space_total == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_quoted_phrase_is_atomic():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="fines administrative in nature", url="https://example.com/1"))
+        insert_item(engine, make_item(title="administrative fines imposed", url="https://example.com/2"))
+        # unquoted: both terms required anywhere -> both items match
+        _, total_and = search_items_advanced(engine, query="administrative fines")
+        assert total_and == 2
+        # quoted: only the item with the exact adjacent phrase matches
+        _, total_phrase = search_items_advanced(engine, query='"administrative fines"')
+        assert total_phrase == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_exact_mode_treats_whole_query_as_phrase():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="fines administrative in nature", url="https://example.com/1"))
+        insert_item(engine, make_item(title="administrative fines imposed", url="https://example.com/2"))
+        items, total = search_items_advanced(engine, query="administrative fines", exact=True)
+        assert total == 1
+        assert items[0]["title"] == "administrative fines imposed"
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_date_to_includes_same_day():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="Today's warning", days_ago=0))
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        items, total = search_items_advanced(engine, date_to=today)
+        assert total == 1, "a plain YYYY-MM-DD date_to should include same-day items, not exclude them"
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_pagination_and_total_count():
+    engine, db_path = setup_engine()
+    try:
+        for i in range(5):
+            insert_item(engine, make_item(url=f"https://example.com/{i}"))
+        page1, total = search_items_advanced(engine, limit=2, offset=0)
+        page2, _ = search_items_advanced(engine, limit=2, offset=2)
+        assert total == 5
+        assert len(page1) == 2
+        assert len(page2) == 2
+        assert {i["id"] for i in page1}.isdisjoint({i["id"] for i in page2})
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_multi_regulator_is_or():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        items, total = search_items_advanced(engine, regulator_ids=["esma", "eba"])
+        assert total == 2
+        assert {i["regulator_id"] for i in items} == {"esma", "eba"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_month_facets_counts_and_ignores_date_filter():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(url="https://example.com/1", days_ago=0))
+        insert_item(engine, make_item(url="https://example.com/2", days_ago=0))
+        insert_item(engine, make_item(url="https://example.com/3", days_ago=40))
+        facets = get_month_facets(engine)
+        assert len(facets) == 2
+        this_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        counts = {f["month"]: f["count"] for f in facets}
+        assert counts[this_month] == 2
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_month_facets_respects_query_and_regulator_filters():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", title="MiCA warning issued", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", title="Something else entirely", url="https://example.com/2"))
+        facets = get_month_facets(engine, query="MiCA warning")
+        assert sum(f["count"] for f in facets) == 1
+        facets_by_reg = get_month_facets(engine, regulator_ids=["eba"])
+        assert sum(f["count"] for f in facets_by_reg) == 1
     finally:
         os.unlink(db_path)
 
