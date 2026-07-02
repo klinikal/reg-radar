@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
@@ -18,6 +17,10 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
     if language:
         conditions.append("language = :language")
         params["language"] = language
+    if tags:
+        for i, tag in enumerate(tags):
+            conditions.append(f"tags LIKE :tag_{i}")
+            params[f"tag_{i}"] = f'%"{tag}"%'
     if date_from:
         conditions.append("published_at >= :date_from")
         params["date_from"] = date_from
@@ -50,6 +53,10 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=N
     if language:
         conditions.append("language = :language")
         params["language"] = language
+    if tags:
+        for i, tag in enumerate(tags):
+            conditions.append(f"tags LIKE :rtag_{i}")
+            params[f"rtag_{i}"] = f'%"{tag}"%'
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
@@ -63,16 +70,7 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=N
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
-    results = [_row_to_dict(r, keys) for r in rows]
-
-    if tags:
-        filtered = []
-        for r in results:
-            item_tags = json.loads(r["tags"] or "[]")
-            if any(t in item_tags for t in tags):
-                filtered.append(r)
-        return filtered
-    return results
+    return [_row_to_dict(r, keys) for r in rows]
 
 
 def list_regulators(engine) -> list[dict]:
@@ -133,7 +131,7 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
 
 def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
     days = min(int(days), 365)
-    conditions = ["tags LIKE '%warnings%'"]
+    conditions = ['tags LIKE \'%"warnings"%\'']
     params: dict = {}
     if days > 0:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()

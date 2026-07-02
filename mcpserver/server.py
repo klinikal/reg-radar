@@ -2,9 +2,7 @@ import json
 import logging
 import os
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.server.fastmcp import FastMCP
 
 from collector.storage import init_db
 from mcpserver.queries import (
@@ -20,9 +18,8 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-logger = logging.getLogger(__name__)
 
-app = Server("casp-radar")
+mcp = FastMCP("casp-radar")
 
 _engine = None
 
@@ -35,121 +32,47 @@ def get_engine():
     return _engine
 
 
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name="search_items",
-            description="Full-text search across regulatory items by title and snippet.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "regulator_id": {"type": "string"},
-                    "language": {"type": "string", "description": "BCP-47 code e.g. 'en', 'de'"},
-                    "tags": {"type": "array", "items": {"type": "string"}},
-                    "date_from": {"type": "string", "description": "ISO date e.g. 2026-01-01"},
-                    "date_to": {"type": "string"},
-                    "limit": {"type": "integer", "default": 20},
-                },
-                "required": ["query"],
-            },
-        ),
-        Tool(
-            name="get_recent",
-            description="Returns the most recent regulatory items, with optional filters.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "default": 20},
-                    "regulator_id": {"type": "string"},
-                    "tags": {"type": "array", "items": {"type": "string"}},
-                    "language": {"type": "string"},
-                },
-            },
-        ),
-        Tool(
-            name="list_regulators",
-            description="Returns all regulators in the registry with live fetch stats.",
-            inputSchema={"type": "object", "properties": {}},
-        ),
-        Tool(
-            name="get_item",
-            description="Returns a single item by its ID, including raw_content.",
-            inputSchema={
-                "type": "object",
-                "properties": {"id": {"type": "string"}},
-                "required": ["id"],
-            },
-        ),
-        Tool(
-            name="get_run_log",
-            description="Returns recent collector run statistics.",
-            inputSchema={
-                "type": "object",
-                "properties": {"limit": {"type": "integer", "default": 10}},
-            },
-        ),
-        Tool(
-            name="get_warnings",
-            description="Returns regulatory warning items across all regulators. days=0 returns all.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "days": {"type": "integer", "default": 30, "description": "0 = all; max 365"},
-                    "regulator_id": {"type": "string"},
-                },
-            },
-        ),
-    ]
+@mcp.tool()
+def search_items_tool(query: str, regulator_id: str = None, language: str = None, tags: list[str] = None, date_from: str = None, date_to: str = None, limit: int = 20) -> str:
+    """Full-text search across regulatory items by title and snippet."""
+    results = search_items(get_engine(), query=query, regulator_id=regulator_id, language=language, tags=tags, date_from=date_from, date_to=date_to, limit=limit)
+    return json.dumps(results, default=str)
 
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict):
-    engine = get_engine()
-
-    if name == "search_items":
-        results = search_items(
-            engine,
-            query=arguments["query"],
-            regulator_id=arguments.get("regulator_id"),
-            language=arguments.get("language"),
-            tags=arguments.get("tags"),
-            date_from=arguments.get("date_from"),
-            date_to=arguments.get("date_to"),
-            limit=arguments.get("limit", 20),
-        )
-    elif name == "get_recent":
-        results = get_recent(
-            engine,
-            limit=arguments.get("limit", 20),
-            regulator_id=arguments.get("regulator_id"),
-            tags=arguments.get("tags"),
-            language=arguments.get("language"),
-        )
-    elif name == "list_regulators":
-        results = list_regulators(engine)
-    elif name == "get_item":
-        results = get_item(engine, arguments["id"])
-    elif name == "get_run_log":
-        results = get_run_log(engine, limit=arguments.get("limit", 10))
-    elif name == "get_warnings":
-        results = get_warnings(
-            engine,
-            days=arguments.get("days", 30),
-            regulator_id=arguments.get("regulator_id"),
-        )
-    else:
-        return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-    return [TextContent(type="text", text=json.dumps(results, default=str))]
+@mcp.tool()
+def get_recent_tool(limit: int = 20, regulator_id: str = None, tags: list[str] = None, language: str = None) -> str:
+    """Returns the most recent regulatory items, with optional filters."""
+    results = get_recent(get_engine(), limit=limit, regulator_id=regulator_id, tags=tags, language=language)
+    return json.dumps(results, default=str)
 
 
-async def main():
-    async with stdio_server() as streams:
-        await app.run(streams[0], streams[1], app.create_initialization_options())
+@mcp.tool()
+def list_regulators_tool() -> str:
+    """Returns all regulators in the registry with live fetch stats."""
+    results = list_regulators(get_engine())
+    return json.dumps(results, default=str)
+
+
+@mcp.tool()
+def get_item_tool(id: str) -> str:
+    """Returns a single item by its ID, including raw_content."""
+    result = get_item(get_engine(), id)
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def get_run_log_tool(limit: int = 10) -> str:
+    """Returns recent collector run statistics."""
+    results = get_run_log(get_engine(), limit=limit)
+    return json.dumps(results, default=str)
+
+
+@mcp.tool()
+def get_warnings_tool(days: int = 30, regulator_id: str = None) -> str:
+    """Returns regulatory warning items. days=0 returns all, max 365."""
+    results = get_warnings(get_engine(), days=days, regulator_id=regulator_id)
+    return json.dumps(results, default=str)
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)

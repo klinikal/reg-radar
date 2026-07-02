@@ -2,6 +2,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urljoin
 
 import feedparser
 import httpx
@@ -66,7 +67,7 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
     return None
 
 
-def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, flaresolverr_url: str | None = None) -> bytes | None:
+def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int) -> bytes | None:
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
@@ -78,12 +79,6 @@ def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, flaresol
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
-
-    if flaresolverr_url:
-        logger.info("Retrying %s via FlareSolverr", url)
-        result = _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
-        return result.encode() if result else None
-
     return None
 
 
@@ -166,8 +161,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
         title = title_el.get_text(strip=True)
         href = link_el.get("href", "").strip()
         if not href.startswith("http"):
-            base = source["url"].rsplit("/", 1)[0]
-            href = f"{base}/{href.lstrip('/')}"
+            href = urljoin(source["url"], href)
 
         published_at = None
         date_inferred = True
@@ -178,7 +172,8 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
                 if date_str:
                     try:
                         from dateutil.parser import parse as parse_date
-                        published_at = parse_date(date_str).replace(tzinfo=timezone.utc)
+                        parsed = parse_date(date_str)
+                        published_at = parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
                         date_inferred = False
                     except Exception:
                         pass
@@ -225,7 +220,7 @@ def fetch_source(
 
     try:
         if source_type in ("rss", "atom"):
-            content = _fetch_bytes(url, user_agent, timeout, retries, flaresolverr_url)
+            content = _fetch_bytes(url, user_agent, timeout, retries)
             if content is None:
                 logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
                 return []
