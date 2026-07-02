@@ -1,3 +1,9 @@
+# EEA Regulator Feed Directory
+# Generated: 2026-07-02
+# Coverage: 3 EU supranational bodies + 30 member state / EEA regulators
+
+# ─── EU Supranational ─────────────────────────────────────────────────────────
+
 - id: esma
   name: ESMA
   full_name: European Securities and Markets Authority
@@ -7,11 +13,832 @@
   mica_competent_authority: true
   enabled: true
   cloudflare_protected: false
+  warnings_url: https://www.esma.europa.eu/investor-corner/frauds-and-scams
+  notes: "Primary pan-EU CASP supervisor under MiCA. CASP register at registers.esma.europa.eu/publication/searchCASP."
   sources:
     - type: rss
       url: https://www.esma.europa.eu/rss.xml
       label: all_news
       preferred_language: en
       tags: [casp, mica, warnings]
-  warnings_url: https://www.esma.europa.eu/investor-corner/frauds-and-scams
-  notes: "Primary pan-EU CASP supervisor."
+
+- id: eba
+  name: EBA
+  full_name: European Banking Authority
+  jurisdiction: EU
+  jurisdiction_type: supranational
+  website: https://www.eba.europa.eu
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "Supervises significant ART/EMT issuers under MiCA."
+  sources:
+    - type: rss
+      url: https://www.eba.europa.eu/news-press/news/rss.xml
+      label: all_news
+      preferred_language: en
+      tags: [mica, art, emt]
+
+- id: eiopa
+  name: EIOPA
+  full_name: European Insurance and Occupational Pensions Authority
+  jurisdiction: EU
+  jurisdiction_type: supranational
+  website: https://www.eiopa.europa.eu
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "Secondary relevance - joint ESA work on MiCA and DORA."
+  sources:
+    - type: rss
+      url: https://www.eiopa.europa.eu/node/3/rss_en
+      label: publications
+      preferred_language: en
+      tags: [mica, dora, publications]
+    - type: rss
+      url: https://www.eiopa.europa.eu/node/4816/rss_en
+      label: news
+      preferred_language: en
+      tags: [mica, dora, news]
+
+# ─── Austria ──────────────────────────────────────────────────────────────────
+
+- id: at-fma
+  name: FMA Austria
+  full_name: Finanzmarktaufsicht
+  jurisdiction: AT
+  jurisdiction_type: member_state
+  website: https://www.fma.gv.at/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fma.gv.at/en/warnings/
+  notes: "WordPress feed - requires browser User-Agent header."
+  sources:
+    - type: rss
+      url: https://www.fma.gv.at/en/feed/
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, warnings]
+
+# ─── Belgium ──────────────────────────────────────────────────────────────────
+
+- id: be-fsma
+  name: FSMA
+  full_name: Financial Services and Markets Authority
+  jurisdiction: BE
+  jurisdiction_type: member_state
+  website: https://www.fsma.be/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fsma.be/en/warnings
+  notes: "Combined news and warnings feed."
+  sources:
+    - type: rss
+      url: https://www.fsma.be/en/news-articles/rss.xml
+      label: news_and_warnings
+      preferred_language: en
+      tags: [casp, mica, warnings]
+
+- id: be-nbb
+  name: NBB
+  full_name: National Bank of Belgium
+  jurisdiction: BE
+  jurisdiction_type: member_state
+  website: https://www.nbb.be/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "No RSS feed found - email subscription only via Flexmail."
+  sources: []
+
+# ─── Bulgaria ─────────────────────────────────────────────────────────────────
+
+- id: bg-fsc
+  name: FSC Bulgaria
+  full_name: Financial Supervision Commission
+  jurisdiction: BG
+  jurisdiction_type: member_state
+  website: https://www.fsc.bg/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fsc.bg/en/for-the-consumers/warnings/
+  notes: "WordPress RSS 2.0. English warnings hub available; FSC-specific warnings are Bulgarian only."
+  sources:
+    - type: rss
+      url: https://www.fsc.bg/en/feed/
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, warnings]
+
+# ─── Croatia ──────────────────────────────────────────────────────────────────
+
+- id: hr-hanfa
+  name: HANFA
+  full_name: Croatian Financial Services Supervisory Agency
+  jurisdiction: HR
+  jurisdiction_type: member_state
+  website: https://www.hanfa.hr/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.hanfa.hr/consumers/warnings/
+  notes: "English RSS lags Croatian feed slightly."
+  sources:
+    - type: rss
+      url: https://www.hanfa.hr/rss-en/
+      label: all_news_en
+      preferred_language: en
+      tags: [casp, mica, warnings]
+
+# ─── Cyprus ───────────────────────────────────────────────────────────────────
+
+- id: cy-cysec
+  name: CySEC
+  full_name: Cyprus Securities and Exchange Commission
+  jurisdiction: CY
+  jurisdiction_type: member_state
+  website: https://www.cysec.gov.cy/en-GB/home/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cysec.gov.cy/en-GB/investor-protection/warnings/
+  notes: "No RSS - RSS endpoints return 410 Gone. Scraping announcements page."
+  sources:
+    - type: scrape
+      url: https://www.cysec.gov.cy/en-GB/home/announcements/
+      label: announcements
+      preferred_language: en
+      tags: [casp, mica, warnings]
+      scrape:
+        item_selector: "article, .announcement-item, .list-item"
+        title_selector: "h2 a, h3 a, .title a"
+        link_selector: "h2 a, h3 a, .title a"
+        date_selector: "time"
+        date_attribute: "datetime"
+        content_selector: null
+
+# ─── Czech Republic ───────────────────────────────────────────────────────────
+
+- id: cz-cnb
+  name: CNB
+  full_name: Czech National Bank
+  jurisdiction: CZ
+  jurisdiction_type: member_state
+  website: https://www.cnb.cz/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cnb.cz/en/supervision-financial-market/consumer-protection-and-financial-literacy/consumer-protection/notices-about-activities/
+  notes: "RSS index at cnb.cz/en/general/rss/."
+  sources:
+    - type: rss
+      url: https://www.cnb.cz/en/.content/rss-feed/rss-feed_tz.xml
+      label: press_releases
+      preferred_language: en
+      tags: [casp, mica, press_releases]
+
+# ─── Denmark ──────────────────────────────────────────────────────────────────
+
+- id: dk-dfsa
+  name: DFSA Denmark
+  full_name: Danish Financial Supervisory Authority
+  jurisdiction: DK
+  jurisdiction_type: member_state
+  website: https://www.dfsa.dk
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.dfsa.dk/supervision/warnings-against-companies
+  notes: "No RSS - CMS has RSS deliberately disabled. English content on dfsa.dk (not finanstilsynet.dk). Scraping news page."
+  sources:
+    - type: scrape
+      url: https://www.dfsa.dk/news
+      label: news
+      preferred_language: en
+      tags: [casp, mica, news]
+      scrape:
+        item_selector: "article, .news-item, .list__item"
+        title_selector: "h2 a, h3 a, .news-item__title a"
+        link_selector: "h2 a, h3 a, .news-item__title a"
+        date_selector: "time, .date"
+        date_attribute: "datetime"
+        content_selector: null
+
+# ─── Estonia ──────────────────────────────────────────────────────────────────
+
+- id: ee-fi
+  name: Finantsinspektsioon
+  full_name: Estonian Financial Supervision Authority
+  jurisdiction: EE
+  jurisdiction_type: member_state
+  website: https://www.fi.ee/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fi.ee/en/alerts
+  notes: "Non-standard RSS path. Item titles may be in Estonian; English content in description field."
+  sources:
+    - type: rss
+      url: https://www.fi.ee/en/uudised/rss
+      label: news_en
+      preferred_language: en
+      tags: [casp, mica, news]
+
+# ─── Finland ──────────────────────────────────────────────────────────────────
+
+- id: fi-finfsa
+  name: FIN-FSA
+  full_name: Finnish Financial Supervisory Authority (Finanssivalvonta)
+  jurisdiction: FI
+  jurisdiction_type: member_state
+  website: https://www.finanssivalvonta.fi/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.finanssivalvonta.fi/en/registers/warning-lists/
+  notes: "No RSS - email subscription only. Scraping publications and press releases page."
+  sources:
+    - type: scrape
+      url: https://www.finanssivalvonta.fi/en/publications-and-press-releases/
+      label: publications
+      preferred_language: en
+      tags: [casp, mica, publications]
+      scrape:
+        item_selector: "article, .news-item, .list-item"
+        title_selector: "h2 a, h3 a, .item-title a"
+        link_selector: "h2 a, h3 a, .item-title a"
+        date_selector: "time, .date"
+        date_attribute: "datetime"
+        content_selector: null
+
+# ─── France ───────────────────────────────────────────────────────────────────
+
+- id: fr-amf
+  name: AMF France
+  full_name: Autorité des marchés financiers
+  jurisdiction: FR
+  jurisdiction_type: member_state
+  website: https://www.amf-france.org/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.amf-france.org/en/warnings
+  notes: "Multiple confirmed RSS feeds. Warnings feed is highest priority."
+  sources:
+    - type: rss
+      url: https://www.amf-france.org/en/flux-rss/display/28
+      label: warnings
+      preferred_language: en
+      tags: [casp, mica, warnings]
+    - type: rss
+      url: https://www.amf-france.org/en/flux-rss/display/23
+      label: press_releases
+      preferred_language: en
+      tags: [casp, mica, press_releases]
+    - type: rss
+      url: https://www.amf-france.org/en/flux-rss/display/21
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, news]
+    - type: rss
+      url: https://www.amf-france.org/en/flux-rss/display/31
+      label: regulatory_updates
+      preferred_language: en
+      tags: [mica, regulatory]
+    - type: rss
+      url: https://www.amf-france.org/en/flux-rss/display/25
+      label: publications
+      preferred_language: en
+      tags: [mica, publications]
+
+- id: fr-acpr
+  name: ACPR
+  full_name: Autorité de contrôle prudentiel et de résolution
+  jurisdiction: FR
+  jurisdiction_type: member_state
+  website: https://acpr.banque-france.fr/en
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://acpr.banque-france.fr/en/particuliers/vos-moyens-daction/browse-scam-warnings
+  notes: "No RSS - WAF-blocked; email subscription only. Joint ACPR/AMF blacklist at abe-infoservice.fr."
+  sources: []
+
+# ─── Germany ──────────────────────────────────────────────────────────────────
+
+- id: de-bafin
+  name: BaFin
+  full_name: Bundesanstalt für Finanzdienstleistungsaufsicht
+  jurisdiction: DE
+  jurisdiction_type: member_state
+  website: https://www.bafin.de/EN
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.bafin.de/EN/verbraucherinnen-verbraucher/news-warnungen/warnmeldungen/warnmeldungen_node_en.html
+  notes: "No standalone warnings-only RSS - warnings appear in general feeds. Four confirmed RSS feeds."
+  sources:
+    - type: rss
+      url: https://www.bafin.de/EN/service/rss/_function/rssnewsfeed.xml?nn=187494
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, news]
+    - type: rss
+      url: https://www.bafin.de/EN/service/rss/_function/RSS_Presse.xml?nn=187494
+      label: press_pr
+      preferred_language: en
+      tags: [casp, mica, press_releases, warnings]
+    - type: rss
+      url: https://www.bafin.de/EN/service/rss/_function/RSS_Aufsicht.xml?nn=187494
+      label: regulatory_law
+      preferred_language: en
+      tags: [mica, regulatory]
+    - type: rss
+      url: https://www.bafin.de/EN/service/rss/_function/RSS_Massnahmen.xml?nn=187494
+      label: measures_sanctions
+      preferred_language: en
+      tags: [casp, mica, sanctions, enforcement]
+
+# ─── Greece ───────────────────────────────────────────────────────────────────
+
+- id: gr-hcmc
+  name: HCMC
+  full_name: Hellenic Capital Market Commission
+  jurisdiction: GR
+  jurisdiction_type: member_state
+  website: http://www.hcmc.gr
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: http://www.hcmc.gr/en_US/web/portal/warninghcmc
+  notes: "No RSS - site runs Liferay CE 6.2. Site operates over HTTP only (no HTTPS) - a security consideration for monitoring. Scraping press releases page."
+  sources:
+    - type: scrape
+      url: http://www.hcmc.gr/en_US/web/portal/elib/press
+      label: press_releases
+      preferred_language: en
+      tags: [casp, mica, press_releases]
+      scrape:
+        item_selector: ".portlet-body li, .journal-content-article li, article"
+        title_selector: "a, h3 a, h4 a"
+        link_selector: "a"
+        date_selector: null
+        date_attribute: null
+        content_selector: null
+
+# ─── Hungary ──────────────────────────────────────────────────────────────────
+
+- id: hu-mnb
+  name: MNB
+  full_name: Magyar Nemzeti Bank
+  jurisdiction: HU
+  jurisdiction_type: member_state
+  website: https://www.mnb.hu/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.mnb.hu/en/supervision/market-supervision/vi-1-investor-warnings
+  notes: "Non-standard RSS path pattern (/enrss/{id}). Standard paths all 404."
+  sources:
+    - type: rss
+      url: https://www.mnb.hu/enrss/14
+      label: supervision_news
+      preferred_language: en
+      tags: [casp, mica, supervision]
+    - type: rss
+      url: https://www.mnb.hu/enrss/23
+      label: market_supervision
+      preferred_language: en
+      tags: [casp, mica, warnings]
+    - type: rss
+      url: https://www.mnb.hu/enrss/16
+      label: press_room
+      preferred_language: en
+      tags: [mica, press_releases]
+    - type: rss
+      url: https://www.mnb.hu/enrss/6
+      label: latest_releases
+      preferred_language: en
+      tags: [mica, news]
+
+# ─── Iceland ──────────────────────────────────────────────────────────────────
+
+- id: is-cb
+  name: Central Bank of Iceland
+  full_name: Seðlabanki Íslands
+  jurisdiction: IS
+  jurisdiction_type: eea_non_eu
+  website: https://cb.is/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://cb.is/consumers/warnings/
+  notes: "FME merged into Central Bank in 2020. Non-standard RSS path - GET returns valid RSS 2.0."
+  sources:
+    - type: rss
+      url: https://cb.is/api/documents/views/articles/RSS-feed-english/rss
+      label: all_news_en
+      preferred_language: en
+      tags: [casp, mica, news]
+
+# ─── Ireland ──────────────────────────────────────────────────────────────────
+
+- id: ie-cbi
+  name: CBI
+  full_name: Central Bank of Ireland
+  jurisdiction: IE
+  jurisdiction_type: member_state
+  website: https://www.centralbank.ie/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.centralbank.ie/news-media/warning-notices
+  notes: "Single feed covering all content types - warning notices, press releases, speeches, blog. Best-in-class Ireland feed."
+  sources:
+    - type: rss
+      url: https://www.centralbank.ie/feeds/news-media-feed
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, warnings, press_releases]
+
+# ─── Italy ────────────────────────────────────────────────────────────────────
+
+- id: it-consob
+  name: CONSOB
+  full_name: Commissione Nazionale per le Società e la Borsa
+  jurisdiction: IT
+  jurisdiction_type: member_state
+  website: https://www.consob.it/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://www.consob.it/web/area-pubblica/abusivismo-finanziario
+  notes: "Radware Bot Manager blocks all automated access."
+  sources: []
+
+- id: it-bancaditalia
+  name: Banca d'Italia
+  full_name: Banca d'Italia
+  jurisdiction: IT
+  jurisdiction_type: member_state
+  website: https://www.bancaditalia.it/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://www.bancaditalia.it/compiti/vigilanza/avvisi-pub/index.html
+  notes: "No RSS feed found."
+  sources: []
+
+- id: it-oam
+  name: OAM Italy
+  full_name: Organismo Agenti e Mediatori
+  jurisdiction: IT
+  jurisdiction_type: member_state
+  website: https://www.organismo-am.it/
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "OAM VASP register no longer operational as of 1 July 2026 - MiCA CASPs now supervised by CONSOB and Banca d Italia directly."
+  sources: []
+
+# ─── Latvia ───────────────────────────────────────────────────────────────────
+
+- id: lv-latvijasb
+  name: Latvijas Banka
+  full_name: Latvijas Banka (Bank of Latvia)
+  jurisdiction: LV
+  jurisdiction_type: member_state
+  website: https://www.bank.lv/en/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "Site blocks automated requests. No RSS found. fktk.lv permanently redirects to bank.lv."
+  sources: []
+
+# ─── Lithuania ────────────────────────────────────────────────────────────────
+
+- id: lt-lb
+  name: Lietuvos bankas
+  full_name: Lietuvos bankas (Bank of Lithuania)
+  jurisdiction: LT
+  jurisdiction_type: member_state
+  website: https://www.lb.lt/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: true
+  warnings_url: https://www.lb.lt/en/the-list-of-entities-without-the-right-to-provide-financial-including-investment-services-in-lithuania
+  notes: "RSS URL confirmed but Cloudflare-protected - will work via FlareSolverr proxy."
+  sources:
+    - type: rss
+      url: https://www.lb.lt/en/publications/rss
+      label: publications_en
+      preferred_language: en
+      tags: [casp, mica, news]
+
+# ─── Luxembourg ───────────────────────────────────────────────────────────────
+
+- id: lu-cssf
+  name: CSSF
+  full_name: Commission de Surveillance du Secteur Financier
+  jurisdiction: LU
+  jurisdiction_type: member_state
+  website: https://www.cssf.lu/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cssf.lu/en/warnings/
+  notes: "767 warnings entries as of 2026-07-01 - most comprehensive warnings list in EEA. Keyword filtering available on feed URL."
+  sources:
+    - type: rss
+      url: https://www.cssf.lu/en/feed/publications
+      label: publications
+      preferred_language: en
+      tags: [casp, mica, warnings, publications]
+
+# ─── Malta ────────────────────────────────────────────────────────────────────
+
+- id: mt-mfsa
+  name: MFSA
+  full_name: Malta Financial Services Authority
+  jurisdiction: MT
+  jurisdiction_type: member_state
+  website: https://www.mfsa.mt
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.mfsa.mt/news/warnings/MFSA-Warnings/
+  notes: "Site pages are Cloudflare-protected (403 to curl); the feed endpoint is publicly accessible. Filter by title prefix 'MFSA Warning' to isolate warnings."
+  sources:
+    - type: rss
+      url: https://www.mfsa.mt/feed/
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, warnings, publications]
+
+# ─── Netherlands ──────────────────────────────────────────────────────────────
+
+- id: nl-afm
+  name: AFM
+  full_name: Autoriteit Financiële Markten
+  jurisdiction: NL
+  jurisdiction_type: member_state
+  website: https://www.afm.nl/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "No warnings-specific RSS feed. Warnings list is Dutch-language only."
+  sources:
+    - type: rss
+      url: https://www.afm.nl/en/rss-feed/nieuws-professionals
+      label: news_professionals_en
+      preferred_language: en
+      tags: [casp, mica, news]
+
+- id: nl-dnb
+  name: DNB
+  full_name: De Nederlandsche Bank
+  jurisdiction: NL
+  jurisdiction_type: member_state
+  website: https://www.dnb.nl/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "DNB has crypto-specific filtered RSS feeds. Crypto service providers feed is directly relevant to Strike's business."
+  sources:
+    - type: rss
+      url: https://www.dnb.nl/en/rss/16451/6882/117
+      label: crypto_service_providers
+      preferred_language: en
+      tags: [casp, mica, crypto]
+    - type: rss
+      url: https://www.dnb.nl/en/rss/16451/6882/Enforcement%20measures
+      label: enforcement_measures
+      preferred_language: en
+      tags: [casp, mica, enforcement, warnings]
+
+# ─── Norway ───────────────────────────────────────────────────────────────────
+
+- id: no-finanstilsynet
+  name: Finanstilsynet Norway
+  full_name: Finanstilsynet (Financial Supervisory Authority of Norway)
+  jurisdiction: "NO"
+  jurisdiction_type: eea_non_eu
+  website: https://www.finanstilsynet.no/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.finanstilsynet.no/en/investor-alerts/
+  notes: "Investor alerts database filterable by VASP entity type. Atom feeds."
+  sources:
+    - type: atom
+      url: https://www.finanstilsynet.no/en/rss/news-feed/
+      label: all_content_en
+      preferred_language: en
+      tags: [casp, mica, news]
+
+# ─── Poland ───────────────────────────────────────────────────────────────────
+
+- id: pl-knf
+  name: KNF
+  full_name: Komisja Nadzoru Finansowego
+  jurisdiction: PL
+  jurisdiction_type: member_state
+  website: https://www.knf.gov.pl/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.knf.gov.pl/dla_konsumenta/ostrzezenia_publiczne/ostrzezenia
+  notes: "RSS is Polish-language only. No English RSS feed. Warnings pages are Polish-only."
+  sources:
+    - type: rss
+      url: https://www.knf.gov.pl/api/rss
+      label: all_news_pl
+      preferred_language: pl
+      tags: [casp, mica, news, warnings]
+
+# ─── Portugal ─────────────────────────────────────────────────────────────────
+
+- id: pt-cmvm
+  name: CMVM
+  full_name: Comissão do Mercado de Valores Mobiliários
+  jurisdiction: PT
+  jurisdiction_type: member_state
+  website: https://www.cmvm.pt/en/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "Full JavaScript SPA (OutSystems); no RSS; no scraping possible. Email subscription only."
+  sources: []
+
+- id: pt-bdp
+  name: Banco de Portugal
+  full_name: Banco de Portugal
+  jurisdiction: PT
+  jurisdiction_type: member_state
+  website: https://www.bportugal.pt/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: true
+  warnings_url: https://www.bportugal.pt/en/page/list-unauthorized-activity
+  notes: "Cloudflare-protected; no news RSS feed confirmed. Only confirmed feed is a podcast RSS - not useful."
+  sources: []
+
+# ─── Romania ──────────────────────────────────────────────────────────────────
+
+- id: ro-asf
+  name: ASF Romania
+  full_name: Autoritatea de Supraveghere Financiară
+  jurisdiction: RO
+  jurisdiction_type: member_state
+  website: https://www.asfromania.ro/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.asfromania.ro/en/a/19/investor-alerts---information
+  notes: "English RSS path is accessible; Romanian feed is WAF-blocked."
+  sources:
+    - type: rss
+      url: https://www.asfromania.ro/en/rss/rss.xml
+      label: all_news_en
+      preferred_language: en
+      tags: [casp, mica, news, warnings]
+
+- id: ro-bnr
+  name: BNR
+  full_name: Banca Națională a României
+  jurisdiction: RO
+  jurisdiction_type: member_state
+  website: https://www.bnr.ro/en/
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "No RSS - all /rss/* paths return skeletal exchange rate shell with no items. Email subscription only."
+  sources: []
+
+# ─── Slovakia ─────────────────────────────────────────────────────────────────
+
+- id: sk-nbs
+  name: NBS
+  full_name: Národná banka Slovenska
+  jurisdiction: SK
+  jurisdiction_type: member_state
+  website: https://nbs.sk/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://nbs.sk/en/financial-market-supervision-practical-info/warnings/warning-list-of-non-authorized-business-activities-of-entities/
+  notes: "Use nbs.sk (no www prefix) - www redirects 301 to non-www."
+  sources:
+    - type: rss
+      url: https://nbs.sk/en/feed
+      label: all_news_en
+      preferred_language: en
+      tags: [casp, mica, news, warnings]
+
+# ─── Slovenia ─────────────────────────────────────────────────────────────────
+
+- id: si-atvp
+  name: ATVP
+  full_name: Agencija za trg vrednostnih papirjev
+  jurisdiction: SI
+  jurisdiction_type: member_state
+  website: https://www.atvp.si
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: true
+  warnings_url: null
+  notes: "Cloudflare-protected; requires manual browser check."
+  sources: []
+
+- id: si-bsi
+  name: Banka Slovenije
+  full_name: Banka Slovenije
+  jurisdiction: SI
+  jurisdiction_type: member_state
+  website: https://www.bsi.si/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "No RSS found - /rss redirects to /en/rss which returns 404."
+  sources: []
+
+# ─── Spain ────────────────────────────────────────────────────────────────────
+
+- id: es-cnmv
+  name: CNMV
+  full_name: Comisión Nacional del Mercado de Valores
+  jurisdiction: ES
+  jurisdiction_type: member_state
+  website: https://www.cnmv.es
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en
+  notes: "No standalone warnings-only RSS - warnings appear in press releases feed (iID=1)."
+  sources:
+    - type: rss
+      url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=1
+      label: press_releases
+      preferred_language: en
+      tags: [casp, mica, warnings, press_releases]
+    - type: rss
+      url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=4
+      label: sector_information
+      preferred_language: en
+      tags: [mica, regulatory]
+
+- id: es-bde
+  name: Banco de España
+  full_name: Banco de España
+  jurisdiction: ES
+  jurisdiction_type: member_state
+  website: https://www.bde.es/en/
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "BdE does not maintain a warnings/blacklist - unauthorised firm warnings for Spain are CNMV's remit."
+  sources:
+    - type: rss
+      url: https://www.bde.es/wbe/en/inicio/rss/rss-noticias/
+      label: news_and_events
+      preferred_language: en
+      tags: [mica, news]
+    - type: rss
+      url: https://www.bde.es/wbe/en/inicio/rss/rss-normativa/
+      label: financial_regulation
+      preferred_language: en
+      tags: [mica, regulatory]
+
+# ─── Sweden ───────────────────────────────────────────────────────────────────
+
+- id: se-fi
+  name: Finansinspektionen
+  full_name: Finansinspektionen
+  jurisdiction: SE
+  jurisdiction_type: member_state
+  website: https://www.fi.se/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fi.se/en/our-registers/investor-alerts/
+  notes: "Append /rss to any FI listing page URL to get a feed."
+  sources:
+    - type: rss
+      url: https://www.fi.se/en/published/all-published-material/rss
+      label: all_material
+      preferred_language: en
+      tags: [casp, mica, news, warnings]
