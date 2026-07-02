@@ -400,3 +400,64 @@ def test_sanitize_fts_terms_skips_empty_strings():
 
 def test_sanitize_fts_terms_single_empty_string_returns_empty():
     assert _sanitize_fts_terms([""]) == ""
+
+
+def test_search_items_advanced_fts_finds_exact_phrase():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        insert_item(engine, make_item(title="Press release on interest rates", url="https://example.com/other"))
+        items, total = search_items_advanced(engine, query="MiCA warning")
+        assert total == 1
+        assert "MiCA warning" in items[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_fts_multi_term_and():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA custody warning"))
+        insert_item(engine, make_item(title="MiCA passporting notice", url="https://example.com/other"))
+        items, total = search_items_advanced(engine, query="MiCA custody")
+        assert total == 1
+        assert "custody" in items[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_handles_fts_breaking_characters_without_raising():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="crypto-assets circular", raw_content="crypto-assets"))
+        items, total = search_items_advanced(engine, query='crypto-assets "unterminated')
+        assert isinstance(total, int)
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_falls_back_to_like_on_fts_error(monkeypatch, caplog):
+    import mcpserver.queries as queries_module
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        real_sanitize = queries_module._sanitize_fts_terms
+        monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: '"unterminated')
+        with caplog.at_level("WARNING"):
+            items, total = search_items_advanced(engine, query="MiCA warning")
+        assert total == 1
+        assert "MiCA warning" in items[0]["title"]
+        assert any("falling back to LIKE" in r.message for r in caplog.records)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_month_facets_fts_matches_search_items_advanced_filtering():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued", days_ago=0))
+        insert_item(engine, make_item(title="Unrelated press release", url="https://example.com/other", days_ago=0))
+        facets = get_month_facets(engine, query="MiCA warning")
+        assert sum(f["count"] for f in facets) == 1
+    finally:
+        os.unlink(db_path)

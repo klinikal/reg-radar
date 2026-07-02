@@ -1,7 +1,10 @@
+import logging
 import re
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 
 def _row_to_dict(row, keys):
@@ -88,18 +91,25 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
     return [_row_to_dict(r, keys) for r in rows]
 
 
-def _search_conditions(query: str, exact: bool, regulator_ids) -> tuple[list[str], dict]:
+def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = True) -> tuple[list[str], dict]:
     """Shared query+regulator (not date) conditions, reused by search and month facets."""
     conditions = []
     params: dict = {}
-    for i, term in enumerate(_parse_search_terms(query, exact)):
-        # Also checks raw_content - see search_items() for why content_snippet
-        # alone isn't enough (multi-entity documents can exceed its 500-char
-        # truncation).
-        conditions.append(
-            f"(title LIKE :term_{i} ESCAPE '!' OR content_snippet LIKE :term_{i} ESCAPE '!' OR raw_content LIKE :term_{i} ESCAPE '!')"
-        )
-        params[f"term_{i}"] = f"%{_escape_like(term)}%"
+    terms = _parse_search_terms(query, exact)
+    if terms:
+        if use_fts:
+            fts_query = _sanitize_fts_terms(terms)
+            conditions.append("id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH :fts_q)")
+            params["fts_q"] = fts_query
+        else:
+            for i, term in enumerate(terms):
+                # Also checks raw_content - see search_items() for why
+                # content_snippet alone isn't enough (multi-entity documents
+                # can exceed its 500-char truncation).
+                conditions.append(
+                    f"(title LIKE :term_{i} ESCAPE '!' OR content_snippet LIKE :term_{i} ESCAPE '!' OR raw_content LIKE :term_{i} ESCAPE '!')"
+                )
+                params[f"term_{i}"] = f"%{_escape_like(term)}%"
     if regulator_ids:
         placeholders = []
         for i, rid in enumerate(regulator_ids):
@@ -136,30 +146,37 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
     except (TypeError, ValueError):
         offset = 0
 
-    conditions, params = _search_conditions(query, exact, regulator_ids)
-    if date_from:
-        conditions.append("published_at >= :date_from")
-        params["date_from"] = date_from
-    if date_to:
-        conditions.append("published_at <= :date_to")
-        params["date_to"] = _extend_date_to(date_to)
-
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
-    with engine.connect() as conn:
-        total = conn.execute(text(f"SELECT COUNT(*) FROM items {where}"), params).scalar()
-        rows = conn.execute(
-            text(f"""
-                SELECT id, regulator_id, source_label, title, url, published_at,
-                       fetched_at, date_inferred, language, content_snippet, source_type, tags
-                FROM items {where}
-                ORDER BY published_at DESC NULLS LAST
-                LIMIT :limit OFFSET :offset
-            """),
-            {**params, "limit": limit, "offset": offset},
-        ).fetchall()
-    return [_row_to_dict(r, keys) for r in rows], total
+
+    def _run(use_fts: bool):
+        conditions, params = _search_conditions(query, exact, regulator_ids, use_fts=use_fts)
+        if date_from:
+            conditions.append("published_at >= :date_from")
+            params["date_from"] = date_from
+        if date_to:
+            conditions.append("published_at <= :date_to")
+            params["date_to"] = _extend_date_to(date_to)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        with engine.connect() as conn:
+            total = conn.execute(text(f"SELECT COUNT(*) FROM items {where}"), params).scalar()
+            rows = conn.execute(
+                text(f"""
+                    SELECT id, regulator_id, source_label, title, url, published_at,
+                           fetched_at, date_inferred, language, content_snippet, source_type, tags
+                    FROM items {where}
+                    ORDER BY published_at DESC NULLS LAST
+                    LIMIT :limit OFFSET :offset
+                """),
+                {**params, "limit": limit, "offset": offset},
+            ).fetchall()
+        return [_row_to_dict(r, keys) for r in rows], total
+
+    try:
+        return _run(use_fts=True)
+    except Exception as e:
+        logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
+        return _run(use_fts=False)
 
 
 def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids=None) -> list[dict]:
@@ -169,18 +186,25 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
     deliberately ignores any date filter, so every month remains clickable
     regardless of the currently selected date range.
     """
-    conditions, params = _search_conditions(query, exact, regulator_ids)
-    conditions.append("published_at IS NOT NULL")
-    where = "WHERE " + " AND ".join(conditions)
-    sql = f"""
-        SELECT strftime('%Y-%m', published_at) as month, COUNT(*) as count
-        FROM items {where}
-        GROUP BY month
-        ORDER BY month DESC
-    """
-    with engine.connect() as conn:
-        rows = conn.execute(text(sql), params).fetchall()
-    return [{"month": r[0], "count": r[1]} for r in rows]
+    def _run(use_fts: bool):
+        conditions, params = _search_conditions(query, exact, regulator_ids, use_fts=use_fts)
+        conditions.append("published_at IS NOT NULL")
+        where = "WHERE " + " AND ".join(conditions)
+        sql = f"""
+            SELECT strftime('%Y-%m', published_at) as month, COUNT(*) as count
+            FROM items {where}
+            GROUP BY month
+            ORDER BY month DESC
+        """
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), params).fetchall()
+        return [{"month": r[0], "count": r[1]} for r in rows]
+
+    try:
+        return _run(use_fts=True)
+    except Exception as e:
+        logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
+        return _run(use_fts=False)
 
 
 def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=None) -> list[dict]:
