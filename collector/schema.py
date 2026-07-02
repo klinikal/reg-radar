@@ -1,0 +1,29 @@
+import hashlib
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
+
+
+def make_item_id(regulator_id: str, url: str, published_at: Optional[datetime]) -> str:
+    if published_at is not None:
+        raw = f"{regulator_id}|{url}|{published_at.isoformat()}"
+    else:
+        raw = f"{regulator_id}|{url}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+@dataclass
+class Item:
+    id: str
+    regulator_id: str
+    source_label: str
+    title: str
+    url: str
+    published_at: Optional[datetime]
+    fetched_at: datetime
+    date_inferred: bool
+    language: str
+    content_snippet: str
+    source_type: str
+    tags: list[str] = field(default_factory=list)
+    raw_content: str = ""
