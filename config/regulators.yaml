@@ -505,7 +505,7 @@
   enabled: false
   cloudflare_protected: false
   warnings_url: null
-  notes: "OAM VASP register no longer operational as of 1 July 2026 - MiCA CASPs now supervised by CONSOB and Banca d Italia directly."
+  notes: "OAM VASP register no longer operational as of 1 July 2026 - MiCA CASPs now supervised by CONSOB and Banca d'Italia directly."
   sources: []
 
 # ─── Latvia ───────────────────────────────────────────────────────────────────
