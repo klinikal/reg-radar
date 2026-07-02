@@ -108,7 +108,7 @@ main {
   left: 0;
   z-index: 20;
   margin-top: 4px;
-  width: 300px;
+  width: 380px;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -139,22 +139,33 @@ main {
 }
 
 .reg-select-list label.reg {
-  white-space: nowrap;
-  padding: 2px 3px;
+  display: block;
+  padding: 3px;
   border-radius: 2px;
+  line-height: 1.3;
 }
 
 .reg-select-list label.reg[hidden] {
   display: none;
 }
 
-.reg-select-list .jur {
-  color: #999;
+.reg-select-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.reg-select-all {
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
 }
 
 .reg-select-panel .clear-sub {
-  display: inline-block;
-  margin-top: 6px;
   font-size: 12px;
 }
 

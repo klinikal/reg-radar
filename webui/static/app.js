@@ -1,6 +1,8 @@
 // Auto-submit the filter form as the user searches/filters, instead of
 // requiring a manual "Search" click. Text input is debounced; discrete
 // controls (checkboxes, dates) submit immediately on change.
+const REG_PANEL_FLAG = "caspRadarRegPanelOpen";
+
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.querySelector("form.filters");
   if (!form) return;
@@ -14,7 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  form.querySelectorAll('input[type="checkbox"], input[type="date"]').forEach((el) => {
+  form.querySelectorAll('input[type="date"], input[type="checkbox"]:not(.reg-select-list input)').forEach((el) => {
     el.addEventListener("change", () => {
       clearTimeout(debounceTimer);
       form.requestSubmit();
@@ -28,6 +30,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const panel = regSelect.querySelector(".reg-select-panel");
     const filterInput = regSelect.querySelector(".reg-filter");
     const options = regSelect.querySelectorAll(".reg-select-list label.reg");
+    const selectAllBtn = regSelect.querySelector(".reg-select-all");
+
+    // Reopen the panel after a regulator checkbox submits the page - but only
+    // then, not on every subsequent navigation that happens to still carry
+    // regulator_id in the URL (e.g. clicking a month link). One-shot flag,
+    // cleared immediately after use, rather than inferring "should be open"
+    // from whether any regulator is currently selected.
+    if (sessionStorage.getItem(REG_PANEL_FLAG)) {
+      panel.hidden = false;
+      sessionStorage.removeItem(REG_PANEL_FLAG);
+    }
 
     toggle.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -43,6 +56,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // and immediately re-close it via the outside-click handler above.
     panel.addEventListener("click", (e) => e.stopPropagation());
 
+    regSelect.querySelectorAll('.reg-select-list input[type="checkbox"]').forEach((el) => {
+      el.addEventListener("change", () => {
+        clearTimeout(debounceTimer);
+        sessionStorage.setItem(REG_PANEL_FLAG, "1");
+        form.requestSubmit();
+      });
+    });
+
     if (filterInput) {
       filterInput.addEventListener("input", () => {
         const term = filterInput.value.trim().toLowerCase();
@@ -50,6 +71,24 @@ document.addEventListener("DOMContentLoaded", () => {
           const matches = !term || label.dataset.search.includes(term);
           label.hidden = !matches;
         });
+      });
+    }
+
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        let changed = false;
+        options.forEach((label) => {
+          if (label.hidden) return;
+          const box = label.querySelector('input[type="checkbox"]');
+          if (box && !box.checked) {
+            box.checked = true;
+            changed = true;
+          }
+        });
+        if (changed) {
+          sessionStorage.setItem(REG_PANEL_FLAG, "1");
+          form.requestSubmit();
+        }
       });
     }
   }

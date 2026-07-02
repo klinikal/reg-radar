@@ -17,16 +17,19 @@
     <button type="button" class="reg-select-toggle">
       Regulators{% if regulator_id %} ({{ regulator_id|length }} selected){% endif %} &#9662;
     </button>
-    <div class="reg-select-panel"{% if not regulator_id %} hidden{% endif %}>
-      <input type="text" class="reg-filter" placeholder="Filter regulators..." autocomplete="off">
+    <div class="reg-select-panel" hidden>
+      <input type="text" class="reg-filter" placeholder="Filter regulators... (country, abbreviation, or full name)" autocomplete="off">
       <div class="reg-select-list">
         {% for r in regulators %}
-        <label class="checkbox reg" data-search="{{ (r.name ~ ' ' ~ r.jurisdiction ~ ' ' ~ r.id) | lower }}">
-          <input type="checkbox" name="regulator_id" value="{{ r.id }}" {% if r.id in regulator_id %}checked{% endif %}> {{ r.name }} <span class="jur">({{ r.jurisdiction }})</span>
+        <label class="checkbox reg" data-search="{{ r.search_text }}">
+          <input type="checkbox" name="regulator_id" value="{{ r.id }}" {% if r.id in regulator_id %}checked{% endif %}> {{ r.display_label }}
         </label>
         {% endfor %}
       </div>
-      {% if regulator_id %}<a class="clear-sub" href="/?{{ filter_qs_no_regulator }}">Clear selected</a>{% endif %}
+      <div class="reg-select-actions">
+        <button type="button" class="reg-select-all">Select all</button>
+        {% if regulator_id %}<a class="clear-sub" href="/?{{ filter_qs_no_regulator }}">Clear selected</a>{% endif %}
+      </div>
     </div>
   </div>
 </form>

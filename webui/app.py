@@ -26,6 +26,20 @@ templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
 PAGE_SIZE = 50
 
+# Full country/entity names for jurisdiction codes used in config/regulators.yaml,
+# so the regulator filter can be searched by country name ("czech"), not just
+# abbreviation (CNB) or code (CZ). Extend this if a new jurisdiction is added.
+JURISDICTION_NAMES = {
+    "AT": "Austria", "BE": "Belgium", "BG": "Bulgaria", "CY": "Cyprus",
+    "CZ": "Czech Republic", "DE": "Germany", "DK": "Denmark", "EE": "Estonia",
+    "ES": "Spain", "EU": "European Union", "FI": "Finland", "FR": "France",
+    "GR": "Greece", "HR": "Croatia", "HU": "Hungary", "IE": "Ireland",
+    "IS": "Iceland", "IT": "Italy", "LT": "Lithuania", "LU": "Luxembourg",
+    "LV": "Latvia", "MT": "Malta", "NL": "Netherlands", "NO": "Norway",
+    "PL": "Poland", "PT": "Portugal", "RO": "Romania", "SE": "Sweden",
+    "SI": "Slovenia", "SK": "Slovakia", "UK": "United Kingdom",
+}
+
 _engine = None
 
 
@@ -57,6 +71,16 @@ def _parse_tags(raw: str | None) -> list[str]:
 def _with_tags(item: dict) -> dict:
     item["tag_list"] = _parse_tags(item.get("tags"))
     return item
+
+
+def _with_search_fields(regulator: dict) -> dict:
+    country = JURISDICTION_NAMES.get(regulator["jurisdiction"], regulator["jurisdiction"])
+    regulator["country"] = country
+    regulator["display_label"] = f"{country} - {regulator['name']} - {regulator['full_name']}"
+    regulator["search_text"] = " ".join([
+        country, regulator["jurisdiction"], regulator["name"], regulator["full_name"], regulator["id"],
+    ]).lower()
+    return regulator
 
 
 def _search(q, exact, regulator_ids, date_from, date_to, page):
@@ -92,7 +116,8 @@ def index(
 ):
     items, total = _search(q, exact, regulator_id, date_from, date_to, page)
     items = [_with_tags(i) for i in items]
-    regulators = list_regulators(get_engine())
+    regulators = [_with_search_fields(r) for r in list_regulators(get_engine())]
+    regulators.sort(key=lambda r: (r["country"], r["name"]))
     regulator_names = {r["id"]: r["name"] for r in regulators}
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
