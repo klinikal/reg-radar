@@ -23,7 +23,7 @@ def setup_engine():
     return engine, f.name
 
 
-def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=None, language="en", days_ago=0):
+def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=None, language="en", days_ago=0, raw_content="raw"):
     now = datetime.now(timezone.utc) - timedelta(days=days_ago)
     url = url or f"https://example.com/{regulator_id}/{now.timestamp()}"
     return Item(
@@ -39,7 +39,7 @@ def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=N
         content_snippet="Content about crypto assets and MiCA.",
         source_type="rss",
         tags=tags or ["casp"],
-        raw_content="raw",
+        raw_content=raw_content,
     )
 
 
@@ -51,6 +51,31 @@ def test_search_items_finds_by_title():
         results = search_items(engine, "MiCA warning")
         assert len(results) == 1
         assert "MiCA warning" in results[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_finds_by_raw_content_not_just_snippet():
+    # A batch document (e.g. a regulator's PDF warning naming several firms)
+    # can easily exceed the 500-char content_snippet truncation - a firm
+    # named later in the full text must still be findable via raw_content.
+    engine, db_path = setup_engine()
+    try:
+        long_raw_content = ("Entity warned Observations " * 30) + "ZAP SOLUTIONS EUROPE SP. Z O. O."
+        insert_item(engine, make_item(title="Warnings from CNMV on unregistered institutions", raw_content=long_raw_content))
+        results = search_items(engine, "ZAP SOLUTIONS EUROPE")
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_finds_by_raw_content_not_just_snippet():
+    engine, db_path = setup_engine()
+    try:
+        long_raw_content = ("Entity warned Observations " * 30) + "ZAP SOLUTIONS EUROPE SP. Z O. O."
+        insert_item(engine, make_item(title="Warnings from CNMV on unregistered institutions", raw_content=long_raw_content))
+        items, total = search_items_advanced(engine, query="zap solutions europe")
+        assert total == 1
     finally:
         os.unlink(db_path)
 

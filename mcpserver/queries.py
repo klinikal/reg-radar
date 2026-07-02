@@ -40,7 +40,12 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         limit = min(int(limit), 100)
     except (TypeError, ValueError):
         limit = 20
-    conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!')"]
+    # Also checks raw_content, not just the 500-char content_snippet: a
+    # multi-entity document (e.g. a regulator's batch warning notice naming
+    # several firms) can easily exceed that truncation, leaving later-listed
+    # entities unsearchable via title/snippet alone even though the full text
+    # is stored. Widening the search only adds matches, never removes any.
+    conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!' OR raw_content LIKE :q ESCAPE '!')"]
     params = {"q": f"%{_escape_like(query)}%", "limit": limit}
     if regulator_id:
         conditions.append("regulator_id = :regulator_id")
@@ -79,7 +84,12 @@ def _search_conditions(query: str, exact: bool, regulator_ids) -> tuple[list[str
     conditions = []
     params: dict = {}
     for i, term in enumerate(_parse_search_terms(query, exact)):
-        conditions.append(f"(title LIKE :term_{i} ESCAPE '!' OR content_snippet LIKE :term_{i} ESCAPE '!')")
+        # Also checks raw_content - see search_items() for why content_snippet
+        # alone isn't enough (multi-entity documents can exceed its 500-char
+        # truncation).
+        conditions.append(
+            f"(title LIKE :term_{i} ESCAPE '!' OR content_snippet LIKE :term_{i} ESCAPE '!' OR raw_content LIKE :term_{i} ESCAPE '!')"
+        )
         params[f"term_{i}"] = f"%{_escape_like(term)}%"
     if regulator_ids:
         placeholders = []

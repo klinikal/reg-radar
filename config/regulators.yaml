@@ -800,7 +800,7 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en
-  notes: "No standalone warnings-only RSS - warnings appear in press releases feed (iID=1)."
+  notes: "No RSS for the unregistered-firm warnings page (tipoNP=5, confirmed 2026-07-02 - the earlier note claiming warnings appear in the press releases feed was wrong, they don't). Scraped instead; item titles are generic batch labels ('Warnings from CNMV on unregistered institutions') - individual firm names only exist inside each linked PDF, so this source uses extract_pdf_text to pull that text into raw_content. Search must check raw_content, not just content_snippet, since some batch PDFs list several firms and a 500-char snippet can miss later ones."
   sources:
     - type: rss
       url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=1
@@ -812,6 +812,19 @@
       label: sector_information
       preferred_language: en
       tags: [mica, regulatory]
+    - type: scrape
+      url: "https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en"
+      label: warnings_unregistered
+      preferred_language: en
+      tags: [casp, mica, warnings]
+      scrape:
+        item_selector: "li.blocks-single"
+        title_selector: "li.resumen a"
+        link_selector: "li.resumen a"
+        date_selector: "li.fecha-con-hora"
+        date_attribute: null
+        content_selector: null
+        extract_pdf_text: true
 
 - id: es-bde
   name: Banco de España

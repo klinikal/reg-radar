@@ -153,7 +153,19 @@ def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[It
     return items
 
 
-def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
+def _extract_pdf_text(content: bytes) -> str | None:
+    try:
+        import io
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(content))
+        text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        return text.strip() or None
+    except Exception as e:
+        logger.warning("PDF text extraction failed: %s", e)
+        return None
+
+
+def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | None = None) -> list[Item]:
     scrape_cfg = source.get("scrape", {})
     item_selector = scrape_cfg.get("item_selector")
     title_selector = scrape_cfg.get("title_selector")
@@ -161,6 +173,8 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
     date_selector = scrape_cfg.get("date_selector")
     date_attribute = scrape_cfg.get("date_attribute")
     content_selector = scrape_cfg.get("content_selector")
+    extract_pdf_text = scrape_cfg.get("extract_pdf_text", False)
+    config = config or {}
 
     if not item_selector or not title_selector or not link_selector:
         logger.error("Scrape source %s/%s missing required selectors", regulator_id, source["label"])
@@ -207,7 +221,18 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
                         pass
 
         raw_content = ""
-        if content_selector:
+        if extract_pdf_text:
+            # The item's own link is the document itself (e.g. CNMV's warning
+            # notices link straight to a PDF, no separate HTML landing page).
+            pdf_bytes = _fetch_bytes(
+                href,
+                config.get("user_agent", "casp-radar/1.0"),
+                int(config.get("timeout", 30)),
+                int(config.get("retries", 3)),
+            )
+            if pdf_bytes:
+                raw_content = _extract_pdf_text(pdf_bytes) or ""
+        if not raw_content and content_selector:
             content_el = element.select_one(content_selector)
             if content_el:
                 raw_content = content_el.get_text(strip=True)
@@ -258,7 +283,7 @@ def fetch_source(
             if html is None:
                 logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
                 return []
-            return _parse_scrape(html, source, regulator_id)
+            return _parse_scrape(html, source, regulator_id, config)
         else:
             logger.warning("Unknown source type '%s' for %s/%s", source_type, regulator_id, source["label"])
             return []

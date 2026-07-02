@@ -1,7 +1,14 @@
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
 import pytest
-from collector.fetcher import fetch_source, _resolve_language, _truncate_snippet, _parse_scrape, _validate_url_not_private
+from collector.fetcher import (
+    fetch_source,
+    _resolve_language,
+    _truncate_snippet,
+    _parse_scrape,
+    _validate_url_not_private,
+    _extract_pdf_text,
+)
 
 
 SAMPLE_CONFIG = {"user_agent": "test-agent/1.0", "timeout": 10, "retries": 1}
@@ -222,6 +229,71 @@ def test_parse_scrape_no_date_inferred():
     assert len(items) == 1
     assert items[0].date_inferred is True
     assert items[0].published_at is None
+
+
+def test_extract_pdf_text_returns_none_on_invalid_pdf():
+    assert _extract_pdf_text(b"this is not a pdf") is None
+
+
+PDF_SCRAPE_SOURCE = {
+    "url": "https://example.com/warnings",
+    "label": "test_feed",
+    "type": "scrape",
+    "scrape": {
+        "item_selector": ".item",
+        "title_selector": "h2",
+        "link_selector": "a",
+        "date_selector": None,
+        "date_attribute": None,
+        "content_selector": None,
+        "extract_pdf_text": True,
+    },
+    "tags": ["test"],
+}
+
+
+def test_parse_scrape_extract_pdf_text_fetches_and_uses_link_as_document():
+    # CNMV-style source: the item's own link *is* the document (a PDF), not a
+    # separate HTML landing page - raw_content should come from extracting
+    # that PDF's text, not from content_selector (which is unset/irrelevant).
+    html = """
+    <html><body>
+      <div class="item"><h2>Warning notice</h2><a href="https://example.com/notice.pdf">link</a></div>
+    </body></html>
+    """
+    with patch("collector.fetcher._fetch_bytes") as mock_fetch, \
+         patch("collector.fetcher._extract_pdf_text") as mock_extract:
+        mock_fetch.return_value = b"%PDF-fake-bytes"
+        mock_extract.return_value = "Entity warned: SOME UNAUTHORISED FIRM LTD"
+
+        items = _parse_scrape(html, PDF_SCRAPE_SOURCE, "test_reg", SAMPLE_CONFIG)
+
+        mock_fetch.assert_called_once_with("https://example.com/notice.pdf", "test-agent/1.0", 10, 1)
+        assert len(items) == 1
+        assert items[0].raw_content == "Entity warned: SOME UNAUTHORISED FIRM LTD"
+
+
+def test_parse_scrape_extract_pdf_text_falls_back_to_content_selector_on_failure():
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Warning notice</h2>
+        <a href="https://example.com/notice.pdf">link</a>
+        <p class="summary">Fallback summary text</p>
+      </div>
+    </body></html>
+    """
+    source = {
+        **PDF_SCRAPE_SOURCE,
+        "scrape": {**PDF_SCRAPE_SOURCE["scrape"], "content_selector": ".summary"},
+    }
+    with patch("collector.fetcher._fetch_bytes") as mock_fetch:
+        mock_fetch.return_value = None  # simulate the PDF fetch failing
+
+        items = _parse_scrape(html, source, "test_reg", SAMPLE_CONFIG)
+
+        assert len(items) == 1
+        assert items[0].raw_content == "Fallback summary text"
 
 
 def test_ssrf_private_ip_blocked():

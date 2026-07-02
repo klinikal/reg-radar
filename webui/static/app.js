@@ -2,6 +2,7 @@
 // requiring a manual "Search" click. Text input is debounced; discrete
 // controls (checkboxes, dates) submit immediately on change.
 const REG_PANEL_FLAG = "caspRadarRegPanelOpen";
+const SEARCH_FOCUS_FLAG = "caspRadarSearchFocus";
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.querySelector("form.filters");
@@ -10,9 +11,23 @@ document.addEventListener("DOMContentLoaded", () => {
   let debounceTimer;
   const qInput = form.querySelector('input[name="q"]');
   if (qInput) {
+    // The debounced submit does a full page navigation, which drops focus -
+    // without restoring it, every auto-search forces a re-click into the
+    // box to keep typing. One-shot flag (same pattern as REG_PANEL_FLAG):
+    // set right before submitting, consumed on the next page load only.
+    if (sessionStorage.getItem(SEARCH_FOCUS_FLAG)) {
+      sessionStorage.removeItem(SEARCH_FOCUS_FLAG);
+      qInput.focus();
+      const end = qInput.value.length;
+      qInput.setSelectionRange(end, end);
+    }
+
     qInput.addEventListener("input", () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => form.requestSubmit(), 400);
+      debounceTimer = setTimeout(() => {
+        sessionStorage.setItem(SEARCH_FOCUS_FLAG, "1");
+        form.requestSubmit();
+      }, 400);
     });
   }
 
