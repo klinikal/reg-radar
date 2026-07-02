@@ -22,7 +22,7 @@ def _resolve_language(feed_item: dict, source_preferred: str | None, title: str,
         return feed_item["language"]
     if feed_item.get("tags"):
         for tag in feed_item.get("tags", []):
-            if hasattr(tag, "term") and tag.get("scheme", "").endswith("lang"):
+            if hasattr(tag, "term") and (tag.get("scheme") or "").endswith("lang"):
                 return tag.term
     if source_preferred:
         return source_preferred
@@ -66,7 +66,28 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
     return None
 
 
-def _parse_rss(content: str, source: dict, regulator_id: str) -> list[Item]:
+def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, flaresolverr_url: str | None = None) -> bytes | None:
+    headers = {"User-Agent": user_agent}
+    for attempt in range(retries):
+        try:
+            with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                return resp.content
+        except Exception as e:
+            logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+
+    if flaresolverr_url:
+        logger.info("Retrying %s via FlareSolverr", url)
+        result = _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
+        return result.encode() if result else None
+
+    return None
+
+
+def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[Item]:
     feed = feedparser.parse(content)
     items = []
     now = datetime.now(timezone.utc)
@@ -203,14 +224,17 @@ def fetch_source(
     url = source["url"]
 
     try:
-        html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url)
-        if html is None:
-            logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
-            return []
-
         if source_type in ("rss", "atom"):
-            return _parse_rss(html, source, regulator_id)
+            content = _fetch_bytes(url, user_agent, timeout, retries, flaresolverr_url)
+            if content is None:
+                logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
+                return []
+            return _parse_rss(content, source, regulator_id)
         elif source_type == "scrape":
+            html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url)
+            if html is None:
+                logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
+                return []
             return _parse_scrape(html, source, regulator_id)
         else:
             logger.warning("Unknown source type '%s' for %s/%s", source_type, regulator_id, source["label"])
