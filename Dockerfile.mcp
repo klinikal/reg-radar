@@ -3,8 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY mcpserver/requirements.txt ./mcpserver/requirements.txt
-COPY collector/requirements.txt ./collector/requirements.txt
-RUN pip install --no-cache-dir -r mcpserver/requirements.txt -r collector/requirements.txt
+RUN pip install --no-cache-dir -r mcpserver/requirements.txt
 
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/

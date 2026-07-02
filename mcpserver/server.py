@@ -19,7 +19,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
-mcp = FastMCP("casp-radar")
+mcp = FastMCP("casp-radar", host="0.0.0.0", port=8000)
 
 _engine = None
 
@@ -75,4 +75,4 @@ def get_warnings_tool(days: int = 30, regulator_id: str = None) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
+    mcp.run(transport="streamable-http")

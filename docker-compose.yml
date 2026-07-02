@@ -1,3 +1,5 @@
+name: casp-radar
+
 services:
   collector:
     build:
