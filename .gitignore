@@ -14,6 +14,10 @@ data/*.db-wal
 
 # Config
 .env
+docker-compose.override.yml
+
+# Private operator context — instance-specific, never commit
+skills/*/refs/context.md
 
 # OS
 .DS_Store
