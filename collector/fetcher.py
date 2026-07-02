@@ -250,13 +250,22 @@ def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_byte
     for attempt in range(retries):
         try:
             with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [_make_ssrf_check()]}) as client:
-                resp = client.get(url)
-                resp.raise_for_status()
-                content = resp.content
-                if max_bytes is not None and len(content) > max_bytes:
-                    logger.warning("Discarding response from %s - %d bytes exceeds %d byte cap", url, len(content), max_bytes)
-                    return None
-                return content
+                # Stream and stop as soon as max_bytes is exceeded - a plain
+                # client.get() downloads the full response into memory before
+                # any size check runs, so a huge PDF was still fully fetched
+                # (bandwidth + memory cost paid) and only discarded after the
+                # fact, defeating the point of the cap.
+                with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    chunks = []
+                    total = 0
+                    for chunk in resp.iter_bytes():
+                        chunks.append(chunk)
+                        total += len(chunk)
+                        if max_bytes is not None and total > max_bytes:
+                            logger.warning("Aborting download from %s - exceeded %d byte cap", url, max_bytes)
+                            return None
+                    return b"".join(chunks)
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
     return None

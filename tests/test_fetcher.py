@@ -69,14 +69,14 @@ def test_fetch_source_rss_returns_items():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.text = rss_xml
-    mock_response.content = rss_xml.encode()
+    mock_response.iter_bytes.return_value = [rss_xml.encode()]
 
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.get.return_value = mock_response
+        mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         source = {
@@ -104,7 +104,7 @@ def test_fetch_source_raises_on_http_error():
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.get.side_effect = Exception("connection refused")
+        mock_client.stream.side_effect = Exception("connection refused")
         mock_client_cls.return_value = mock_client
 
         source = {
@@ -283,12 +283,13 @@ def test_extract_pdf_text_caps_page_count():
 
 def test_fetch_bytes_discards_response_over_max_bytes():
     mock_response = MagicMock()
-    mock_response.content = b"x" * 1000
+    mock_response.iter_bytes.return_value = [b"x" * 1000]
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.get.return_value = mock_response
+        mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         result = _fetch_bytes("https://example.com/huge.pdf", "ua", 10, 1, max_bytes=500)
@@ -298,17 +299,46 @@ def test_fetch_bytes_discards_response_over_max_bytes():
 
 def test_fetch_bytes_allows_response_under_max_bytes():
     mock_response = MagicMock()
-    mock_response.content = b"x" * 100
+    mock_response.iter_bytes.return_value = [b"x" * 100]
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.get.return_value = mock_response
+        mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
         mock_client_cls.return_value = mock_client
 
         result = _fetch_bytes("https://example.com/small.pdf", "ua", 10, 1, max_bytes=500)
 
         assert result == b"x" * 100
+
+
+def test_fetch_bytes_stops_reading_once_cap_exceeded_without_downloading_rest():
+    # The whole point of streaming is to abort mid-download rather than pull
+    # the entire body into memory first and discard it after the fact - a
+    # chunk generator that keeps yielding past the cap must never be fully
+    # consumed once the running total exceeds max_bytes.
+    chunks_yielded = []
+
+    def chunk_generator():
+        for _ in range(1000):
+            chunks_yielded.append(1)
+            yield b"x" * 100
+
+    mock_response = MagicMock()
+    mock_response.iter_bytes.return_value = chunk_generator()
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = _fetch_bytes("https://example.com/huge.pdf", "ua", 10, 1, max_bytes=500)
+
+        assert result is None
+        assert len(chunks_yielded) <= 6  # cap/chunk_size + 1, not all 1000
 
 
 PDF_SCRAPE_SOURCE = {

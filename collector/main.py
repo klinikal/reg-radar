@@ -109,6 +109,10 @@ def run_collection(engine, regulators: list[dict], cfg: dict):
                         # error so it surfaces in consecutive_failures instead
                         # of silently resetting a real failure streak.
                         if source.get("type") == "scrape" and len(items) == 0:
+                            error_msg = f"{reg['id']}/{source['label']}: scrape returned 0 items - possible broken selector or blocked fetch"
+                            total_errors += 1
+                            error_detail.append(error_msg)
+                            logger.error(error_msg)
                             record_source_error(
                                 engine, reg["id"], source["label"],
                                 "scrape returned 0 items - possible broken selector or blocked fetch",

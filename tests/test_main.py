@@ -190,6 +190,14 @@ def test_run_collection_scrape_source_zero_items_recorded_as_error():
             rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="broken_selector").all()
             assert len(rows) == 1
             assert rows[0].consecutive_failures >= 1
+
+            # Recording the source error alone isn't enough - total_errors
+            # and the run's status must reflect it too, or get_run_log_tool
+            # still reports a clean "success" run despite a broken selector.
+            run_rows = session.query(RunRow).all()
+            assert len(run_rows) == 1
+            assert run_rows[0].status != "success"
+            assert run_rows[0].total_errors >= 1
     finally:
         os.unlink(db_path)
 

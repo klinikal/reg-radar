@@ -82,8 +82,12 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
         try:
             # fetch_source() doesn't expose the raw HTML (only parsed Items),
             # but the next-page link check below needs it - fetch directly
-            # the same way fetch_source() would internally.
-            html = _fetch_html(page_url, fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url)
+            # the same way fetch_source() would internally, including the
+            # expected_selector fingerprint check (without it, a 200
+            # maintenance/captcha page that lacks the real listing markup
+            # parses to 0 items with no error raised).
+            expected_selector = source.get("scrape", {}).get("item_selector")
+            html = _fetch_html(page_url, fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url, expected_selector)
             if html is None:
                 raise RuntimeError("fetch failed (see FlareSolverr warnings above)")
 
