@@ -76,6 +76,20 @@ def _make_ssrf_check():
     return on_request
 
 
+def _looks_like_block_page(html: str) -> bool:
+    # FlareSolverr can report status "ok" while the page it actually fetched
+    # is a block/rate-limit response, not the real site - e.g. a CDN layer
+    # in front of the target (CloudFront, etc.) can reject the request with
+    # its own error page independently of the site's Cloudflare challenge,
+    # and FlareSolverr has no way to know that's not what we wanted. A
+    # successful HTTP round-trip isn't the same as successful content.
+    if len(html) > 8000:
+        return False
+    markers = ("request blocked", "could not be satisfied", "403 error", "access denied", "rate limit")
+    lowered = html.lower()
+    return any(m in lowered for m in markers)
+
+
 def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> str | None:
     _validate_url_not_private(url)
     for attempt in range(_FLARESOLVERR_MAX_RETRIES):
@@ -88,10 +102,21 @@ def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> st
             )
             resp.raise_for_status()
             data = resp.json()
-            if data.get("status") == "ok":
-                return data["solution"]["response"]
-            message = data.get("message", "")
             is_last_attempt = attempt == _FLARESOLVERR_MAX_RETRIES - 1
+            if data.get("status") == "ok":
+                html = data["solution"]["response"]
+                if not _looks_like_block_page(html):
+                    return html
+                backoff = _FLARESOLVERR_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+                logger.warning(
+                    "FlareSolverr got a block/rate-limit page (not the real site) for %s (attempt %d/%d)%s",
+                    url, attempt + 1, _FLARESOLVERR_MAX_RETRIES,
+                    "" if is_last_attempt else f" - backing off {backoff:.0f}s",
+                )
+                if not is_last_attempt:
+                    time.sleep(backoff)
+                continue
+            message = data.get("message", "")
             if "banned" in message.lower() or "blocked" in message.lower():
                 # The target site's own rate limiting, not a transient network
                 # blip - back off much longer than a normal retry, since

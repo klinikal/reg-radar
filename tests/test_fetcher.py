@@ -10,6 +10,7 @@ from collector.fetcher import (
     _extract_pdf_text,
     _fetch_html,
     _fetch_via_flaresolverr,
+    _looks_like_block_page,
 )
 
 
@@ -298,6 +299,28 @@ def test_parse_scrape_extract_pdf_text_falls_back_to_content_selector_on_failure
         assert items[0].raw_content == "Fallback summary text"
 
 
+def test_looks_like_block_page_detects_cloudfront_style_block():
+    html = (
+        '<html><head><title>ERROR: The request could not be satisfied</title></head>'
+        '<body><h1>403 ERROR</h1>Request blocked. We can\'t connect to the server.</body></html>'
+    )
+    assert _looks_like_block_page(html) is True
+
+
+def test_looks_like_block_page_does_not_flag_real_content():
+    # A real page can legitimately be short (e.g. one result) and must not
+    # be misclassified as a block page just because of its size.
+    html = '<html><body><div class="single-publication">Real Circular Title</div></body></html>'
+    assert _looks_like_block_page(html) is False
+
+
+def test_looks_like_block_page_ignores_large_pages_even_with_marker_text():
+    # A long real page happening to contain a phrase like "rate limit" in an
+    # article body shouldn't be misclassified - block pages are always small.
+    html = "<html><body>" + ("Discussion of rate limit policy. " * 500) + "</body></html>"
+    assert _looks_like_block_page(html) is False
+
+
 def test_fetch_html_skips_plain_http_when_flaresolverr_available():
     # A Cloudflare-protected site blocks plain HTTP too - retrying it first
     # only wastes requests that count toward that site's own rate limiting,
@@ -355,6 +378,26 @@ def test_fetch_via_flaresolverr_returns_content_on_success():
 
         assert result == "<html>real content</html>"
         assert mock_post.call_count == 1  # no retry needed on first success
+
+
+def test_fetch_via_flaresolverr_treats_block_page_as_failure_not_success():
+    # FlareSolverr can report status "ok" while the page it actually got back
+    # is a CDN-layer block/rate-limit page, not the real site - a successful
+    # HTTP round-trip isn't the same as successful content. This must be
+    # retried/backed off like any other failure, not returned as if valid.
+    block_page = (
+        '<html><head><title>ERROR: The request could not be satisfied</title></head>'
+        '<body><h1>403 ERROR</h1>Request blocked.</body></html>'
+    )
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "ok", "solution": {"response": block_page}}
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+
+        assert result is None
+        assert mock_post.call_count == 3  # retried like any other failure, didn't accept it as real content
 
 
 def test_ssrf_private_ip_blocked():
