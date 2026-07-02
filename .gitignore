@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Runtime data
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Config
+.env
+
+# OS
+.DS_Store
