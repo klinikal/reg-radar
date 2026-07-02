@@ -13,6 +13,7 @@ from mcpserver.queries import (
     get_item,
     get_run_log,
     get_warnings,
+    _sanitize_fts_terms,
 )
 
 
@@ -375,3 +376,19 @@ def test_get_warnings_days_clamp():
         assert isinstance(results, list)
     finally:
         os.unlink(db_path)
+
+
+def test_sanitize_fts_terms_quotes_each_term():
+    assert _sanitize_fts_terms(["MiCA", "warning"]) == '"MiCA"* "warning"*'
+
+
+def test_sanitize_fts_terms_escapes_embedded_quotes():
+    assert _sanitize_fts_terms(['firm"s license']) == '"firm""s license"*'
+
+
+def test_sanitize_fts_terms_handles_hyphenated_words():
+    assert _sanitize_fts_terms(["crypto-assets"]) == '"crypto-assets"*'
+
+
+def test_sanitize_fts_terms_empty_list_returns_empty_string():
+    assert _sanitize_fts_terms([]) == ""

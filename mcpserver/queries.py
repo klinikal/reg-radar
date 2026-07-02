@@ -13,6 +13,14 @@ def _escape_like(value: str) -> str:
     return value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
 
+def _sanitize_fts_terms(terms: list[str]) -> str:
+    quoted = []
+    for term in terms:
+        escaped = term.replace('"', '""')
+        quoted.append(f'"{escaped}"*')
+    return " ".join(quoted)
+
+
 _QUOTED_RE = re.compile(r'"([^"]+)"')
 
 
