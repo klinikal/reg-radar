@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY mcpserver/requirements.txt ./mcpserver/requirements.txt
+COPY collector/requirements.txt ./collector/requirements.txt
+RUN pip install --no-cache-dir -r mcpserver/requirements.txt -r collector/requirements.txt
+
+COPY collector/ ./collector/
+COPY mcpserver/ ./mcpserver/
+
+ENV DB_PATH=/app/data/casp_radar.db \
+    LOG_LEVEL=INFO
+
+CMD ["python", "-m", "mcpserver.server"]

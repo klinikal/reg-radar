@@ -1,0 +1,31 @@
+services:
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    env_file: .env
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    depends_on:
+      - collector
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      - LOG_LEVEL=info
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
