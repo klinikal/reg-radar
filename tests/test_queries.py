@@ -392,3 +392,11 @@ def test_sanitize_fts_terms_handles_hyphenated_words():
 
 def test_sanitize_fts_terms_empty_list_returns_empty_string():
     assert _sanitize_fts_terms([]) == ""
+
+
+def test_sanitize_fts_terms_skips_empty_strings():
+    assert _sanitize_fts_terms(["MiCA", "", "warning"]) == '"MiCA"* "warning"*'
+
+
+def test_sanitize_fts_terms_single_empty_string_returns_empty():
+    assert _sanitize_fts_terms([""]) == ""

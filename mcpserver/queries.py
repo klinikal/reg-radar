@@ -16,8 +16,9 @@ def _escape_like(value: str) -> str:
 def _sanitize_fts_terms(terms: list[str]) -> str:
     quoted = []
     for term in terms:
-        escaped = term.replace('"', '""')
-        quoted.append(f'"{escaped}"*')
+        if term:
+            escaped = term.replace('"', '""')
+            quoted.append(f'"{escaped}"*')
     return " ".join(quoted)
 
 
