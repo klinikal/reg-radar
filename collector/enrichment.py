@@ -14,6 +14,13 @@ def run_chunking(engine) -> tuple[int, int]:
         rows = session.execute(text("SELECT id, raw_content, content_snippet FROM items")).fetchall()
         for item_id, raw_content, content_snippet in rows:
             source_text = raw_content or content_snippet or ""
+            if not source_text.strip():
+                # No source text means no chunks are possible, ever, until content
+                # arrives — treat as permanently skipped so it isn't reclassified
+                # as "needs chunking" on every run (item_chunks stays empty for it).
+                items_skipped += 1
+                continue
+
             new_hash = content_hash(source_text)
             existing = session.execute(
                 text("SELECT content_hash FROM item_chunks WHERE item_id=:id LIMIT 1"),

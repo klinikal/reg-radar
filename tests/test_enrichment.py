@@ -68,6 +68,24 @@ def test_run_chunking_is_idempotent_on_unchanged_content():
         os.unlink(db_path)
 
 
+def test_run_chunking_skips_empty_content_item_permanently():
+    engine, db_path = _make_engine()
+    try:
+        item = _make_item("esma", "https://example.com/1", "")
+        item.content_snippet = ""
+        insert_item(engine, item)
+
+        chunked, skipped = run_chunking(engine)
+        assert (chunked, skipped) == (0, 1)
+        assert _chunk_count(engine, item.id) == 0
+
+        chunked, skipped = run_chunking(engine)
+        assert (chunked, skipped) == (0, 1)
+        assert _chunk_count(engine, item.id) == 0
+    finally:
+        os.unlink(db_path)
+
+
 def test_run_chunking_rechunks_only_the_changed_item():
     engine, db_path = _make_engine()
     try:
