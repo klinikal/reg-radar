@@ -1,0 +1,17 @@
+- id: esma
+  name: ESMA
+  full_name: European Securities and Markets Authority
+  jurisdiction: EU
+  jurisdiction_type: supranational
+  website: https://www.esma.europa.eu
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  sources:
+    - type: rss
+      url: https://www.esma.europa.eu/rss.xml
+      label: all_news
+      preferred_language: en
+      tags: [casp, mica, warnings]
+  warnings_url: https://www.esma.europa.eu/investor-corner/frauds-and-scams
+  notes: "Primary pan-EU CASP supervisor."
