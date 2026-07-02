@@ -1,5 +1,6 @@
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
+import httpx
 import pytest
 from collector.fetcher import (
     fetch_source,
@@ -11,6 +12,8 @@ from collector.fetcher import (
     _fetch_html,
     _fetch_via_flaresolverr,
     _looks_like_block_page,
+    _fetch_bytes,
+    _has_expected_content,
 )
 
 
@@ -92,7 +95,11 @@ def test_fetch_source_rss_returns_items():
     assert items[0].date_inferred is False
 
 
-def test_fetch_source_returns_empty_on_http_error():
+def test_fetch_source_raises_on_http_error():
+    # A genuine fetch failure must propagate as an exception, not silently
+    # return [] - run_collection() relies on this to distinguish "fetch
+    # failed" (record a source error) from "fetch succeeded, feed just had
+    # nothing new" (a normal, healthy outcome for RSS).
     with patch("httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -107,9 +114,8 @@ def test_fetch_source_returns_empty_on_http_error():
             "preferred_language": "en",
             "tags": [],
         }
-        items = fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
-
-    assert items == []
+        with pytest.raises(RuntimeError):
+            fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
 
 
 # --- scrape path tests ---
@@ -199,10 +205,35 @@ def test_parse_scrape_date_dayfirst_not_misread_as_month_first():
     assert items[0].published_at.day == 2
 
 
-def test_parse_scrape_date_fuzzy_strips_surrounding_text():
+def test_parse_scrape_date_fuzzy_strips_surrounding_text_when_opted_in():
     # FCA's search results render "Published: 02/07/2026" with no clean
-    # sub-element isolating just the date - fuzzy=True must tolerate the
-    # "Published: " prefix rather than failing to parse entirely.
+    # sub-element isolating just the date - date_fuzzy: true must tolerate
+    # the "Published: " prefix rather than failing to parse entirely.
+    # fuzzy is opt-in per source (not a global default - see the next test)
+    # because it silently extracts a date-shaped substring from anywhere in
+    # the text and never fails loudly.
+    fuzzy_source = {**SCRAPE_SOURCE, "scrape": {**SCRAPE_SOURCE["scrape"], "date_fuzzy": True}}
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Title</h2>
+        <a href="https://example.com/page">link</a>
+        <span class="date">Published: 02/07/2026</span>
+      </div>
+    </body></html>
+    """
+    items = _parse_scrape(html, fuzzy_source, "test_reg")
+    assert len(items) == 1
+    assert items[0].date_inferred is False
+    assert items[0].published_at.month == 7
+    assert items[0].published_at.day == 2
+
+
+def test_parse_scrape_date_fuzzy_defaults_off_and_prefix_fails_to_parse():
+    # Without date_fuzzy: true (the default), a prefixed date string like
+    # "Published: 02/07/2026" fails to parse and falls back to date_inferred
+    # - it must NOT silently apply fuzzy matching for sources that never
+    # opted in.
     html = """
     <html><body>
       <div class="item">
@@ -214,9 +245,8 @@ def test_parse_scrape_date_fuzzy_strips_surrounding_text():
     """
     items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
     assert len(items) == 1
-    assert items[0].date_inferred is False
-    assert items[0].published_at.month == 7
-    assert items[0].published_at.day == 2
+    assert items[0].date_inferred is True
+    assert items[0].published_at is None
 
 
 def test_parse_scrape_no_date_inferred():
@@ -236,6 +266,49 @@ def test_parse_scrape_no_date_inferred():
 
 def test_extract_pdf_text_returns_none_on_invalid_pdf():
     assert _extract_pdf_text(b"this is not a pdf") is None
+
+
+def test_extract_pdf_text_caps_page_count():
+    # A huge/hostile PDF shouldn't be able to stall a collection run by
+    # forcing extraction of thousands of pages synchronously in the loop.
+    mock_pages = [MagicMock(extract_text=MagicMock(return_value=f"page {i} content")) for i in range(100)]
+    mock_reader = MagicMock()
+    mock_reader.pages = mock_pages
+    with patch("pypdf.PdfReader", return_value=mock_reader):
+        text = _extract_pdf_text(b"%PDF-fake-bytes")
+    assert text is not None
+    assert "page 49 content" in text  # within the 50-page cap
+    assert "page 50 content" not in text  # beyond the cap - not extracted
+
+
+def test_fetch_bytes_discards_response_over_max_bytes():
+    mock_response = MagicMock()
+    mock_response.content = b"x" * 1000
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = _fetch_bytes("https://example.com/huge.pdf", "ua", 10, 1, max_bytes=500)
+
+        assert result is None
+
+
+def test_fetch_bytes_allows_response_under_max_bytes():
+    mock_response = MagicMock()
+    mock_response.content = b"x" * 100
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = _fetch_bytes("https://example.com/small.pdf", "ua", 10, 1, max_bytes=500)
+
+        assert result == b"x" * 100
 
 
 PDF_SCRAPE_SOURCE = {
@@ -271,7 +344,7 @@ def test_parse_scrape_extract_pdf_text_fetches_and_uses_link_as_document():
 
         items = _parse_scrape(html, PDF_SCRAPE_SOURCE, "test_reg", SAMPLE_CONFIG)
 
-        mock_fetch.assert_called_once_with("https://example.com/notice.pdf", "test-agent/1.0", 10, 1)
+        mock_fetch.assert_called_once_with("https://example.com/notice.pdf", "test-agent/1.0", 10, 1, max_bytes=25 * 1024 * 1024)
         assert len(items) == 1
         assert items[0].raw_content == "Entity warned: SOME UNAUTHORISED FIRM LTD"
 
@@ -333,7 +406,7 @@ def test_fetch_html_skips_plain_http_when_flaresolverr_available():
 
         assert result == "<html>fs content</html>"
         mock_client_cls.assert_not_called()
-        mock_fs.assert_called_once_with("https://example.com", "http://flaresolverr:8191", 10)
+        mock_fs.assert_called_once_with("https://example.com", "http://flaresolverr:8191", 10, None)
 
 
 def test_fetch_html_uses_plain_http_when_no_flaresolverr():
@@ -400,6 +473,131 @@ def test_fetch_via_flaresolverr_treats_block_page_as_failure_not_success():
         assert mock_post.call_count == 3  # retried like any other failure, didn't accept it as real content
 
 
+def test_fetch_via_flaresolverr_rejects_non_2xx_upstream_status():
+    # solution.status is the real upstream HTTP status FlareSolverr's browser
+    # received - distinct from the top-level "status": "ok" (which only
+    # means FlareSolverr itself didn't error). A CDN 403 shows up here
+    # directly and is a far more reliable signal than content-sniffing.
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {"response": "<html>short but real-looking</html>", "status": 403},
+        }
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+
+        assert result is None
+        assert mock_post.call_count == 3
+
+
+def test_fetch_via_flaresolverr_accepts_2xx_upstream_status():
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {"response": "<html>real content</html>", "status": 200},
+        }
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+
+        assert result == "<html>real content</html>"
+
+
+def test_fetch_via_flaresolverr_missing_solution_status_falls_back_to_content_checks():
+    # Not every FlareSolverr version/response necessarily exposes
+    # solution.status - must degrade gracefully to the content-based checks
+    # rather than erroring or silently rejecting everything.
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {"response": "<html><div class='single-publication'>Real item</div></html>"},
+        }
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30, expected_selector=".single-publication")
+
+        assert result is not None
+
+
+def test_fetch_via_flaresolverr_rejects_200_page_missing_expected_selector():
+    # A genuine HTTP 200 that isn't an obvious block page either (a
+    # maintenance notice, an unrelated redirect target) must still be
+    # rejected if it doesn't contain what was actually asked for - the
+    # positive-fingerprint check, not just the block-page denylist.
+    unrelated_page = "<html><body>" + ("Some unrelated maintenance notice content. " * 50) + "</body></html>"
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {"response": unrelated_page, "status": 200},
+        }
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr(
+            "https://example.com", "http://flaresolverr:8191", 30, expected_selector=".single-publication",
+        )
+
+        assert result is None
+        assert mock_post.call_count == 3
+
+
+def test_has_expected_content_true_when_no_selector_given():
+    assert _has_expected_content("<html>anything</html>", None) is True
+
+
+def test_has_expected_content_false_when_selector_absent():
+    assert _has_expected_content("<html><body>no match here</body></html>", ".single-publication") is False
+
+
+def test_has_expected_content_true_when_selector_present():
+    html = "<html><body><div class='single-publication'>item</div></body></html>"
+    assert _has_expected_content(html, ".single-publication") is True
+
+
 def test_ssrf_private_ip_blocked():
     with pytest.raises(ValueError, match="private"):
         _validate_url_not_private("http://192.168.1.1/path")
+
+
+def test_ssrf_loopback_ip_blocked():
+    with pytest.raises(ValueError, match="private"):
+        _validate_url_not_private("http://127.0.0.1/path")
+
+
+def test_ssrf_link_local_metadata_ip_blocked():
+    # 169.254.169.254 is the cloud provider metadata endpoint (AWS/GCP/Azure)
+    # - a classic SSRF target if a scraped page can redirect a fetch there.
+    with pytest.raises(ValueError, match="private"):
+        _validate_url_not_private("http://169.254.169.254/latest/meta-data/")
+
+
+def test_ssrf_hostname_resolving_to_private_ip_blocked():
+    # A bare-IP-literal check alone misses DNS rebinding: a hostname that
+    # *resolves* to an internal address must be blocked too, not just a URL
+    # that already contains a raw private IP.
+    with patch("socket.getaddrinfo") as mock_resolve:
+        mock_resolve.return_value = [(2, 1, 6, "", ("10.0.0.5", 0))]
+        with pytest.raises(ValueError, match="private"):
+            _validate_url_not_private("http://internal.example.com/path")
+
+
+def test_ssrf_hostname_resolving_to_public_ip_allowed():
+    with patch("socket.getaddrinfo") as mock_resolve:
+        mock_resolve.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+        _validate_url_not_private("http://example.com/path")  # must not raise
+
+
+def test_ssrf_event_hook_blocks_hostname_resolving_to_private_ip():
+    from collector.fetcher import _make_ssrf_check
+
+    hook = _make_ssrf_check()
+    fake_request = MagicMock()
+    fake_request.url.host = "internal.example.com"
+    with patch("socket.getaddrinfo") as mock_resolve:
+        mock_resolve.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
+        with pytest.raises(httpx.InvalidURL, match="private"):
+            hook(fake_request)

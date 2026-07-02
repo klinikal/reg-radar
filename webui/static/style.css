@@ -313,6 +313,48 @@ table.items td.empty {
   aside.months ul {
     max-height: 160px;
   }
+
+  /* table.items is a fixed-width table (90px + 150px + title + tags
+     columns) that structurally can't fit a narrow viewport - reflow into
+     a stacked card per row instead of letting it overflow horizontally. */
+  table.items,
+  table.items thead,
+  table.items tbody,
+  table.items th,
+  table.items td,
+  table.items tr {
+    display: block;
+  }
+
+  table.items thead {
+    display: none;
+  }
+
+  table.items tr {
+    border: 1px solid #eee;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    padding: 8px;
+  }
+
+  table.items td {
+    border-bottom: none;
+    padding: 4px 0;
+    width: auto !important;
+  }
+
+  table.items td.empty {
+    border: none;
+  }
+
+  table.items td[data-label]:not(.empty)::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
 }
 
 .back {

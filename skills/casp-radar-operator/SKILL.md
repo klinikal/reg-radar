@@ -62,7 +62,7 @@ Registry with per-source status lives at `config/regulators.yaml`. Each item has
 | `list_regulators_tool` | Full registry + live fetch stats (last success, error counts) — use to check source health. |
 | `get_item_tool` | Single item by ID, includes `raw_content` (search/recent only return a snippet). |
 | `get_run_log_tool` | Recent collector run stats — use to check if collection is working. |
-| `get_warnings_tool` | Items tagged `warnings`, optionally filtered by `regulator_id` and a day window. |
+| `get_warnings_tool` | Items tagged `warnings`, optionally filtered by `regulator_id` and a day window. Some regulators tag their *entire* general news feed as `warnings` (no dedicated warnings feed exists), so results from those regulators are "may contain warnings," not a precise list — read the item, don't assume every result is a genuine warning notice. |
 
 ## Typical queries
 

@@ -63,10 +63,10 @@
     <tbody>
       {% for item in items %}
       <tr>
-        <td class="date">{{ item.published_at[:10] if item.published_at else (item.fetched_at[:10] + "*") }}</td>
-        <td class="regulator">{{ regulator_names.get(item.regulator_id, item.regulator_id) }}</td>
-        <td class="title"><a href="/item/{{ item.id }}">{{ item.title or "(untitled)" }}</a></td>
-        <td class="tags">{{ item.tag_list | join(", ") }}</td>
+        <td class="date" data-label="Published">{{ item.published_at[:10] if item.published_at else (item.fetched_at[:10] + "*") }}</td>
+        <td class="regulator" data-label="Regulator">{{ regulator_names.get(item.regulator_id, item.regulator_id) }}</td>
+        <td class="title" data-label="Title"><a href="/item/{{ item.id }}">{{ item.title or "(untitled)" }}</a></td>
+        <td class="tags" data-label="Tags">{{ item.tag_list | join(", ") }}</td>
       </tr>
       {% else %}
       <tr><td colspan="4" class="empty">No items match these filters.</td></tr>

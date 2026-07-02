@@ -62,7 +62,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         params["date_from"] = date_from
     if date_to:
         conditions.append("published_at <= :date_to")
-        params["date_to"] = date_to
+        params["date_to"] = _extend_date_to(date_to)
 
     where = " AND ".join(conditions)
     sql = f"""

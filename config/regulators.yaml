@@ -181,7 +181,7 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: https://www.cysec.gov.cy/en-GB/investor-protection/warnings/
-  notes: "No RSS - RSS endpoints return 410 Gone. Scraping announcements page."
+  notes: "No RSS - RSS endpoints return 410 Gone. Scraping announcements page. Selectors were broken (matched 0 items, silently) until fixed 2026-07-02 - confirmed live against real markup, not guessed."
   sources:
     - type: scrape
       url: https://www.cysec.gov.cy/en-GB/home/announcements/
@@ -189,11 +189,11 @@
       preferred_language: en
       tags: [casp, mica, warnings]
       scrape:
-        item_selector: "article, .announcement-item, .list-item"
-        title_selector: "h2 a, h3 a, .title a"
-        link_selector: "h2 a, h3 a, .title a"
-        date_selector: "time"
-        date_attribute: "datetime"
+        item_selector: ".card-documents"
+        title_selector: "a.card-title"
+        link_selector: "a.card-title"
+        date_selector: ".text-muted"
+        date_attribute: null
         content_selector: null
 
 # ─── Czech Republic ───────────────────────────────────────────────────────────
@@ -228,13 +228,14 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: https://www.dfsa.dk/supervision/warnings-against-companies
-  notes: "No RSS - CMS has RSS deliberately disabled. English content on dfsa.dk (not finanstilsynet.dk). Scraping news page."
+  notes: "No RSS - CMS has RSS deliberately disabled. English content on dfsa.dk (not finanstilsynet.dk). The news page's item list is Blazor-rendered (blazor.web.js, SignalR circuit) - confirmed 2026-07-02 that neither plain HTTP nor FlareSolverr's standard request.get renders it (the list stays an empty widget shell with only its JSON config, not actual items). This is a genuine architectural block, not a broken selector - the old selectors here were guesses that happened to match 0 items for the same underlying reason. Disabled rather than left silently broken. Re-enabling would need either the underlying search API DFSA's widget calls (not yet found) or a FlareSolverr command that waits for the SignalR circuit/JS to finish populating content, not just page load."
   sources:
     - type: scrape
       url: https://www.dfsa.dk/news
       label: news
       preferred_language: en
       tags: [casp, mica, news]
+      enabled: false
       scrape:
         item_selector: "article, .news-item, .list__item"
         title_selector: "h2 a, h3 a, .news-item__title a"
@@ -275,18 +276,18 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: https://www.finanssivalvonta.fi/en/registers/warning-lists/
-  notes: "No RSS - email subscription only. Scraping publications and press releases page."
+  notes: "No RSS - email subscription only. The original URL (/en/publications-and-press-releases/) is a category hub page with no listing of its own (just year/type archive links in a sidebar tree) - the old selectors matched 0 items there for that reason, not a markup guess gone wrong. Fixed 2026-07-02 to the Press-release type-hub page, which does list items directly and deliberately avoids embedding a year in the URL (a year-specific archive page also works and has the same markup, but would silently need updating every January)."
   sources:
     - type: scrape
-      url: https://www.finanssivalvonta.fi/en/publications-and-press-releases/
+      url: https://www.finanssivalvonta.fi/en/publications-and-press-releases/Press-release/
       label: publications
       preferred_language: en
       tags: [casp, mica, publications]
       scrape:
-        item_selector: "article, .news-item, .list-item"
-        title_selector: "h2 a, h3 a, .item-title a"
-        link_selector: "h2 a, h3 a, .item-title a"
-        date_selector: "time, .date"
+        item_selector: "ul.listing.pagelist > li"
+        title_selector: "a"
+        link_selector: "a"
+        date_selector: "time"
         date_attribute: "datetime"
         content_selector: null
 
@@ -390,7 +391,7 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: http://www.hcmc.gr/en_US/web/portal/warninghcmc
-  notes: "No RSS - site runs Liferay CE 6.2. Site operates over HTTP only (no HTTPS) - a security consideration for monitoring. Scraping press releases page."
+  notes: "No RSS - site runs Liferay CE 6.2. Site operates over HTTP only (no HTTPS) - a security consideration for monitoring. Scraping press releases page. Selectors were guessed and matched 0 items until fixed 2026-07-02 against real markup. date_selector is deliberately null (not an oversight) - dates are embedded inconsistently inside the title text itself (\"...1095 30.06.2026\", \"...1093/10 06 2026\") with no clean sub-element, so items fall back to fetched_at (date_inferred=True) rather than risk misparsing."
   sources:
     - type: scrape
       url: http://www.hcmc.gr/en_US/web/portal/elib/press
@@ -398,8 +399,8 @@
       preferred_language: en
       tags: [casp, mica, press_releases]
       scrape:
-        item_selector: ".portlet-body li, .journal-content-article li, article"
-        title_selector: "a, h3 a, h4 a"
+        item_selector: ".a-p-elib-catLine"
+        title_selector: "a"
         link_selector: "a"
         date_selector: null
         date_attribute: null
@@ -1746,6 +1747,7 @@
         link_selector: "h3.search-item__title a"
         date_selector: "p.meta-item.published-date"
         date_attribute: null
+        date_fuzzy: true
         content_selector: "div.search-item__body"
     - type: scrape
       url: "https://www.fca.org.uk/publications/search-results?p_search_term=&category=policy%20and%20guidance%2Cpolicy%20and%20guidance-calls%20for%20input%2Cpolicy%20and%20guidance-consultation%20papers%2Cpolicy%20and%20guidance-dear%20ceo%20letters%2Cpolicy%20and%20guidance-discussion%20papers%2Cpolicy%20and%20guidance-feedback%20statements%2Cpolicy%20and%20guidance-finalised%20guidance%2Cpolicy%20and%20guidance-guidance%20consultations%2Cpolicy%20and%20guidance-good%20and%20poor%20practice%2Cpolicy%20and%20guidance-handbook%2Cpolicy%20and%20guidance-market%20studies%2Cpolicy%20and%20guidance-multi-firm%20reviews%2Cpolicy%20and%20guidance-newsletters%2Cpolicy%20and%20guidance-policy%20statements%2Cpolicy%20and%20guidance-portfolio%20letters%2Cpolicy%20and%20guidance-regulatory%20priorities%2Cpolicy%20and%20guidance-thematic%20reviews"
@@ -1758,4 +1760,5 @@
         link_selector: "h3.search-item__title a"
         date_selector: "p.meta-item.published-date"
         date_attribute: null
+        date_fuzzy: true
         content_selector: "div.search-item__body"

@@ -73,6 +73,8 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
     total_new = 0
     total_errors = 0
     error_detail = []
+    consecutive_page_failures = 0
+    max_consecutive_failures = 3
 
     while True:
         page_url = _page_url(source["url"], page)
@@ -96,12 +98,25 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
                 logger.info("%s page %d: %d items, %d new", label, page, len(items), new_count)
 
             has_next = _has_next_page(html)
+            consecutive_page_failures = 0
         except Exception as e:
             total_errors += 1
+            consecutive_page_failures += 1
             msg = f"{label} page {page}: {e}"
             error_detail.append(msg)
-            logger.error("Error fetching %s", msg)
-            has_next = False
+            logger.error("Error fetching %s (consecutive failures: %d/%d)", msg, consecutive_page_failures, max_consecutive_failures)
+            if consecutive_page_failures >= max_consecutive_failures:
+                # A run of failures in a row suggests something's genuinely
+                # broken for this category (blocked, category gone, etc.) -
+                # give up on it, but this only ends *this* category's crawl,
+                # not the whole backfill (the caller moves on to the next one).
+                logger.error("%s: %d consecutive page failures - giving up on this category", label, consecutive_page_failures)
+                has_next = False
+            else:
+                # A single transient failure (network blip, one bad page)
+                # shouldn't silently end the rest of a category's history -
+                # skip this page and keep going.
+                has_next = True
 
         if not has_next or (max_pages and page >= max_pages):
             break

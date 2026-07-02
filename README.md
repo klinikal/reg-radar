@@ -72,7 +72,9 @@ The MCP server exposes six tools over streamable HTTP:
 | `list_regulators_tool` | Full registry with live fetch status |
 | `get_item_tool` | Single item by ID, including raw content |
 | `get_run_log_tool` | Recent collector run stats |
-| `get_warnings_tool` | Items tagged `warnings`, optionally filtered by date range |
+| `get_warnings_tool` | Items tagged `warnings`, optionally filtered by date range — see note below |
+
+**On `get_warnings_tool`:** some regulators only have one general news feed, so it's tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
 
 Server endpoint: **`http://localhost:8000/mcp`**.
 

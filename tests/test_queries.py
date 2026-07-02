@@ -142,6 +142,20 @@ def test_search_items_advanced_date_to_includes_same_day():
         os.unlink(db_path)
 
 
+def test_search_items_mcp_tool_date_to_includes_same_day():
+    # search_items() (the MCP tool) had its own separate date_to handling
+    # that never got the same fix as search_items_advanced() - regression
+    # test for that specifically, not just the webui-facing function.
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="Today's MCP warning", days_ago=0))
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        results = search_items(engine, "warning", date_to=today)
+        assert len(results) == 1, "a plain YYYY-MM-DD date_to should include same-day items via the MCP tool too"
+    finally:
+        os.unlink(db_path)
+
+
 def test_search_items_advanced_pagination_and_total_count():
     engine, db_path = setup_engine()
     try:

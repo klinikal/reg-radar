@@ -69,7 +69,17 @@ def get_run_log_tool(limit: int = 10) -> str:
 
 @mcp.tool()
 def get_warnings_tool(days: int = 30, regulator_id: str = None) -> str:
-    """Returns regulatory warning items. days=0 returns all, max 365."""
+    """Returns items tagged 'warnings' at the feed/source level. days=0 returns all, max 365.
+
+    Note: some regulators only have one general news/press-release feed, so
+    it's tagged 'warnings' alongside 'news'/'publications' rather than
+    leaving genuine warnings uncollected - that feed's entire output shows up
+    here, not just its actual warning notices. Sources with a dedicated
+    warnings-only feed (e.g. FCA, CNMV's unregistered-firm notices) are
+    precise; broad "all_news"-style feeds are not. Treat results from a
+    broad feed as "may contain warnings," not a filtered warnings list -
+    read the item to judge.
+    """
     results = get_warnings(get_engine(), days=days, regulator_id=regulator_id)
     return json.dumps(results, default=str)
 

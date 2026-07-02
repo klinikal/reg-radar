@@ -1,10 +1,12 @@
 import ipaddress
 import logging
 import os
+import random
+import socket
 import time
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import feedparser
 import httpx
@@ -23,16 +25,35 @@ logger = logging.getLogger(__name__)
 _FLARESOLVERR_MIN_INTERVAL_SECONDS = float(os.getenv("FLARESOLVERR_MIN_INTERVAL_SECONDS", "8"))
 _FLARESOLVERR_MAX_RETRIES = int(os.getenv("FLARESOLVERR_MAX_RETRIES", "3"))
 _FLARESOLVERR_RETRY_BACKOFF_SECONDS = float(os.getenv("FLARESOLVERR_RETRY_BACKOFF_SECONDS", "45"))
-_last_flaresolverr_request_at = 0.0
+# Keyed by domain, not one global timestamp - a slow/heavily-throttled
+# domain (e.g. mid-backoff) shouldn't also throttle every other domain's
+# requests, and a domain that's been failing shouldn't get retried on every
+# single run forever without limit (see consecutive-failure note below).
+_last_flaresolverr_request_at: dict[str, float] = {}
+
+# extract_pdf_text fetches a document per scraped item, synchronously,
+# inside the collection loop - an unbounded download or page count on a
+# huge/hostile/malformed PDF could stall a whole run. Bounded, not
+# unlimited, by design.
+_MAX_PDF_DOWNLOAD_BYTES = int(os.getenv("MAX_PDF_DOWNLOAD_BYTES", str(25 * 1024 * 1024)))  # 25 MB
+_MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 
 
-def _throttle_flaresolverr() -> None:
-    global _last_flaresolverr_request_at
-    elapsed = time.monotonic() - _last_flaresolverr_request_at
+def _throttle_flaresolverr(domain: str) -> None:
+    last = _last_flaresolverr_request_at.get(domain, 0.0)
+    elapsed = time.monotonic() - last
     wait = _FLARESOLVERR_MIN_INTERVAL_SECONDS - elapsed
     if wait > 0:
         time.sleep(wait)
-    _last_flaresolverr_request_at = time.monotonic()
+    _last_flaresolverr_request_at[domain] = time.monotonic()
+
+
+def _backoff_with_jitter(attempt: int) -> float:
+    # Deterministic exponential backoff means every source hitting the same
+    # domain at the same time retries in lockstep, re-colliding on the same
+    # schedule. Jitter spreads retries out instead of bunching them.
+    base = _FLARESOLVERR_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+    return base * (0.5 + random.random())
 
 
 def _truncate_snippet(text: str) -> str:
@@ -52,27 +73,47 @@ def _resolve_language(feed_item: dict, source_preferred: str | None, title: str,
     return detected
 
 
+def _ip_is_private_or_reserved(addr_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(addr_str)
+    except ValueError:
+        return False
+    return (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+
+def _host_resolves_to_private(host: str) -> bool:
+    """True if `host` (an IP literal or a hostname) is, or resolves to, a
+    private/loopback/link-local/reserved/multicast address.
+
+    A bare-IP-literal check alone (the old behaviour) misses DNS rebinding:
+    a scraped page can link to a plain hostname like "internal.example.com"
+    that resolves to 169.254.169.254 (cloud metadata) or a private IP,
+    which would sail straight through a check that only looks at literals.
+    """
+    if _ip_is_private_or_reserved(host):
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    return any(_ip_is_private_or_reserved(info[4][0]) for info in infos)
+
+
 def _validate_url_not_private(url: str) -> None:
     from urllib.parse import urlparse
     host = urlparse(url).hostname or ""
-    try:
-        addr = ipaddress.ip_address(host)
-        if addr.is_private or addr.is_loopback or addr.is_link_local:
-            raise ValueError(f"URL targets private address: {host}")
-    except ValueError as e:
-        if "private" in str(e):
-            raise
+    if host and _host_resolves_to_private(host):
+        raise ValueError(f"URL targets or resolves to a private/reserved address: {host}")
 
 
 def _make_ssrf_check():
     def on_request(request):
         host = request.url.host
-        try:
-            addr = ipaddress.ip_address(host)
-            if addr.is_private or addr.is_loopback or addr.is_link_local:
-                raise httpx.InvalidURL(f"Request to private address blocked: {host}")
-        except ValueError:
-            pass  # hostname, not a bare IP — allow
+        if host and _host_resolves_to_private(host):
+            raise httpx.InvalidURL(f"Request to private/reserved address blocked: {host}")
     return on_request
 
 
@@ -82,7 +123,12 @@ def _looks_like_block_page(html: str) -> bool:
     # in front of the target (CloudFront, etc.) can reject the request with
     # its own error page independently of the site's Cloudflare challenge,
     # and FlareSolverr has no way to know that's not what we wanted. A
-    # successful HTTP round-trip isn't the same as successful content.
+    # successful HTTP round-trip isn't the same as successful content. This
+    # is a secondary/fallback check - _fetch_via_flaresolverr checks the
+    # upstream HTTP status code first, which is a far more reliable signal
+    # when FlareSolverr's response exposes it; this content-sniffing only
+    # matters when that status isn't available or the block page happens to
+    # carry a 200.
     if len(html) > 8000:
         return False
     markers = ("request blocked", "could not be satisfied", "403 error", "access denied", "rate limit")
@@ -90,10 +136,30 @@ def _looks_like_block_page(html: str) -> bool:
     return any(m in lowered for m in markers)
 
 
-def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> str | None:
+def _has_expected_content(html: str, expected_selector: str | None) -> bool:
+    """True if expected_selector is unset, or it actually matches something.
+
+    A positive check, not a denylist: rather than guessing at every possible
+    way a block/error page might be phrased, confirm the page contains what
+    we actually asked for. Catches an unexpected-but-200 response that isn't
+    an obvious block page either (a redirect to an unrelated page, a
+    maintenance notice, a captcha page using none of the known markers).
+    """
+    if not expected_selector:
+        return True
+    try:
+        soup = BeautifulSoup(html, "lxml")
+        return soup.select_one(expected_selector) is not None
+    except Exception:
+        return True  # a selector error here shouldn't itself block valid content
+
+
+def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int, expected_selector: str | None = None) -> str | None:
     _validate_url_not_private(url)
+    domain = urlparse(url).hostname or url
     for attempt in range(_FLARESOLVERR_MAX_RETRIES):
-        _throttle_flaresolverr()
+        _throttle_flaresolverr(domain)
+        is_last_attempt = attempt == _FLARESOLVERR_MAX_RETRIES - 1
         try:
             resp = httpx.post(
                 f"{flaresolverr_url}/v1",
@@ -102,15 +168,35 @@ def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> st
             )
             resp.raise_for_status()
             data = resp.json()
-            is_last_attempt = attempt == _FLARESOLVERR_MAX_RETRIES - 1
             if data.get("status") == "ok":
-                html = data["solution"]["response"]
-                if not _looks_like_block_page(html):
+                solution = data.get("solution", {})
+                html = solution.get("response", "")
+                # solution.status is the actual upstream HTTP status code
+                # FlareSolverr's browser received - distinct from the
+                # top-level "status": "ok", which only means "FlareSolverr
+                # itself ran without error". A block page (e.g. a CDN 403)
+                # shows up here directly, which is a far more reliable
+                # signal than guessing at block-page wording. Checked
+                # defensively (.get, not indexing) in case this field isn't
+                # present in a given FlareSolverr version - falls through to
+                # the content-based checks below if so.
+                upstream_status = solution.get("status")
+                if upstream_status is not None and not (200 <= upstream_status < 300):
+                    failure_reason = f"upstream HTTP {upstream_status}"
+                elif _looks_like_block_page(html):
+                    failure_reason = "block/rate-limit page (content heuristic)"
+                elif not _has_expected_content(html, expected_selector):
+                    failure_reason = f"page loaded but doesn't contain the expected content ({expected_selector!r} not found)"
+                else:
+                    failure_reason = None
+
+                if failure_reason is None:
                     return html
-                backoff = _FLARESOLVERR_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+
+                backoff = _backoff_with_jitter(attempt)
                 logger.warning(
-                    "FlareSolverr got a block/rate-limit page (not the real site) for %s (attempt %d/%d)%s",
-                    url, attempt + 1, _FLARESOLVERR_MAX_RETRIES,
+                    "FlareSolverr got %s for %s (attempt %d/%d)%s",
+                    failure_reason, url, attempt + 1, _FLARESOLVERR_MAX_RETRIES,
                     "" if is_last_attempt else f" - backing off {backoff:.0f}s",
                 )
                 if not is_last_attempt:
@@ -121,7 +207,7 @@ def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> st
                 # The target site's own rate limiting, not a transient network
                 # blip - back off much longer than a normal retry, since
                 # hammering it again immediately only makes the ban last longer.
-                backoff = _FLARESOLVERR_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+                backoff = _backoff_with_jitter(attempt)
                 logger.warning(
                     "FlareSolverr reports %s for %s (attempt %d/%d)%s",
                     message, url, attempt + 1, _FLARESOLVERR_MAX_RETRIES,
@@ -138,13 +224,13 @@ def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> st
     return None
 
 
-def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolverr_url: str | None = None) -> str | None:
+def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolverr_url: str | None = None, expected_selector: str | None = None) -> str | None:
     # When a source is already known to need FlareSolverr, don't waste plain
     # HTTP attempts first - a Cloudflare-protected site blocks those too, and
     # each one still counts toward that site's own rate limiting/ban
     # threshold for no benefit (it was never going to succeed).
     if flaresolverr_url:
-        return _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
+        return _fetch_via_flaresolverr(url, flaresolverr_url, timeout, expected_selector)
 
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
@@ -159,14 +245,18 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
     return None
 
 
-def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int) -> bytes | None:
+def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes: int | None = None) -> bytes | None:
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
             with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [_make_ssrf_check()]}) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
-                return resp.content
+                content = resp.content
+                if max_bytes is not None and len(content) > max_bytes:
+                    logger.warning("Discarding response from %s - %d bytes exceeds %d byte cap", url, len(content), max_bytes)
+                    return None
+                return content
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
     return None
@@ -227,7 +317,10 @@ def _extract_pdf_text(content: bytes) -> str | None:
         import io
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(content))
-        text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        pages = reader.pages[:_MAX_PDF_PAGES]
+        if len(reader.pages) > _MAX_PDF_PAGES:
+            logger.warning("PDF has %d pages, only extracting the first %d", len(reader.pages), _MAX_PDF_PAGES)
+        text = "\n\n".join(page.extract_text() or "" for page in pages)
         return text.strip() or None
     except Exception as e:
         logger.warning("PDF text extraction failed: %s", e)
@@ -243,6 +336,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
     date_attribute = scrape_cfg.get("date_attribute")
     content_selector = scrape_cfg.get("content_selector")
     extract_pdf_text = scrape_cfg.get("extract_pdf_text", False)
+    date_fuzzy = scrape_cfg.get("date_fuzzy", False)
     config = config or {}
 
     if not item_selector or not title_selector or not link_selector:
@@ -278,12 +372,22 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
                 if date_str:
                     try:
                         from dateutil.parser import parse as parse_date
-                        # fuzzy: tolerates surrounding text like "Published: 02/07/2026".
-                        # dayfirst: EEA/UK sources use DD/MM/YYYY: without this, ambiguous
-                        # dates like 02/07/2026 silently misparse as 2 July -> 7 Feb.
-                        # Safe for existing sources - they all use unambiguous ISO
-                        # datetime attributes, which dayfirst/fuzzy don't affect.
-                        parsed = parse_date(date_str, fuzzy=True, dayfirst=True)
+                        # dayfirst: EEA/UK sources use DD/MM/YYYY - without this,
+                        # ambiguous dates like 02/07/2026 silently misparse as
+                        # 2 July -> 7 Feb. Safe as a global default: sources using
+                        # an unambiguous ISO datetime attribute are unaffected by
+                        # dayfirst, and every source parsing free-text dates in
+                        # this config is EEA/UK-formatted, not US-style MM/DD.
+                        #
+                        # fuzzy is NOT a safe global default - it silently
+                        # extracts a date-shaped substring from surrounding text
+                        # and never fails loudly, so an unrelated "reference
+                        # 03/2024" in body text could get accepted as a real
+                        # date. Opt in per-source via date_fuzzy: true only for
+                        # sources that genuinely need it (e.g. FCA's
+                        # "Published: DD/MM/YYYY" text, which has no clean
+                        # sub-element isolating just the date).
+                        parsed = parse_date(date_str, fuzzy=date_fuzzy, dayfirst=True)
                         published_at = parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
                         date_inferred = False
                     except Exception:
@@ -298,6 +402,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
                 config.get("user_agent", "casp-radar/1.0"),
                 int(config.get("timeout", 30)),
                 int(config.get("retries", 3)),
+                max_bytes=_MAX_PDF_DOWNLOAD_BYTES,
             )
             if pdf_bytes:
                 raw_content = _extract_pdf_text(pdf_bytes) or ""
@@ -340,22 +445,25 @@ def fetch_source(
     source_type = source.get("type", "rss")
     url = source["url"]
 
-    try:
-        if source_type in ("rss", "atom"):
-            content = _fetch_bytes(url, user_agent, timeout, retries)
-            if content is None:
-                logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
-                return []
-            return _parse_rss(content, source, regulator_id)
-        elif source_type == "scrape":
-            html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url)
-            if html is None:
-                logger.error("Failed to fetch %s for %s/%s", url, regulator_id, source["label"])
-                return []
-            return _parse_scrape(html, source, regulator_id, config)
-        else:
-            logger.warning("Unknown source type '%s' for %s/%s", source_type, regulator_id, source["label"])
-            return []
-    except Exception as e:
-        logger.error("Unexpected error fetching %s/%s: %s", regulator_id, source["label"], e)
+    if source_type in ("rss", "atom"):
+        content = _fetch_bytes(url, user_agent, timeout, retries)
+        if content is None:
+            # A genuine fetch failure (network error, block, timeout) must be
+            # distinguishable from "fetched fine, feed just has 0 new entries
+            # today" - the latter is normal for RSS, the former is not.
+            # Raising lets run_collection()'s existing except block record it
+            # as a source error via consecutive_failures; returning [] here
+            # used to make both cases look identical and silently reset any
+            # real failure streak (e.g. a 403 logged as an ERROR but treated
+            # as a clean, empty run).
+            raise RuntimeError(f"Failed to fetch {url} for {regulator_id}/{source['label']}")
+        return _parse_rss(content, source, regulator_id)
+    elif source_type == "scrape":
+        expected_selector = source.get("scrape", {}).get("item_selector")
+        html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url, expected_selector)
+        if html is None:
+            raise RuntimeError(f"Failed to fetch {url} for {regulator_id}/{source['label']}")
+        return _parse_scrape(html, source, regulator_id, config)
+    else:
+        logger.warning("Unknown source type '%s' for %s/%s", source_type, regulator_id, source["label"])
         return []

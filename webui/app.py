@@ -5,7 +5,7 @@ import os
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -200,7 +200,7 @@ def api_months(q: str = "", exact: bool = False, regulator_id: list[str] = Query
 def api_item(item_id: str):
     item = get_item(get_engine(), item_id)
     if item is None:
-        return {"error": "not found"}
+        raise HTTPException(status_code=404, detail="not found")
     return item
 
 
