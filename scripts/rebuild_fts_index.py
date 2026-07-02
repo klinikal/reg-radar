@@ -1,15 +1,14 @@
 """Rebuild items_fts from the items table - backfill for existing rows and
 disaster recovery if items_fts ever drifts from items.
 
-Run inside any container that has DB access:
+Run inside the collector container which has DB access:
 
-    docker compose exec mcp python -m scripts.rebuild_fts_index --dry-run
-    docker compose exec mcp python -m scripts.rebuild_fts_index
+    docker compose exec collector python -m scripts.rebuild_fts_index --dry-run
+    docker compose exec collector python -m scripts.rebuild_fts_index
 """
 import argparse
 import logging
 import os
-import sys
 
 from sqlalchemy import text
 

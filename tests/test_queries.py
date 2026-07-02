@@ -474,7 +474,6 @@ def test_search_items_advanced_falls_back_to_like_on_fts_error(monkeypatch, capl
     engine, db_path = setup_engine()
     try:
         insert_item(engine, make_item(title="MiCA warning issued"))
-        real_sanitize = queries_module._sanitize_fts_terms
         monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: '"unterminated')
         with caplog.at_level("WARNING"):
             items, total = search_items_advanced(engine, query="MiCA warning")
