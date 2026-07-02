@@ -1,0 +1,175 @@
+"""One-off backfill for MFSA publication categories.
+
+The regular collector only scrapes page 1 of each *enabled* category
+(newest-first) on every run - enough to catch new publications going
+forward for the categories currently enabled in config/regulators.yaml.
+This script walks a category's full paginated history, and - unlike the
+ESMA/FCA backfills - can also target categories that aren't enabled for
+daily collection at all, since config/regulators.yaml defines MFSA's full
+~65-category taxonomy with only the CASP-relevant subset enabled.
+
+MFSA is Cloudflare-protected and requires FlareSolverr for every request
+(confirmed - plain HTTP is blocked regardless of User-Agent). The shared
+throttle/backoff logic in collector/fetcher.py paces every FlareSolverr
+call automatically (default: minimum 8s between requests, longer backoff
+on ban-like errors) - this script does not need its own pacing logic, but
+inherits FlareSolverr's real per-request cost (~10-15s), so a full run
+across many categories and pages is slow by design, not a bug. Always
+--dry-run first, and prefer running overnight / off-hours given the
+cumulative time.
+
+Run inside the collector container:
+
+    docker compose exec collector python -m scripts.backfill_mfsa_publications --category circulars_crypto_assets_circulars --dry-run --max-pages 2
+    docker compose exec collector python -m scripts.backfill_mfsa_publications --category circulars_crypto_assets_circulars
+    docker compose exec collector python -m scripts.backfill_mfsa_publications --all --dry-run --max-pages 1   # sanity-check every category cheaply
+    docker compose exec collector python -m scripts.backfill_mfsa_publications --all                            # full ~65-category historic crawl - hours, run deliberately
+"""
+import argparse
+import logging
+import os
+import re
+import sys
+from urllib.parse import urlsplit, urlunsplit
+
+import yaml
+
+from collector.fetcher import _fetch_html, _parse_scrape
+from collector.storage import init_db, insert_item, record_run_complete, record_run_start
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+REGULATOR_ID = "mt-mfsa"
+
+
+def _load_scrape_sources() -> list[dict]:
+    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
+    with open(regulators_path) as f:
+        regulators = yaml.safe_load(f)
+    reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
+    return [s for s in reg["sources"] if s.get("type") == "scrape"]
+
+
+def _page_url(base_url: str, page: int) -> str:
+    if page == 1:
+        return base_url
+    parts = urlsplit(base_url)
+    path = parts.path.rstrip("/") + f"/page/{page}/"
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+
+
+def _has_next_page(html: str) -> bool:
+    return bool(re.search(r'class="next page-numbers"', html))
+
+
+def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, engine, dry_run: bool, max_pages: int | None):
+    label = source["label"]
+    page = 1
+    total_fetched = 0
+    total_new = 0
+    total_errors = 0
+    error_detail = []
+
+    while True:
+        page_url = _page_url(source["url"], page)
+        page_source = {**source, "url": page_url}
+        try:
+            # fetch_source() doesn't expose the raw HTML (only parsed Items),
+            # but the next-page link check below needs it - fetch directly
+            # the same way fetch_source() would internally.
+            html = _fetch_html(page_url, fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url)
+            if html is None:
+                raise RuntimeError("fetch failed (see FlareSolverr warnings above)")
+
+            items = _parse_scrape(html, page_source, REGULATOR_ID, fetch_cfg)
+            total_fetched += len(items)
+
+            if dry_run:
+                logger.info("%s page %d: %d items (dry run, not inserted)", label, page, len(items))
+            else:
+                new_count = sum(1 for item in items if insert_item(engine, item))
+                total_new += new_count
+                logger.info("%s page %d: %d items, %d new", label, page, len(items), new_count)
+
+            has_next = _has_next_page(html)
+        except Exception as e:
+            total_errors += 1
+            msg = f"{label} page {page}: {e}"
+            error_detail.append(msg)
+            logger.error("Error fetching %s", msg)
+            has_next = False
+
+        if not has_next or (max_pages and page >= max_pages):
+            break
+        page += 1
+
+    return total_fetched, total_new, total_errors, error_detail
+
+
+def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | None) -> None:
+    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
+    retries = int(os.getenv("REQUEST_RETRIES", "3"))
+    flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
+    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
+
+    if not flaresolverr_url:
+        logger.error("FLARESOLVERR_URL is not set - MFSA requires it for every request. Aborting.")
+        sys.exit(1)
+
+    all_sources = _load_scrape_sources()
+    if run_all:
+        targets = all_sources
+    else:
+        targets = [s for s in all_sources if s["label"] == category]
+        if not targets:
+            logger.error("No MFSA scrape source with label '%s' - available: %s", category, [s["label"] for s in all_sources])
+            sys.exit(1)
+
+    logger.info(
+        "Backfilling %d MFSA categor%s%s",
+        len(targets), "y" if len(targets) == 1 else "ies",
+        " [DRY RUN - nothing will be written]" if dry_run else "",
+    )
+
+    engine = None if dry_run else init_db(db_path)
+    run_id = None if dry_run else record_run_start(engine)
+    grand_fetched = grand_new = grand_errors = 0
+    grand_error_detail = []
+
+    for source in targets:
+        fetched, new, errors, error_detail = _backfill_category(source, flaresolverr_url, fetch_cfg, engine, dry_run, max_pages)
+        grand_fetched += fetched
+        grand_new += new
+        grand_errors += errors
+        grand_error_detail.extend(error_detail)
+
+    if not dry_run:
+        record_run_complete(engine, run_id, grand_fetched, grand_new, grand_errors, grand_error_detail)
+
+    logger.info(
+        "Backfill complete: categories=%d fetched=%d new=%d errors=%d%s",
+        len(targets), grand_fetched, grand_new, grand_errors, " [DRY RUN]" if dry_run else "",
+    )
+    if grand_errors:
+        sys.exit(1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--category", help="Single source label to backfill (see config/regulators.yaml mt-mfsa sources)")
+    group.add_argument("--all", action="store_true", help="Backfill every MFSA category, enabled or not")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch and parse every page but write nothing")
+    parser.add_argument("--max-pages", type=int, default=None, help="Cap pages fetched per category (useful for testing)")
+    args = parser.parse_args()
+    run(args.category, args.all, args.dry_run, args.max_pages)
+
+
+if __name__ == "__main__":
+    main()

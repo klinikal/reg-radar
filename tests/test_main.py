@@ -89,6 +89,34 @@ def test_run_collection_bad_regulator_skipped():
         os.unlink(db_path)
 
 
+def test_run_collection_skips_disabled_source():
+    """A source with enabled: false is skipped, but its regulator's other (enabled) sources still run."""
+    engine, db_path = _make_engine()
+    try:
+        fetched_labels = []
+
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+            fetched_labels.append(source["label"])
+            return []
+
+        reg = {
+            "id": "test-reg",
+            "name": "Test",
+            "enabled": True,
+            "sources": [
+                {"label": "off", "url": "http://example.com/off", "enabled": False},
+                {"label": "on", "url": "http://example.com/on"},
+            ],
+        }
+
+        with patch("collector.main.fetch_source", side_effect=fake_fetch):
+            run_collection(engine, [reg], _base_cfg())
+
+        assert fetched_labels == ["on"]
+    finally:
+        os.unlink(db_path)
+
+
 def test_run_collection_completes_run_row_on_exception():
     """If fetch_source raises unexpectedly, the run row status must not remain 'running'."""
     engine, db_path = _make_engine()

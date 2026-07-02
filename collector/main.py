@@ -86,6 +86,9 @@ def run_collection(engine, regulators: list[dict], cfg: dict):
                     continue
 
                 for source in reg.get("sources", []):
+                    if not source.get("enabled", True):
+                        logger.debug("Skipping disabled source: %s/%s", reg.get("id", "<unknown>"), source.get("label", "<unknown>"))
+                        continue
                     try:
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg)
                         total_fetched += len(items)

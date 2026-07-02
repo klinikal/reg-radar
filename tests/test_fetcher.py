@@ -8,6 +8,8 @@ from collector.fetcher import (
     _parse_scrape,
     _validate_url_not_private,
     _extract_pdf_text,
+    _fetch_html,
+    _fetch_via_flaresolverr,
 )
 
 
@@ -294,6 +296,65 @@ def test_parse_scrape_extract_pdf_text_falls_back_to_content_selector_on_failure
 
         assert len(items) == 1
         assert items[0].raw_content == "Fallback summary text"
+
+
+def test_fetch_html_skips_plain_http_when_flaresolverr_available():
+    # A Cloudflare-protected site blocks plain HTTP too - retrying it first
+    # only wastes requests that count toward that site's own rate limiting,
+    # for no chance of success. Go straight to FlareSolverr instead.
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs, \
+         patch("httpx.Client") as mock_client_cls:
+        mock_fs.return_value = "<html>fs content</html>"
+
+        result = _fetch_html("https://example.com", "ua", 10, 3, flaresolverr_url="http://flaresolverr:8191")
+
+        assert result == "<html>fs content</html>"
+        mock_client_cls.assert_not_called()
+        mock_fs.assert_called_once_with("https://example.com", "http://flaresolverr:8191", 10)
+
+
+def test_fetch_html_uses_plain_http_when_no_flaresolverr():
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs, \
+         patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_response = MagicMock()
+        mock_response.text = "<html>direct content</html>"
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = _fetch_html("https://example.com", "ua", 10, 3, flaresolverr_url=None)
+
+        assert result == "<html>direct content</html>"
+        mock_fs.assert_not_called()
+
+
+def test_fetch_via_flaresolverr_backs_off_and_gives_up_on_ban_message():
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "status": "error",
+            "message": "Error solving the challenge. Cloudflare has blocked this request. Probably your IP is banned for this site.",
+        }
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+
+        assert result is None
+        assert mock_post.call_count == 3  # exhausts _FLARESOLVERR_MAX_RETRIES, doesn't hammer indefinitely
+
+
+def test_fetch_via_flaresolverr_returns_content_on_success():
+    with patch("httpx.post") as mock_post, patch("time.sleep"):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "ok", "solution": {"response": "<html>real content</html>"}}
+        mock_post.return_value = mock_response
+
+        result = _fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+
+        assert result == "<html>real content</html>"
+        assert mock_post.call_count == 1  # no retry needed on first success
 
 
 def test_ssrf_private_ip_blocked():

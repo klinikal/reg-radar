@@ -1,5 +1,7 @@
 import ipaddress
 import logging
+import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
@@ -12,6 +14,25 @@ from collector.language import detect_language
 from collector.schema import Item, make_item_id
 
 logger = logging.getLogger(__name__)
+
+# FlareSolverr drives a real browser per request and the target site's own
+# rate limiting/bot detection is what actually matters here, not our own
+# throughput - a burst of requests (even ones that individually succeed) can
+# get the source IP temporarily banned by the target's WAF. These are
+# deliberately conservative and env-tunable rather than hardcoded.
+_FLARESOLVERR_MIN_INTERVAL_SECONDS = float(os.getenv("FLARESOLVERR_MIN_INTERVAL_SECONDS", "8"))
+_FLARESOLVERR_MAX_RETRIES = int(os.getenv("FLARESOLVERR_MAX_RETRIES", "3"))
+_FLARESOLVERR_RETRY_BACKOFF_SECONDS = float(os.getenv("FLARESOLVERR_RETRY_BACKOFF_SECONDS", "45"))
+_last_flaresolverr_request_at = 0.0
+
+
+def _throttle_flaresolverr() -> None:
+    global _last_flaresolverr_request_at
+    elapsed = time.monotonic() - _last_flaresolverr_request_at
+    wait = _FLARESOLVERR_MIN_INTERVAL_SECONDS - elapsed
+    if wait > 0:
+        time.sleep(wait)
+    _last_flaresolverr_request_at = time.monotonic()
 
 
 def _truncate_snippet(text: str) -> str:
@@ -57,22 +78,49 @@ def _make_ssrf_check():
 
 def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> str | None:
     _validate_url_not_private(url)
-    try:
-        resp = httpx.post(
-            f"{flaresolverr_url}/v1",
-            json={"cmd": "request.get", "url": url, "maxTimeout": timeout * 1000},
-            timeout=timeout + 10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") == "ok":
-            return data["solution"]["response"]
-    except Exception as e:
-        logger.warning("FlareSolverr request failed for %s: %s", url, e)
+    for attempt in range(_FLARESOLVERR_MAX_RETRIES):
+        _throttle_flaresolverr()
+        try:
+            resp = httpx.post(
+                f"{flaresolverr_url}/v1",
+                json={"cmd": "request.get", "url": url, "maxTimeout": timeout * 1000},
+                timeout=timeout + 10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") == "ok":
+                return data["solution"]["response"]
+            message = data.get("message", "")
+            is_last_attempt = attempt == _FLARESOLVERR_MAX_RETRIES - 1
+            if "banned" in message.lower() or "blocked" in message.lower():
+                # The target site's own rate limiting, not a transient network
+                # blip - back off much longer than a normal retry, since
+                # hammering it again immediately only makes the ban last longer.
+                backoff = _FLARESOLVERR_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+                logger.warning(
+                    "FlareSolverr reports %s for %s (attempt %d/%d)%s",
+                    message, url, attempt + 1, _FLARESOLVERR_MAX_RETRIES,
+                    "" if is_last_attempt else f" - backing off {backoff:.0f}s",
+                )
+                if not is_last_attempt:
+                    time.sleep(backoff)
+            else:
+                logger.warning("FlareSolverr returned non-ok status for %s: %s", url, message)
+                return None
+        except Exception as e:
+            logger.warning("FlareSolverr request failed for %s: %s", url, e)
+            return None
     return None
 
 
 def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolverr_url: str | None = None) -> str | None:
+    # When a source is already known to need FlareSolverr, don't waste plain
+    # HTTP attempts first - a Cloudflare-protected site blocks those too, and
+    # each one still counts toward that site's own rate limiting/ban
+    # threshold for no benefit (it was never going to succeed).
+    if flaresolverr_url:
+        return _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
+
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
@@ -82,10 +130,6 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
                 return resp.text
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
-
-    if flaresolverr_url:
-        logger.info("Retrying %s via FlareSolverr", url)
-        return _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
 
     return None
 
