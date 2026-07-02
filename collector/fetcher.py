@@ -1,6 +1,5 @@
 import ipaddress
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
@@ -83,8 +82,6 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
                 return resp.text
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
 
     if flaresolverr_url:
         logger.info("Retrying %s via FlareSolverr", url)
@@ -103,8 +100,6 @@ def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int) -> bytes
                 return resp.content
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
     return None
 
 
