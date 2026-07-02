@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
-from collector.fetcher import fetch_source, _resolve_language, _truncate_snippet
+import pytest
+from collector.fetcher import fetch_source, _resolve_language, _truncate_snippet, _parse_scrape, _validate_url_not_private
 
 
 SAMPLE_CONFIG = {"user_agent": "test-agent/1.0", "timeout": 10, "retries": 1}
@@ -99,3 +100,90 @@ def test_fetch_source_returns_empty_on_http_error():
         items = fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
 
     assert items == []
+
+
+# --- scrape path tests ---
+
+SCRAPE_SOURCE = {
+    "url": "https://example.com/news",
+    "label": "test_feed",
+    "type": "scrape",
+    "scrape": {
+        "item_selector": ".item",
+        "title_selector": "h2",
+        "link_selector": "a",
+        "date_selector": ".date",
+        "date_attribute": None,
+        "content_selector": None,
+    },
+    "tags": ["test"],
+}
+
+
+def test_parse_scrape_empty_href_skipped():
+    html = """
+    <html><body>
+      <div class="item"><h2>Valid</h2><a href="https://example.com/valid">link</a></div>
+      <div class="item"><h2>Empty</h2><a href="">link</a></div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].url == "https://example.com/valid"
+
+
+def test_parse_scrape_relative_href_resolved():
+    html = """
+    <html><body>
+      <div class="item"><h2>Relative</h2><a href="/news/item-1">link</a></div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].url == "https://example.com/news/item-1"
+
+
+def test_parse_scrape_missing_title_skipped():
+    html = """
+    <html><body>
+      <div class="item"><a href="https://example.com/page">link</a></div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 0
+
+
+def test_parse_scrape_date_parsed():
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Title</h2>
+        <a href="https://example.com/page">link</a>
+        <span class="date">2024-01-15</span>
+      </div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].published_at is not None
+    assert items[0].date_inferred is False
+
+
+def test_parse_scrape_no_date_inferred():
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Title</h2>
+        <a href="https://example.com/page">link</a>
+      </div>
+    </body></html>
+    """
+    items = _parse_scrape(html, SCRAPE_SOURCE, "test_reg")
+    assert len(items) == 1
+    assert items[0].date_inferred is True
+    assert items[0].published_at is None
+
+
+def test_ssrf_private_ip_blocked():
+    with pytest.raises(ValueError, match="private"):
+        _validate_url_not_private("http://192.168.1.1/path")

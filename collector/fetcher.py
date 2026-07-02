@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import time
 from datetime import datetime, timezone
@@ -31,7 +32,32 @@ def _resolve_language(feed_item: dict, source_preferred: str | None, title: str,
     return detected
 
 
+def _validate_url_not_private(url: str) -> None:
+    from urllib.parse import urlparse
+    host = urlparse(url).hostname or ""
+    try:
+        addr = ipaddress.ip_address(host)
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            raise ValueError(f"URL targets private address: {host}")
+    except ValueError as e:
+        if "private" in str(e):
+            raise
+
+
+def _make_ssrf_check():
+    def on_request(request):
+        host = request.url.host
+        try:
+            addr = ipaddress.ip_address(host)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                raise httpx.InvalidURL(f"Request to private address blocked: {host}")
+        except ValueError:
+            pass  # hostname, not a bare IP — allow
+    return on_request
+
+
 def _fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int) -> str | None:
+    _validate_url_not_private(url)
     try:
         resp = httpx.post(
             f"{flaresolverr_url}/v1",
@@ -51,7 +77,7 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
-            with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True) as client:
+            with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [_make_ssrf_check()]}) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
                 return resp.text
@@ -71,7 +97,7 @@ def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int) -> bytes
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
-            with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True) as client:
+            with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [_make_ssrf_check()]}) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
                 return resp.content
@@ -160,6 +186,8 @@ def _parse_scrape(html: str, source: dict, regulator_id: str) -> list[Item]:
 
         title = title_el.get_text(strip=True)
         href = link_el.get("href", "").strip()
+        if not href:
+            continue
         if not href.startswith("http"):
             href = urljoin(source["url"], href)
 
