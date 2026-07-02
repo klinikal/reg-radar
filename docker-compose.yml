@@ -17,7 +17,7 @@ services:
       - ./data:/app/data
       - ./config:/app/config
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     depends_on:
       - collector
@@ -26,6 +26,4 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     environment:
       - LOG_LEVEL=info
-    ports:
-      - "8191:8191"
     restart: unless-stopped
