@@ -21,8 +21,9 @@
       <input type="text" class="reg-filter" placeholder="Filter regulators... (country, abbreviation, or full name)" autocomplete="off">
       <div class="reg-select-list">
         {% for r in regulators %}
-        <label class="checkbox reg" data-search="{{ r.search_text }}">
+        <label class="checkbox reg{{ ' reg-unhealthy' if r.consecutive_failures > 0 else '' }}" data-search="{{ r.search_text }}">
           <input type="checkbox" name="regulator_id" value="{{ r.id }}" {% if r.id in regulator_id %}checked{% endif %}> {{ r.display_label }}
+          <span class="reg-health">{{ r.total_items }} item{{ "s" if r.total_items != 1 else "" }}{% if r.last_fetched_at %} &middot; last {{ r.last_fetched_at[:10] }}{% endif %}{% if r.consecutive_failures > 0 %} &middot; <span class="reg-warning">{{ r.consecutive_failures }} failure{{ "s" if r.consecutive_failures != 1 else "" }}</span>{% endif %}</span>
         </label>
         {% endfor %}
       </div>

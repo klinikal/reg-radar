@@ -149,6 +149,22 @@ main {
   display: none;
 }
 
+.reg-health {
+  display: block;
+  margin-left: 20px;
+  font-size: 11px;
+  color: #999;
+}
+
+.reg-warning {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+label.reg.reg-unhealthy {
+  background: #fff5f5;
+}
+
 .reg-select-actions {
   display: flex;
   align-items: center;
