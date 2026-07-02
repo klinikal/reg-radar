@@ -1,5 +1,7 @@
 import os
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from collector.schema import Item, make_item_id
 from collector.storage import (
@@ -11,6 +13,7 @@ from collector.storage import (
     record_source_error,
     reset_source_errors,
 )
+from mcpserver.queries import get_recent
 
 
 def make_test_item(url="https://example.com/1", regulator_id="esma"):
@@ -114,5 +117,37 @@ def test_source_error_tracking():
                 text("SELECT consecutive_failures FROM source_errors WHERE regulator_id='esma' AND source_label='all_news'")
             ).fetchone()
         assert row[0] == 0
+    finally:
+        os.unlink(db_path)
+
+
+def test_concurrent_read_write_no_lock_error():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        engine = init_db(db_path)
+
+        reader_errors = []
+        reader_results = []
+
+        def reader():
+            for _ in range(10):
+                try:
+                    results = get_recent(engine, limit=10)
+                    reader_results.append(results)
+                except Exception as e:
+                    reader_errors.append(e)
+                time.sleep(0.02)
+
+        t = threading.Thread(target=reader)
+        t.start()
+
+        for i in range(50):
+            insert_item(engine, make_test_item(url=f"https://example.com/{i}"))
+
+        t.join(timeout=5)
+
+        assert not reader_errors, f"Reader raised errors: {reader_errors}"
+        assert len(reader_results) > 0
     finally:
         os.unlink(db_path)

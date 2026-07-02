@@ -78,7 +78,11 @@ class SourceErrorRow(Base):
 
 
 def init_db(db_path: str):
-    engine = create_engine(f"sqlite:///{db_path}")
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"timeout": 30})
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.execute(text("PRAGMA synchronous=NORMAL"))
+        conn.commit()
     Base.metadata.create_all(engine)
     return engine
 
@@ -133,8 +137,9 @@ def record_run_start(engine) -> str:
     return run_id
 
 
-def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list) -> None:
-    status = "success" if total_errors == 0 else "partial"
+def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list, status: str | None = None) -> None:
+    if status is None:
+        status = "success" if total_errors == 0 else "partial"
     with Session(engine) as session:
         row = session.get(RunRow, run_id)
         if row:
