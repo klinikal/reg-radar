@@ -35,8 +35,23 @@ def load_config():
 
 
 def load_regulators(config_path: str) -> list[dict]:
-    with open(config_path) as f:
-        return yaml.safe_load(f)
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error("Regulators config not found: %s", config_path)
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        logger.error("Invalid YAML in regulators config %s: %s", config_path, e)
+        sys.exit(1)
+    if not isinstance(data, list) or len(data) == 0:
+        logger.error(
+            "Regulators config %s must be a non-empty list; got %s",
+            config_path,
+            type(data).__name__ if data is not None else "empty",
+        )
+        sys.exit(1)
+    return data
 
 
 def run_collection(engine, regulators: list[dict], cfg: dict):
@@ -45,6 +60,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict):
     total_new = 0
     total_errors = 0
     error_detail = []
+    _exception = None
 
     fetch_cfg = {
         "user_agent": cfg["user_agent"],
@@ -52,40 +68,58 @@ def run_collection(engine, regulators: list[dict], cfg: dict):
         "retries": cfg["retries"],
     }
 
-    for reg in regulators:
-        if not reg.get("enabled", True):
-            logger.debug("Skipping disabled regulator: %s", reg["id"])
-            continue
-
-        cloudflare_protected = reg.get("cloudflare_protected", False)
-        flaresolverr_url = cfg["flaresolverr_url"] if cloudflare_protected else None
-
-        if cloudflare_protected and not cfg["flaresolverr_url"]:
-            logger.warning(
-                "Regulator %s is cloudflare_protected but FLARESOLVERR_URL is not set — skipping",
-                reg["id"],
-            )
-            continue
-
-        for source in reg.get("sources", []):
+    try:
+        for reg in regulators:
             try:
-                items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg)
-                total_fetched += len(items)
-                for item in items:
-                    if insert_item(engine, item):
-                        total_new += 1
-                reset_source_errors(engine, reg["id"], source["label"])
-            except Exception as e:
-                total_errors += 1
-                error_msg = f"{reg['id']}/{source['label']}: {e}"
-                error_detail.append(error_msg)
-                logger.error("Error fetching %s: %s", error_msg, e)
-                record_source_error(engine, reg["id"], source["label"], str(e))
+                if not reg.get("enabled", True):
+                    logger.debug("Skipping disabled regulator: %s", reg.get("id", "<unknown>"))
+                    continue
 
-    record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail)
-    logger.info(
-        "Run complete: fetched=%d new=%d errors=%d", total_fetched, total_new, total_errors
-    )
+                cloudflare_protected = reg.get("cloudflare_protected", False)
+                flaresolverr_url = cfg["flaresolverr_url"] if cloudflare_protected else None
+
+                if cloudflare_protected and not cfg["flaresolverr_url"]:
+                    logger.warning(
+                        "Regulator %s is cloudflare_protected but FLARESOLVERR_URL is not set — skipping",
+                        reg.get("id", "<unknown>"),
+                    )
+                    continue
+
+                for source in reg.get("sources", []):
+                    try:
+                        items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg)
+                        total_fetched += len(items)
+                        for item in items:
+                            if insert_item(engine, item):
+                                total_new += 1
+                        reset_source_errors(engine, reg["id"], source["label"])
+                    except Exception as e:
+                        total_errors += 1
+                        error_msg = f"{reg['id']}/{source['label']}: {e}"
+                        error_detail.append(error_msg)
+                        logger.error("Error fetching %s: %s", error_msg, e)
+                        record_source_error(engine, reg["id"], source["label"], str(e))
+
+            except Exception as e:
+                logger.error(
+                    "Unexpected error processing regulator %s — skipping: %s",
+                    reg.get("id", "<unknown>") if isinstance(reg, dict) else repr(reg),
+                    e,
+                )
+                total_errors += 1
+                error_detail.append(f"regulator error: {e}")
+
+    except Exception as e:
+        _exception = e
+        raise
+
+    finally:
+        status = "failed" if _exception is not None else "ok"
+        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status)
+        if _exception is None:
+            logger.info(
+                "Run complete: fetched=%d new=%d errors=%d", total_fetched, total_new, total_errors
+            )
 
 
 def main():
@@ -109,9 +143,19 @@ def main():
         run_collection(engine, regulators, cfg)
         return
 
+    from apscheduler.events import EVENT_JOB_ERROR
+
+    def _on_job_error(event):
+        logger.error(
+            "Scheduled job %s raised an unhandled exception: %s",
+            event.job_id,
+            event.exception,
+        )
+
     schedule = cfg["schedule"]
     logger.info("Starting scheduler with cron: %s", schedule)
     scheduler = BlockingScheduler()
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
     scheduler.add_job(
         run_collection,
         CronTrigger.from_crontab(schedule),
