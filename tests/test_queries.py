@@ -70,6 +70,39 @@ def test_search_items_finds_by_raw_content_not_just_snippet():
         os.unlink(db_path)
 
 
+def test_search_items_fts_finds_by_title():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        insert_item(engine, make_item(title="Press release on interest rates", url="https://example.com/other"))
+        results = search_items(engine, "MiCA warning")
+        assert len(results) == 1
+        assert "MiCA warning" in results[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_fts_finds_by_raw_content():
+    engine, db_path = setup_engine()
+    try:
+        long_raw = "Firm A breach. " * 40 + "Firm Zeta breach of custody rules."
+        insert_item(engine, make_item(title="Batch warning notice", raw_content=long_raw))
+        results = search_items(engine, "Firm Zeta")
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_handles_fts_breaking_query_without_raising():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="crypto-assets circular"))
+        results = search_items(engine, 'crypto-assets "unterminated')
+        assert isinstance(results, list)
+    finally:
+        os.unlink(db_path)
+
+
 def test_search_items_advanced_finds_by_raw_content_not_just_snippet():
     engine, db_path = setup_engine()
     try:

@@ -52,43 +52,58 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         limit = min(int(limit), 100)
     except (TypeError, ValueError):
         limit = 20
-    # Also checks raw_content, not just the 500-char content_snippet: a
-    # multi-entity document (e.g. a regulator's batch warning notice naming
-    # several firms) can easily exceed that truncation, leaving later-listed
-    # entities unsearchable via title/snippet alone even though the full text
-    # is stored. Widening the search only adds matches, never removes any.
-    conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!' OR raw_content LIKE :q ESCAPE '!')"]
-    params = {"q": f"%{_escape_like(query)}%", "limit": limit}
-    if regulator_id:
-        conditions.append("regulator_id = :regulator_id")
-        params["regulator_id"] = regulator_id
-    if language:
-        conditions.append("language = :language")
-        params["language"] = language
-    if tags:
-        for i, tag in enumerate(tags):
-            conditions.append(f"tags LIKE :tag_{i} ESCAPE '!'")
-            params[f"tag_{i}"] = f'%"{_escape_like(tag)}"%'
-    if date_from:
-        conditions.append("published_at >= :date_from")
-        params["date_from"] = date_from
-    if date_to:
-        conditions.append("published_at <= :date_to")
-        params["date_to"] = _extend_date_to(date_to)
 
-    where = " AND ".join(conditions)
-    sql = f"""
-        SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, tags
-        FROM items WHERE {where}
-        ORDER BY published_at DESC NULLS LAST
-        LIMIT :limit
-    """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
-    with engine.connect() as conn:
-        rows = conn.execute(text(sql), params).fetchall()
-    return [_row_to_dict(r, keys) for r in rows]
+
+    def _run(use_fts: bool):
+        if use_fts:
+            conditions = ["id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH :fts_q)"]
+            params = {"fts_q": _sanitize_fts_terms([query]), "limit": limit}
+        else:
+            # Also checks raw_content, not just the 500-char content_snippet: a
+            # multi-entity document (e.g. a regulator's batch warning notice naming
+            # several firms) can easily exceed that truncation, leaving later-listed
+            # entities unsearchable via title/snippet alone even though the full text
+            # is stored. Widening the search only adds matches, never removes any.
+            conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!' OR raw_content LIKE :q ESCAPE '!')"]
+            params = {"q": f"%{_escape_like(query)}%", "limit": limit}
+        if regulator_id:
+            conditions.append("regulator_id = :regulator_id")
+            params["regulator_id"] = regulator_id
+        if language:
+            conditions.append("language = :language")
+            params["language"] = language
+        if tags:
+            for i, tag in enumerate(tags):
+                conditions.append(f"tags LIKE :tag_{i} ESCAPE '!'")
+                params[f"tag_{i}"] = f'%"{_escape_like(tag)}"%'
+        if date_from:
+            conditions.append("published_at >= :date_from")
+            params["date_from"] = date_from
+        if date_to:
+            conditions.append("published_at <= :date_to")
+            params["date_to"] = _extend_date_to(date_to)
+
+        where = " AND ".join(conditions)
+        sql = f"""
+            SELECT id, regulator_id, source_label, title, url, published_at,
+                   fetched_at, date_inferred, language, content_snippet, source_type, tags
+            FROM items WHERE {where}
+            ORDER BY published_at DESC NULLS LAST
+            LIMIT :limit
+        """
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql), params).fetchall()
+        return [_row_to_dict(r, keys) for r in rows]
+
+    if not query or not query.strip():
+        return _run(use_fts=False)
+    try:
+        return _run(use_fts=True)
+    except Exception as e:
+        logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
+        return _run(use_fts=False)
 
 
 def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = True) -> tuple[list[str], dict]:
