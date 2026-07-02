@@ -9,6 +9,12 @@ RUN pip install --no-cache-dir -r mcpserver/requirements.txt -r collector/requir
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/
 
+RUN addgroup --system appgroup && \
+    adduser --system --ingroup appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
 ENV DB_PATH=/app/data/casp_radar.db \
     LOG_LEVEL=INFO
 

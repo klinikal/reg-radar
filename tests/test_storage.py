@@ -121,6 +121,32 @@ def test_source_error_tracking():
         os.unlink(db_path)
 
 
+def test_upsert_regulator_updates_existing():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        engine = init_db(db_path)
+        entry = {
+            "id": "esma",
+            "name": "ESMA",
+            "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU",
+            "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu",
+            "mica_competent_authority": True,
+            "enabled": True,
+        }
+        upsert_regulator(engine, entry)
+        # Update: disable the regulator
+        upsert_regulator(engine, {**entry, "enabled": False})
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT enabled FROM regulators WHERE id='esma'")).fetchone()
+        assert row[0] == False
+    finally:
+        os.unlink(db_path)
+
+
 def test_concurrent_read_write_no_lock_error():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
