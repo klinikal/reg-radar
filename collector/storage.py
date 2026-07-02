@@ -126,6 +126,18 @@ def insert_item(engine, item: Item) -> bool:
             raw_content=item.raw_content,
         )
         session.add(row)
+        session.execute(
+            text(
+                "INSERT INTO items_fts (item_id, title, content_snippet, raw_content) "
+                "VALUES (:item_id, :title, :content_snippet, :raw_content)"
+            ),
+            {
+                "item_id": item.id,
+                "title": item.title or "",
+                "content_snippet": item.content_snippet or "",
+                "raw_content": item.raw_content or "",
+            },
+        )
         session.commit()
         return True
 

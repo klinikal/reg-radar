@@ -211,3 +211,27 @@ def test_init_db_is_idempotent_for_items_fts():
         assert count == 1
     finally:
         os.unlink(db_path)
+
+
+def test_insert_item_populates_items_fts():
+    engine, db_path = _make_engine()
+    try:
+        item = Item(
+            id=make_item_id("esma", "https://example.com/x", None),
+            regulator_id="esma", source_label="all_news",
+            title="MiCA warning issued", url="https://example.com/x",
+            published_at=None, fetched_at=datetime.now(timezone.utc),
+            date_inferred=False, language="en",
+            content_snippet="Content about crypto assets.",
+            source_type="rss", tags=["casp"], raw_content="Full raw text here.",
+        )
+        insert_item(engine, item)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT item_id, title FROM items_fts WHERE item_id=:id"),
+                {"id": item.id},
+            ).fetchone()
+        assert row is not None
+        assert row[1] == "MiCA warning issued"
+    finally:
+        os.unlink(db_path)
