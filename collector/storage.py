@@ -162,7 +162,7 @@ def record_source_error(engine, regulator_id: str, source_label: str, error: str
                 {
                     "f": row[1] + 1,
                     "e": error,
-                    "t": datetime.now(timezone.utc).isoformat(),
+                    "t": datetime.now(timezone.utc),
                     "r": regulator_id,
                     "s": source_label,
                 }
