@@ -127,6 +127,30 @@ def test_get_warnings_filters_by_tag():
         os.unlink(db_path)
 
 
+def test_get_recent_filters_by_tag():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(tags=["casp", "mica"]))
+        insert_item(engine, make_item(tags=["news"], url="https://example.com/news"))
+        results = get_recent(engine, tags=["casp"])
+        assert len(results) == 1
+        assert "casp" in json.loads(results[0]["tags"])
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_filters_by_tag():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(tags=["warnings"], title="MiCA enforcement action"))
+        insert_item(engine, make_item(tags=["news"], title="MiCA press release", url="https://example.com/news"))
+        results = search_items(engine, query="MiCA", tags=["warnings"])
+        assert len(results) == 1
+        assert "warnings" in json.loads(results[0]["tags"])
+    finally:
+        os.unlink(db_path)
+
+
 def test_get_warnings_days_zero_returns_all():
     engine, db_path = setup_engine()
     try:
