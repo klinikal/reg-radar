@@ -4,6 +4,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 from collector.schema import Item, make_item_id
 from collector.storage import (
     init_db,
@@ -233,5 +234,39 @@ def test_insert_item_populates_items_fts():
             ).fetchone()
         assert row is not None
         assert row[1] == "MiCA warning issued"
+    finally:
+        os.unlink(db_path)
+
+
+def test_init_db_creates_item_chunks_table():
+    engine, db_path = _make_engine()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='item_chunks'")
+            ).fetchone()
+        assert row is not None
+    finally:
+        os.unlink(db_path)
+
+
+def test_item_chunks_row_round_trips():
+    engine, db_path = _make_engine()
+    try:
+        from collector.storage import ItemChunkRow
+        now = datetime.now(timezone.utc)
+        with Session(engine) as session:
+            session.add(ItemChunkRow(
+                id="item1:0", item_id="item1", chunk_index=0,
+                text="First chunk of text.", token_count=4,
+                content_hash="abc123", created_at=now,
+            ))
+            session.commit()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT item_id, chunk_index, text, token_count, content_hash FROM item_chunks WHERE id=:id"),
+                {"id": "item1:0"},
+            ).fetchone()
+        assert row == ("item1", 0, "First chunk of text.", 4, "abc123")
     finally:
         os.unlink(db_path)

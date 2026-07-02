@@ -77,6 +77,18 @@ class SourceErrorRow(Base):
     last_attempt_at = Column(DateTime)
 
 
+class ItemChunkRow(Base):
+    __tablename__ = "item_chunks"
+
+    id = Column(String, primary_key=True)
+    item_id = Column(String, nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+    token_count = Column(Integer)
+    content_hash = Column(String, nullable=False)
+    created_at = Column(DateTime)
+
+
 def init_db(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"timeout": 30})
     with engine.connect() as conn:
