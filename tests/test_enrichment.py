@@ -114,3 +114,25 @@ def test_run_chunking_rechunks_only_the_changed_item():
         assert not any("custody" in t for t in item1_texts)
     finally:
         os.unlink(db_path)
+
+
+def test_run_chunking_clears_stale_chunks_when_content_becomes_empty():
+    engine, db_path = _make_engine()
+    try:
+        item = _make_item("esma", "https://example.com/1", "Some content here about MiCA rules.")
+        insert_item(engine, item)
+        run_chunking(engine)
+        assert _chunk_count(engine, item.id) >= 1
+
+        with Session(engine) as session:
+            session.execute(
+                text("UPDATE items SET raw_content='', content_snippet='' WHERE id=:id"),
+                {"id": item.id},
+            )
+            session.commit()
+
+        chunked, skipped = run_chunking(engine)
+        assert (chunked, skipped) == (0, 1)
+        assert _chunk_count(engine, item.id) == 0
+    finally:
+        os.unlink(db_path)

@@ -15,9 +15,10 @@ def run_chunking(engine) -> tuple[int, int]:
         for item_id, raw_content, content_snippet in rows:
             source_text = raw_content or content_snippet or ""
             if not source_text.strip():
-                # No source text means no chunks are possible, ever, until content
-                # arrives — treat as permanently skipped so it isn't reclassified
-                # as "needs chunking" on every run (item_chunks stays empty for it).
+                # Delete unconditionally (not just when chunks exist) — content can
+                # transition non-empty -> empty between runs, and this guard must
+                # not leave stale chunk rows from the item's prior non-empty state.
+                session.execute(text("DELETE FROM item_chunks WHERE item_id=:id"), {"id": item_id})
                 items_skipped += 1
                 continue
 
