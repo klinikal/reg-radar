@@ -100,7 +100,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
                                 combined_text = f"{item.title} {item.content_snippet} {item.raw_content}"
                                 matched_tags = match_keywords(combined_text, alert_rules)
                                 if matched_tags:
-                                    item.tags = sorted(set(item.tags) | set(matched_tags))
+                                    item.content_tags = sorted(set(item.content_tags) | set(matched_tags))
                             if insert_item(engine, item):
                                 total_new += 1
                         # fetch_source() returns [] both when a fetch genuinely

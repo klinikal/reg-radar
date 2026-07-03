@@ -349,7 +349,7 @@ def test_run_collection_applies_keyword_tags_to_matching_items(tmp_path, monkeyp
     fake_item = Item(
         id="fixed-test-id", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
         url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
-        content_snippet="details on MiCA reporting", source_type="rss", tags=["casp"],
+        content_snippet="details on MiCA reporting", source_type="rss", source_tags=["casp"], content_tags=[],
     )
     monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
 
@@ -363,8 +363,9 @@ def test_run_collection_applies_keyword_tags_to_matching_items(tmp_path, monkeyp
     import json
     from sqlalchemy import text as sa_text
     with engine.connect() as conn:
-        row = conn.execute(sa_text("SELECT tags FROM items WHERE id='fixed-test-id'")).fetchone()
-    assert set(json.loads(row[0])) == {"casp", "mica"}
+        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id'")).fetchone()
+    assert json.loads(row[0]) == ["casp"]
+    assert json.loads(row[1]) == ["mica"]
 
 
 def test_run_collection_without_alert_rules_leaves_tags_unchanged(tmp_path, monkeypatch):
@@ -378,7 +379,7 @@ def test_run_collection_without_alert_rules_leaves_tags_unchanged(tmp_path, monk
     fake_item = Item(
         id="fixed-test-id-2", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
         url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
-        content_snippet="details on MiCA reporting", source_type="rss", tags=["casp"],
+        content_snippet="details on MiCA reporting", source_type="rss", source_tags=["casp"], content_tags=[],
     )
     monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
     regulators = [{"id": "esma", "name": "ESMA", "enabled": True,
@@ -390,5 +391,37 @@ def test_run_collection_without_alert_rules_leaves_tags_unchanged(tmp_path, monk
     import json
     from sqlalchemy import text as sa_text
     with engine.connect() as conn:
-        row = conn.execute(sa_text("SELECT tags FROM items WHERE id='fixed-test-id-2'")).fetchone()
+        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id-2'")).fetchone()
     assert json.loads(row[0]) == ["casp"]
+    assert json.loads(row[1]) == []
+
+
+def test_run_collection_applies_keyword_tags_to_content_tags_not_source_tags(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from collector.storage import init_db
+    from collector.main import run_collection
+    from collector.schema import Item
+
+    engine = init_db(str(tmp_path / "test.db"))
+    now = datetime.now(timezone.utc)
+    fake_item = Item(
+        id="fixed-test-id-3", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
+        url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="details on MiCA reporting", source_type="rss",
+        source_tags=["news"], content_tags=[],
+    )
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
+
+    regulators = [{"id": "esma", "name": "ESMA", "enabled": True,
+                   "sources": [{"type": "rss", "url": "https://x", "label": "all_news", "enabled": True}]}]
+    alert_rules = [{"keyword": "MiCA", "tag": "mica"}]
+    cfg = {"user_agent": "t/1.0", "timeout": 5, "retries": 1, "flaresolverr_url": None}
+
+    run_collection(engine, regulators, cfg, alert_rules=alert_rules)
+
+    import json
+    from sqlalchemy import text as sa_text
+    with engine.connect() as conn:
+        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id-3'")).fetchone()
+    assert json.loads(row[0]) == ["news"]  # source_tags untouched by keyword matching
+    assert json.loads(row[1]) == ["mica"]  # content_tags gets the keyword match
