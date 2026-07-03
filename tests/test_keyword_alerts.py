@@ -1,4 +1,4 @@
-from collector.keyword_alerts import load_alert_rules
+from collector.keyword_alerts import load_alert_rules, match_keywords
 
 
 def test_load_alert_rules_missing_file_returns_empty(tmp_path):
@@ -50,7 +50,16 @@ def test_load_alert_rules_empty_file_returns_empty(tmp_path):
     assert load_alert_rules(str(path)) == []
 
 
-from collector.keyword_alerts import match_keywords
+def test_load_alert_rules_skips_entries_with_non_string_values(tmp_path):
+    path = tmp_path / "alerts.yaml"
+    path.write_text(
+        "- keyword: 2024\n"  # int, not string - skipped
+        "  tag: mica\n"
+        '- keyword: "valid"\n'
+        "  tag: valid-tag\n"  # this one is kept
+    )
+    rules = load_alert_rules(str(path))
+    assert rules == [{"keyword": "valid", "tag": "valid-tag"}]
 
 
 def test_match_keywords_returns_matching_tags():

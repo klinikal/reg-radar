@@ -26,6 +26,9 @@ def load_alert_rules(path: str) -> list[dict]:
         if not isinstance(entry, dict) or "keyword" not in entry or "tag" not in entry:
             logger.warning("Skipping invalid alert rule entry (needs 'keyword' and 'tag'): %r", entry)
             continue
+        if not isinstance(entry["keyword"], str) or not isinstance(entry["tag"], str):
+            logger.warning("Skipping alert rule entry with non-string 'keyword'/'tag': %r", entry)
+            continue
         rules.append({"keyword": entry["keyword"], "tag": entry["tag"]})
     return rules
 

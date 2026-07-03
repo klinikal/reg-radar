@@ -57,7 +57,7 @@ def load_regulators(config_path: str) -> list[dict]:
     return data
 
 
-def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list = None):
+def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[dict] = None):
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
@@ -190,7 +190,7 @@ def _release_lock(lock_file) -> None:
     lock_file.close()
 
 
-def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list = None):
+def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list[dict] = None):
     """run_collection(), but skips entirely (rather than overlapping) if
     another collection run already holds the lock - a long FlareSolverr-
     heavy run (MFSA's ~10+ enabled categories at an 8s minimum interval
