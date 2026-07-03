@@ -22,7 +22,7 @@ def _make_item(regulator_id, url, raw_content):
     return Item(
         id=make_item_id(regulator_id, url, now), regulator_id=regulator_id, source_label="all_news",
         title="Item title", url=url, published_at=now, fetched_at=now, date_inferred=False,
-        language="en", content_snippet="snippet", source_type="rss", tags=["casp"],
+        language="en", content_snippet="snippet", source_type="rss", source_tags=["casp"],
         raw_content=raw_content,
     )
 
