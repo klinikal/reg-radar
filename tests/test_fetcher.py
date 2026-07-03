@@ -743,3 +743,35 @@ def test_parse_scrape_esma_news_extracts_title_link_and_date():
     assert "Test ESMA headline" in items[0].title
     assert items[0].published_at is not None
     assert items[0].date_inferred is False
+
+
+def test_parse_scrape_fiau_extracts_title_link_and_date():
+    html = '''
+    <article class="grid">
+      <div class="col-span-1">
+        <span class="text-blue-light">July 01, 2026</span>
+        <a class="font-bold" href="https://fiaumalta.org/news/test-item/">Test FIAU headline</a>
+        <a class="flex items-center" href="https://fiaumalta.org/news/test-item/">Read More</a>
+      </div>
+    </article>
+    '''
+    source = {
+        "type": "scrape",
+        "url": "https://fiaumalta.org/news/",
+        "label": "all_news",
+        "preferred_language": "en",
+        "tags": ["casp", "aml"],
+        "scrape": {
+            "item_selector": "article.grid > div.col-span-1",
+            "title_selector": "a:not(.flex)",
+            "link_selector": "a:not(.flex)",
+            "date_selector": "span.text-blue-light",
+            "date_attribute": None,
+            "content_selector": None,
+        },
+    }
+    items = _parse_scrape(html, source, "mt-fiau", SAMPLE_CONFIG)
+    assert len(items) == 1
+    assert "Test FIAU headline" in items[0].title
+    assert items[0].published_at is not None
+    assert items[0].date_inferred is False
