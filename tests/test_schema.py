@@ -1,6 +1,6 @@
 import hashlib
 from datetime import datetime, timezone
-from collector.schema import Item, make_item_id
+from collector.schema import Item, make_item_id, make_page_watch_item_id
 
 
 def test_item_id_with_published_at():
@@ -39,3 +39,27 @@ def test_item_dataclass_fields():
     )
     assert item.regulator_id == "esma"
     assert item.tags == ["casp", "mica"]
+
+
+def test_make_page_watch_item_id_is_deterministic():
+    id1 = make_page_watch_item_id("esma", "https://example.com/page", "abc123")
+    id2 = make_page_watch_item_id("esma", "https://example.com/page", "abc123")
+    assert id1 == id2
+
+
+def test_make_page_watch_item_id_differs_on_content_hash_change():
+    id1 = make_page_watch_item_id("esma", "https://example.com/page", "abc123")
+    id2 = make_page_watch_item_id("esma", "https://example.com/page", "def456")
+    assert id1 != id2
+
+
+def test_make_page_watch_item_id_never_collides_with_make_item_id():
+    from datetime import datetime, timezone
+    published_at = datetime(2026, 7, 3, tzinfo=timezone.utc)
+    regular_id = make_item_id("esma", "https://example.com/page", published_at)
+    # A content hash is a 64-hex-char sha256 digest; an ISO-8601 timestamp
+    # string is a different shape entirely, so these two id schemes can
+    # never produce the same input string for sha256, even for the same
+    # (regulator_id, url) pair.
+    watch_id = make_page_watch_item_id("esma", "https://example.com/page", "a" * 64)
+    assert regular_id != watch_id

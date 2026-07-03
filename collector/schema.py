@@ -12,6 +12,11 @@ def make_item_id(regulator_id: str, url: str, published_at: Optional[datetime]) 
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def make_page_watch_item_id(regulator_id: str, url: str, content_hash: str) -> str:
+    raw = f"{regulator_id}|{url}|{content_hash}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
 @dataclass
 class Item:
     id: str
