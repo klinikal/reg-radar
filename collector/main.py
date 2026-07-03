@@ -7,6 +7,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from collector.fetcher import fetch_source
+from collector.keyword_alerts import load_alert_rules, match_keywords
 from collector.storage import (
     init_db,
     insert_item,
@@ -32,6 +33,7 @@ def load_config():
         "timeout": int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,
+        "alerts_path": os.getenv("ALERTS_PATH", "/app/config/alerts.yaml"),
     }
 
 
@@ -55,7 +57,7 @@ def load_regulators(config_path: str) -> list[dict]:
     return data
 
 
-def run_collection(engine, regulators: list[dict], cfg: dict):
+def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list = None):
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
@@ -94,6 +96,11 @@ def run_collection(engine, regulators: list[dict], cfg: dict):
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg)
                         total_fetched += len(items)
                         for item in items:
+                            if alert_rules:
+                                combined_text = f"{item.title} {item.content_snippet} {item.raw_content}"
+                                matched_tags = match_keywords(combined_text, alert_rules)
+                                if matched_tags:
+                                    item.tags = sorted(set(item.tags) | set(matched_tags))
                             if insert_item(engine, item):
                                 total_new += 1
                         # fetch_source() returns [] both when a fetch genuinely
@@ -183,7 +190,7 @@ def _release_lock(lock_file) -> None:
     lock_file.close()
 
 
-def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str):
+def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list = None):
     """run_collection(), but skips entirely (rather than overlapping) if
     another collection run already holds the lock - a long FlareSolverr-
     heavy run (MFSA's ~10+ enabled categories at an 8s minimum interval
@@ -199,7 +206,7 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
         )
         return
     try:
-        run_collection(engine, regulators, cfg)
+        run_collection(engine, regulators, cfg, alert_rules=alert_rules)
     finally:
         _release_lock(lock_file)
 
@@ -220,11 +227,14 @@ def main():
             for k in ("id", "name", "full_name", "jurisdiction", "jurisdiction_type", "website", "mica_competent_authority", "enabled")
         })
 
+    alert_rules = load_alert_rules(cfg["alerts_path"])
+    logger.info("Loaded %d keyword alert rule(s) from %s", len(alert_rules), cfg["alerts_path"])
+
     lock_path = os.path.join(os.path.dirname(cfg["db_path"]) or ".", ".collector.lock")
 
     if "--once" in sys.argv:
         logger.info("Running single collection pass")
-        run_collection_locked(engine, regulators, cfg, lock_path)
+        run_collection_locked(engine, regulators, cfg, lock_path, alert_rules=alert_rules)
         return
 
     from apscheduler.events import EVENT_JOB_ERROR
@@ -243,7 +253,7 @@ def main():
     scheduler.add_job(
         run_collection_locked,
         CronTrigger.from_crontab(schedule),
-        args=[engine, regulators, cfg, lock_path],
+        args=[engine, regulators, cfg, lock_path, alert_rules],
     )
     try:
         scheduler.start()
