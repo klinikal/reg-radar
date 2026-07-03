@@ -34,11 +34,11 @@ def test_item_dataclass_fields():
         language="en",
         content_snippet="First 500 chars...",
         source_type="rss",
-        tags=["casp", "mica"],
+        source_tags=["casp", "mica"],
         raw_content="<p>Full content</p>",
     )
     assert item.regulator_id == "esma"
-    assert item.tags == ["casp", "mica"]
+    assert item.source_tags == ["casp", "mica"]
 
 
 def test_make_page_watch_item_id_is_deterministic():
@@ -63,3 +63,26 @@ def test_make_page_watch_item_id_never_collides_with_make_item_id():
     # (regulator_id, url) pair.
     watch_id = make_page_watch_item_id("esma", "https://example.com/page", "a" * 64)
     assert regular_id != watch_id
+
+
+def test_item_has_source_tags_and_content_tags_fields():
+    from datetime import datetime, timezone
+    item = Item(
+        id="x", regulator_id="esma", source_label="all_news", title="t", url="https://x",
+        published_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
+        date_inferred=False, language="en", content_snippet="s", source_type="rss",
+        source_tags=["warnings"], content_tags=["mica"],
+    )
+    assert item.source_tags == ["warnings"]
+    assert item.content_tags == ["mica"]
+
+
+def test_item_content_tags_defaults_to_empty_list():
+    from datetime import datetime, timezone
+    item = Item(
+        id="x", regulator_id="esma", source_label="all_news", title="t", url="https://x",
+        published_at=datetime.now(timezone.utc), fetched_at=datetime.now(timezone.utc),
+        date_inferred=False, language="en", content_snippet="s", source_type="rss",
+        source_tags=["warnings"],
+    )
+    assert item.content_tags == []

@@ -39,7 +39,7 @@ def make_test_item(url="https://example.com/1", regulator_id="esma"):
         language="en",
         content_snippet="snippet",
         source_type="rss",
-        tags=["casp"],
+        source_tags=["casp"],
         raw_content="<p>raw</p>",
     )
 
@@ -224,7 +224,7 @@ def test_insert_item_populates_items_fts():
             published_at=None, fetched_at=datetime.now(timezone.utc),
             date_inferred=False, language="en",
             content_snippet="Content about crypto assets.",
-            source_type="rss", tags=["casp"], raw_content="Full raw text here.",
+            source_type="rss", source_tags=["casp"], raw_content="Full raw text here.",
         )
         insert_item(engine, item)
         with engine.connect() as conn:
@@ -270,3 +270,41 @@ def test_item_chunks_row_round_trips():
         assert row == ("item1", 0, "First chunk of text.", 4, "abc123")
     finally:
         os.unlink(db_path)
+
+
+def test_init_db_adds_source_tags_and_content_tags_columns_to_pre_existing_db(tmp_path):
+    from sqlalchemy import create_engine, text as sa_text
+    db_path = str(tmp_path / "legacy_tags.db")
+    legacy_engine = create_engine(f"sqlite:///{db_path}")
+    with legacy_engine.connect() as conn:
+        conn.execute(sa_text("CREATE TABLE items (id TEXT PRIMARY KEY, regulator_id TEXT, title TEXT)"))
+        conn.commit()
+    legacy_engine.dispose()
+
+    engine = init_db(db_path)
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(sa_text("PRAGMA table_info(items)")).fetchall()]
+    assert "source_tags" in cols
+    assert "content_tags" in cols
+
+
+def test_insert_item_writes_source_tags_and_content_tags(tmp_path):
+    from datetime import datetime, timezone
+    from collector.schema import Item, make_item_id
+    from sqlalchemy import text as sa_text
+    import json
+
+    engine = init_db(str(tmp_path / "test.db"))
+    now = datetime.now(timezone.utc)
+    item = Item(
+        id=make_item_id("esma", "https://x/a", now), regulator_id="esma", source_label="all_news",
+        title="a", url="https://x/a", published_at=now, fetched_at=now, date_inferred=False,
+        language="en", content_snippet="a", source_type="rss",
+        source_tags=["warnings"], content_tags=["mica"],
+    )
+    insert_item(engine, item)
+
+    with engine.connect() as conn:
+        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id = :id"), {"id": item.id}).fetchone()
+    assert json.loads(row[0]) == ["warnings"]
+    assert json.loads(row[1]) == ["mica"]

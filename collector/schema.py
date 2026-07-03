@@ -30,5 +30,6 @@ class Item:
     language: str
     content_snippet: str
     source_type: str
-    tags: list[str] = field(default_factory=list)
+    source_tags: list[str] = field(default_factory=list)
+    content_tags: list[str] = field(default_factory=list)
     raw_content: str = ""

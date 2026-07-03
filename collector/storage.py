@@ -49,7 +49,8 @@ class ItemRow(Base):
     language = Column(String)
     content_snippet = Column(Text)
     source_type = Column(String)
-    tags = Column(Text)  # JSON array
+    source_tags = Column(Text)  # JSON array - structural (warnings, press_releases, ...)
+    content_tags = Column(Text)  # JSON array - what the item is about (keyword-derived today)
     raw_content = Column(Text)
 
 
@@ -89,6 +90,13 @@ class ItemChunkRow(Base):
     created_at = Column(DateTime)
 
 
+def _ensure_column(conn, table: str, column: str, ddl_type: str) -> None:
+    cols = [row[1] for row in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()]
+    if cols and column not in cols:
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        conn.commit()
+
+
 def init_db(db_path: str):
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"timeout": 30})
     with engine.connect() as conn:
@@ -100,6 +108,8 @@ def init_db(db_path: str):
             "tokenize='unicode61')"
         ))
         conn.commit()
+        _ensure_column(conn, "items", "source_tags", "TEXT")
+        _ensure_column(conn, "items", "content_tags", "TEXT")
     Base.metadata.create_all(engine)
     return engine
 
@@ -134,7 +144,8 @@ def insert_item(engine, item: Item) -> bool:
             language=item.language,
             content_snippet=item.content_snippet,
             source_type=item.source_type,
-            tags=json.dumps(item.tags),
+            source_tags=json.dumps(item.source_tags),
+            content_tags=json.dumps(item.content_tags),
             raw_content=item.raw_content,
         )
         session.add(row)
