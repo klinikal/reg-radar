@@ -28,3 +28,11 @@ def load_alert_rules(path: str) -> list[dict]:
             continue
         rules.append({"keyword": entry["keyword"], "tag": entry["tag"]})
     return rules
+
+
+def match_keywords(text: str, rules: list[dict]) -> list[str]:
+    if not text or not rules:
+        return []
+    lowered = text.lower()
+    matched = {rule["tag"] for rule in rules if rule["keyword"].lower() in lowered}
+    return sorted(matched)

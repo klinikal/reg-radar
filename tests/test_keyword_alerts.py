@@ -48,3 +48,31 @@ def test_load_alert_rules_empty_file_returns_empty(tmp_path):
     path = tmp_path / "alerts.yaml"
     path.write_text("")
     assert load_alert_rules(str(path)) == []
+
+
+from collector.keyword_alerts import match_keywords
+
+
+def test_match_keywords_returns_matching_tags():
+    rules = [{"keyword": "MiCA", "tag": "mica"}, {"keyword": "travel rule", "tag": "travel-rule"}]
+    assert match_keywords("New MiCA guidance published", rules) == ["mica"]
+
+
+def test_match_keywords_is_case_insensitive():
+    rules = [{"keyword": "MiCA", "tag": "mica"}]
+    assert match_keywords("new mica update", rules) == ["mica"]
+
+
+def test_match_keywords_no_match_returns_empty():
+    rules = [{"keyword": "MiCA", "tag": "mica"}]
+    assert match_keywords("Unrelated staffing notice", rules) == []
+
+
+def test_match_keywords_dedupes_when_two_rules_share_a_tag():
+    rules = [{"keyword": "MiCA", "tag": "mica"}, {"keyword": "Markets in Crypto-Assets", "tag": "mica"}]
+    assert match_keywords("This is about Markets in Crypto-Assets, aka MiCA", rules) == ["mica"]
+
+
+def test_match_keywords_handles_empty_text_and_rules():
+    assert match_keywords("", [{"keyword": "MiCA", "tag": "mica"}]) == []
+    assert match_keywords("some text", []) == []
