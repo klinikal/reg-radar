@@ -171,7 +171,7 @@ Copy `.env.example` to `.env` and adjust:
 
 ### Keyword alerts
 
-`config/alerts.yaml` holds optional keyword-to-tag rules — a lightweight, self-hosted "Google Alerts" layer. On each collection run, newly fetched items are scanned (case-insensitive substring match against title + content); matching items get the configured tag added to their existing feed-level tags, so you can filter on it everywhere else (`search_items_tool`, web UI, JSON API) using the same `tags` filter those tools already support.
+`config/alerts.yaml` holds optional keyword-to-tag rules — a lightweight, self-hosted "Google Alerts" layer. On each collection run, newly fetched items are scanned (case-insensitive substring match against title + content); matching items get the configured tag added to `content_tags` — a separate bucket from `source_tags` (the notice-type tags set per feed in `regulators.yaml`, e.g. `warnings`, `press_releases`). The `tags` filter (`search_items_tool`, web UI, JSON API) searches both buckets combined by default; pass `source_tags`/`content_tags` instead to filter one bucket specifically.
 
 The file is optional — delete it, point `ALERTS_PATH` elsewhere, or leave it empty and keyword tagging is simply disabled; collection is unaffected. Example rules ship by default (`MiCA` → `mica`, `travel rule` → `travel-rule`, etc.). Edit freely for your entity's watchlist.
 
