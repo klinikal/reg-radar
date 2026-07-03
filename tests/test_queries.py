@@ -493,3 +493,28 @@ def test_get_month_facets_fts_matches_search_items_advanced_filtering():
         assert sum(f["count"] for f in facets) == 1
     finally:
         os.unlink(db_path)
+
+
+def test_get_recent_filters_by_keyword_derived_tag(tmp_path):
+    from collector.storage import init_db, insert_item
+    from collector.schema import Item, make_item_id
+    from mcpserver.queries import get_recent
+    from datetime import datetime, timezone
+
+    engine = init_db(str(tmp_path / "test.db"))
+    now = datetime.now(timezone.utc)
+    # tags list as it would look AFTER Task 3's keyword-tagging merge ran
+    insert_item(engine, Item(
+        id=make_item_id("esma", "https://x/a", now), regulator_id="esma", source_label="all_news",
+        title="New MiCA guidance", url="https://x/a", published_at=now, fetched_at=now, date_inferred=False,
+        language="en", content_snippet="details on MiCA", source_type="rss", tags=["casp", "mica"],
+    ))
+    insert_item(engine, Item(
+        id=make_item_id("esma", "https://x/b", now), regulator_id="esma", source_label="all_news",
+        title="Unrelated notice", url="https://x/b", published_at=now, fetched_at=now, date_inferred=False,
+        language="en", content_snippet="staffing", source_type="rss", tags=["casp"],
+    ))
+
+    results = get_recent(engine, tags=["mica"])
+    assert len(results) == 1
+    assert results[0]["title"] == "New MiCA guidance"

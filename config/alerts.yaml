@@ -1,0 +1,21 @@
+#
+# Keyword tagging (like a self-hosted Google Alerts). Each entry checks every
+# newly-collected item's title and content for `keyword` (case-insensitive
+# substring match) and, if found, adds `tag` to that item — filterable via
+# the same tag search everywhere else in the app already works.
+#
+# This file is optional - delete it or leave it empty to disable keyword
+# tagging entirely; collection is unaffected either way.
+#
+# Notifications (e.g. a Telegram/webhook ping when a keyword matches) are
+# NOT part of this file yet - see docs/superpowers/plans/2026-07-03-feature-01b-webhook-notifications.md
+# (parked, not yet built).
+
+- keyword: "MiCA"
+  tag: mica
+- keyword: "MiFID"
+  tag: mifid
+- keyword: "travel rule"
+  tag: travel-rule
+- keyword: "enforcement action"
+  tag: enforcement
