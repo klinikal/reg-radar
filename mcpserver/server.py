@@ -33,16 +33,32 @@ def get_engine():
 
 
 @mcp.tool()
-def search_items_tool(query: str, regulator_id: str = None, language: str = None, tags: list[str] = None, date_from: str = None, date_to: str = None, limit: int = 20) -> str:
-    """Full-text search across regulatory items by title and snippet."""
-    results = search_items(get_engine(), query=query, regulator_id=regulator_id, language=language, tags=tags, date_from=date_from, date_to=date_to, limit=limit)
+def search_items_tool(query: str, regulator_id: str = None, language: str = None, tags: list[str] = None,
+                       source_tags: list[str] = None, content_tags: list[str] = None,
+                       date_from: str = None, date_to: str = None, limit: int = 20) -> str:
+    """Full-text search across regulatory items by title and snippet.
+
+    `tags` searches both the notice-type (source_tags) and topic (content_tags)
+    buckets combined. Use `source_tags` to filter by notice kind only (e.g.
+    "warnings", "press_releases") or `content_tags` to filter by topic only
+    (e.g. "mica", "travel-rule") when you need one bucket specifically.
+    """
+    results = search_items(get_engine(), query=query, regulator_id=regulator_id, language=language,
+                            tags=tags, source_tags=source_tags, content_tags=content_tags,
+                            date_from=date_from, date_to=date_to, limit=limit)
     return json.dumps(results, default=str)
 
 
 @mcp.tool()
-def get_recent_tool(limit: int = 20, regulator_id: str = None, tags: list[str] = None, language: str = None) -> str:
-    """Returns the most recent regulatory items, with optional filters."""
-    results = get_recent(get_engine(), limit=limit, regulator_id=regulator_id, tags=tags, language=language)
+def get_recent_tool(limit: int = 20, regulator_id: str = None, tags: list[str] = None,
+                     source_tags: list[str] = None, content_tags: list[str] = None, language: str = None) -> str:
+    """Returns the most recent regulatory items, with optional filters.
+
+    `tags` searches both notice-type (source_tags) and topic (content_tags)
+    buckets combined; use `source_tags`/`content_tags` for a specific bucket.
+    """
+    results = get_recent(get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
+                          source_tags=source_tags, content_tags=content_tags, language=language)
     return json.dumps(results, default=str)
 
 
