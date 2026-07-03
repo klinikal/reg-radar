@@ -282,6 +282,70 @@ def test_extract_pdf_text_caps_page_count():
     assert "page 50 content" not in text  # beyond the cap - not extracted
 
 
+def test_fetch_bytes_routes_through_flaresolverr_when_url_given():
+    # RSS sources marked cloudflare_protected: true had no way to actually
+    # use FlareSolverr - _fetch_bytes() never took a flaresolverr_url param,
+    # so a Cloudflare JS challenge always failed regardless of that config
+    # flag. This proves the routing actually happens.
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs:
+        mock_fs.return_value = "<rss>feed content</rss>"
+        result = _fetch_bytes("https://example.com/feed.rss", "ua", 10, 1, flaresolverr_url="http://flaresolverr:8191")
+        assert result == b"<rss>feed content</rss>"
+        mock_fs.assert_called_once_with("https://example.com/feed.rss", "http://flaresolverr:8191", 10)
+
+
+def test_fetch_bytes_flaresolverr_failure_returns_none():
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs:
+        mock_fs.return_value = None
+        result = _fetch_bytes("https://example.com/feed.rss", "ua", 10, 1, flaresolverr_url="http://flaresolverr:8191")
+        assert result is None
+
+
+def test_fetch_bytes_flaresolverr_response_respects_max_bytes():
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs:
+        mock_fs.return_value = "x" * 1000
+        result = _fetch_bytes("https://example.com/feed.rss", "ua", 10, 1, max_bytes=500, flaresolverr_url="http://flaresolverr:8191")
+        assert result is None
+
+
+def test_fetch_bytes_no_flaresolverr_url_uses_plain_http():
+    # Existing PDF-fetch callers never pass flaresolverr_url - confirm the
+    # plain httpx path is still the default and unaffected.
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs, patch("httpx.Client") as mock_client_cls:
+        mock_response = MagicMock()
+        mock_response.iter_bytes.return_value = [b"plain content"]
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+        mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = _fetch_bytes("https://example.com/doc.pdf", "ua", 10, 1)
+
+        assert result == b"plain content"
+        mock_fs.assert_not_called()
+
+
+def test_fetch_source_rss_routes_through_flaresolverr_when_cloudflare_protected():
+    with patch("collector.fetcher._fetch_via_flaresolverr") as mock_fs:
+        mock_fs.return_value = """<?xml version="1.0"?>
+        <rss version="2.0"><channel><title>Test</title>
+        <item><title>Item</title><link>https://example.com/1</link>
+        <pubDate>Wed, 01 Jul 2026 10:00:00 +0000</pubDate></item>
+        </channel></rss>"""
+        source = {
+            "type": "rss",
+            "url": "https://example.com/feed.rss",
+            "label": "all_news",
+            "preferred_language": "en",
+            "tags": ["casp"],
+        }
+        items = fetch_source(source, "lt-lb", flaresolverr_url="http://flaresolverr:8191", config=SAMPLE_CONFIG)
+        assert len(items) == 1
+        mock_fs.assert_called_once()
+
+
 def test_fetch_bytes_discards_response_over_max_bytes():
     mock_response = MagicMock()
     mock_response.iter_bytes.return_value = [b"x" * 1000]

@@ -246,7 +246,22 @@ def _fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolv
     return None
 
 
-def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes: int | None = None) -> bytes | None:
+def _fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes: int | None = None, flaresolverr_url: str | None = None) -> bytes | None:
+    if flaresolverr_url:
+        # cloudflare_protected: true was previously a no-op for rss/atom
+        # sources - this function never accepted a flaresolverr_url at all,
+        # so a Cloudflare JS challenge always failed no matter how the
+        # source was configured. No expected_selector here since XML feed
+        # content has no CSS selector to check against.
+        text = _fetch_via_flaresolverr(url, flaresolverr_url, timeout)
+        if text is None:
+            return None
+        content = text.encode()
+        if max_bytes is not None and len(content) > max_bytes:
+            logger.warning("Discarding FlareSolverr response from %s - %d bytes exceeds %d byte cap", url, len(content), max_bytes)
+            return None
+        return content
+
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
@@ -486,7 +501,7 @@ def fetch_source(
     url = source["url"]
 
     if source_type in ("rss", "atom"):
-        content = _fetch_bytes(url, user_agent, timeout, retries)
+        content = _fetch_bytes(url, user_agent, timeout, retries, flaresolverr_url=flaresolverr_url)
         if content is None:
             # A genuine fetch failure (network error, block, timeout) must be
             # distinguishable from "fetched fine, feed just has 0 new entries
