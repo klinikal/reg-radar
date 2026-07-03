@@ -162,3 +162,7 @@ The primary contribution surface is `config/regulators.yaml`. Community PRs to:
 ## Licence
 
 MIT
+
+## Credits
+
+casp-radar bypasses Cloudflare-protected sources using [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) (MIT licence), run as a standalone Docker service — see [Coverage](#coverage) above.
