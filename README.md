@@ -73,20 +73,29 @@ Two other one-off scripts under `scripts/` are for disaster recovery or after bu
 - `rebuild_fts_index.py` — rebuilds the SQLite FTS5 search index (`items_fts`) from the `items` table if it ever drifts or you're restoring from backup.
 - `rebuild_chunks.py` — rebuilds the `item_chunks` table (paragraph-aware text chunks derived from each item's full content). Chunks are prep infrastructure for future semantic search; the collector does not populate them automatically yet — run this after a large backfill if you want chunks in place.
 
+## Tags
+
+Every item carries two separate tag lists, kept apart deliberately:
+
+- **`source_tags`** — structural, config-curated per feed in `regulators.yaml` (e.g. `warnings`, `press_releases`, `news`, `publications`, `page_watch`). Set once when a source is configured, same for every item that feed produces.
+- **`content_tags`** — what the item is actually about, computed per item. Today this comes from the [keyword alerts](#keyword-alerts) config; nothing else populates it yet.
+
+Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliberately excluded from `source_tags` — they used to be stamped on nearly every item from a MiCA-relevant regulator regardless of content, which made them useless for filtering. If you want one of those as a real tag, add it as a keyword rule instead (see below) so it only lands on items that actually mention it.
+
 ## MCP server
 
 The MCP server exposes six tools over streamable HTTP:
 
 | Tool | Description |
 |---|---|
-| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails) |
-| `get_recent_tool` | Most recent N items with optional filters |
+| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails). Filter by `tags` (source + content tags combined), or `source_tags`/`content_tags` individually — see [Tags](#tags) |
+| `get_recent_tool` | Most recent N items with optional filters, same `tags`/`source_tags`/`content_tags` options as above |
 | `list_regulators_tool` | Full registry with live fetch status |
 | `get_item_tool` | Single item by ID, including raw content |
 | `get_run_log_tool` | Recent collector run stats |
-| `get_warnings_tool` | Items tagged `warnings`, optionally filtered by date range — see note below |
+| `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below |
 
-**On `get_warnings_tool`:** some regulators only have one general news feed, so it's tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
+**On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
 
 Server endpoint: **`http://localhost:8000/mcp`**.
 
@@ -105,7 +114,7 @@ A minimal, functional list/search/reader view — no build step, server-rendered
 
 - **List view** shows collected items, most recent first, 50 per page with pagination. Filters: keyword search (auto-submits as you type), an exact-match toggle, a multi-select regulator panel (searchable by country, abbreviation, or full name, with per-regulator item counts, last-fetch date, and consecutive-failure warnings), and a date range filter. A **By month** sidebar shows publication-month facets for the current query/filter set.
 - **Search syntax:** unquoted words are AND-ed (`bafin fines` matches items containing both, in either order); `+` behaves the same as a space (`bafin+fines`); wrap a phrase in quotes for adjacency (`"administrative fines"` only matches that exact phrase, not the two words scattered separately); check "exact match" to treat the entire query box as one literal phrase. Search uses the same FTS5 index as the MCP server (title, snippet, and full scraped text).
-- **Reader view** (click any title) strips the item down to title, regulator, date, tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source.
+- **Reader view** (click any title) strips the item down to title, regulator, date, source and content tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source.
 - **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, and `/api/months` — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
 
 This is intentionally plain — a functional first pass, not a finished design. The query/data layer (`mcpserver/queries.py`) is decoupled from presentation, so upgrading the look (or swapping in a JS frontend against the JSON API) later doesn't require touching how data is fetched or filtered.
@@ -171,7 +180,9 @@ Copy `.env.example` to `.env` and adjust:
 
 ### Keyword alerts
 
-`config/alerts.yaml` holds optional keyword-to-tag rules — a lightweight, self-hosted "Google Alerts" layer. On each collection run, newly fetched items are scanned (case-insensitive substring match against title + content); matching items get the configured tag added to `content_tags` — a separate bucket from `source_tags` (the notice-type tags set per feed in `regulators.yaml`, e.g. `warnings`, `press_releases`). MCP tools (`search_items_tool`, `get_recent_tool`) filter by `tags` (both buckets combined) or `source_tags`/`content_tags` individually — the web UI and JSON API don't yet expose tag filtering.
+`config/alerts.yaml` holds optional keyword-to-tag rules — a lightweight, self-hosted "Google Alerts" layer. On each collection run, newly fetched items are scanned (case-insensitive substring match against title + content); matches get added to that item's `content_tags` (see [Tags](#tags) above).
+
+Manage rules from the browser at **`http://localhost:8080/alerts`** — view, add, and delete rules without editing the file directly. Or edit `config/alerts.yaml` by hand; either way, changes take effect on the next collection run (no restart needed).
 
 The file is optional — delete it, point `ALERTS_PATH` elsewhere, or leave it empty and keyword tagging is simply disabled; collection is unaffected. Example rules ship by default (`MiCA` → `mica`, `travel rule` → `travel-rule`, etc.). Edit freely for your entity's watchlist.
 
