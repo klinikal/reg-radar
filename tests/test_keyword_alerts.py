@@ -1,4 +1,4 @@
-from collector.keyword_alerts import load_alert_rules, match_keywords
+from collector.keyword_alerts import load_alert_rules, match_keywords, write_alert_rules
 
 
 def test_load_alert_rules_missing_file_returns_empty(tmp_path):
@@ -85,3 +85,24 @@ def test_match_keywords_dedupes_when_two_rules_share_a_tag():
 def test_match_keywords_handles_empty_text_and_rules():
     assert match_keywords("", [{"keyword": "MiCA", "tag": "mica"}]) == []
     assert match_keywords("some text", []) == []
+
+
+def test_write_alert_rules_round_trips_with_load_alert_rules(tmp_path):
+    path = tmp_path / "alerts.yaml"
+    rules = [{"keyword": "MiCA", "tag": "mica"}, {"keyword": "travel rule", "tag": "travel-rule"}]
+    write_alert_rules(str(path), rules)
+    assert load_alert_rules(str(path)) == rules
+
+
+def test_write_alert_rules_includes_header_comment(tmp_path):
+    path = tmp_path / "alerts.yaml"
+    write_alert_rules(str(path), [])
+    content = path.read_text()
+    assert content.startswith("#")
+    assert "Keyword tagging" in content
+
+
+def test_write_alert_rules_empty_list_round_trips_to_empty(tmp_path):
+    path = tmp_path / "alerts.yaml"
+    write_alert_rules(str(path), [])
+    assert load_alert_rules(str(path)) == []

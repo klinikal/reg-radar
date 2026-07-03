@@ -5,11 +5,12 @@ import os
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from collector.keyword_alerts import load_alert_rules, write_alert_rules
 from collector.storage import init_db
 from mcpserver.queries import get_item, get_month_facets, list_regulators, search_items_advanced
 
@@ -25,6 +26,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name=
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
 PAGE_SIZE = 50
+ALERTS_PATH = os.getenv("ALERTS_PATH", "/app/config/alerts.yaml")
 
 # Full country/entity names for jurisdiction codes used in config/regulators.yaml,
 # so the regulator filter can be searched by country name ("czech"), not just
@@ -175,6 +177,33 @@ def item_view(request: Request, item_id: str):
     return templates.TemplateResponse(
         "item.html", {"request": request, "item": item, "regulator_name": regulators.get(item["regulator_id"])}
     )
+
+
+@app.get("/alerts", response_class=HTMLResponse)
+def alerts_view(request: Request):
+    rules = load_alert_rules(ALERTS_PATH)
+    return templates.TemplateResponse("alerts.html", {"request": request, "rules": rules})
+
+
+@app.post("/alerts")
+def alerts_add(keyword: str = Form(...), tag: str = Form(...)):
+    keyword = keyword.strip()
+    tag = tag.strip()
+    if not keyword or not tag:
+        raise HTTPException(status_code=400, detail="keyword and tag are both required")
+    rules = load_alert_rules(ALERTS_PATH)
+    rules.append({"keyword": keyword, "tag": tag})
+    write_alert_rules(ALERTS_PATH, rules)
+    return RedirectResponse("/alerts", status_code=303)
+
+
+@app.post("/alerts/{index}/delete")
+def alerts_delete(index: int):
+    rules = load_alert_rules(ALERTS_PATH)
+    if 0 <= index < len(rules):
+        rules.pop(index)
+        write_alert_rules(ALERTS_PATH, rules)
+    return RedirectResponse("/alerts", status_code=303)
 
 
 # JSON API - same query layer as the HTML views, so a future non-HTML

@@ -39,3 +39,23 @@ def match_keywords(text: str, rules: list[dict]) -> list[str]:
     lowered = text.lower()
     matched = {rule["tag"] for rule in rules if rule["keyword"].lower() in lowered}
     return sorted(matched)
+
+
+_ALERTS_HEADER_COMMENT = """#
+# Keyword tagging (like a self-hosted Google Alerts). Each entry checks every
+# newly-collected item's title and content for `keyword` (case-insensitive
+# substring match) and, if found, adds `tag` to that item's content_tags -
+# filterable via the same tag search everywhere else in the app already works.
+#
+# This file is optional - delete it or leave it empty to disable keyword
+# tagging entirely; collection is unaffected either way.
+#
+# Edit this file directly, or manage rules via the web UI at /alerts.
+#
+"""
+
+
+def write_alert_rules(path: str, rules: list[dict]) -> None:
+    with open(path, "w") as f:
+        f.write(_ALERTS_HEADER_COMMENT)
+        yaml.safe_dump(rules, f, default_flow_style=False, sort_keys=False)

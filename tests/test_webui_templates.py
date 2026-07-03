@@ -99,3 +99,77 @@ def test_index_renders_source_and_content_tags_separately(monkeypatch, tmp_path)
     assert resp.status_code == 200
     assert "warnings" in resp.text
     assert "mica" in resp.text
+
+
+def test_alerts_view_lists_current_rules(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    alerts_path = tmp_path / "alerts.yaml"
+    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n')
+    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+
+    client = TestClient(app_module.app)
+    resp = client.get("/alerts")
+    assert resp.status_code == 200
+    assert "MiCA" in resp.text
+    assert "mica" in resp.text
+
+
+def test_alerts_add_appends_rule_and_redirects(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from collector.keyword_alerts import load_alert_rules
+
+    alerts_path = tmp_path / "alerts.yaml"
+    alerts_path.write_text("")
+    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+
+    client = TestClient(app_module.app, follow_redirects=False)
+    resp = client.post("/alerts", data={"keyword": "DORA", "tag": "dora-ops"})
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/alerts"
+    assert {"keyword": "DORA", "tag": "dora-ops"} in load_alert_rules(str(alerts_path))
+
+
+def test_alerts_add_rejects_blank_keyword_or_tag(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    alerts_path = tmp_path / "alerts.yaml"
+    alerts_path.write_text("")
+    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+
+    client = TestClient(app_module.app)
+    resp = client.post("/alerts", data={"keyword": "  ", "tag": "dora-ops"})
+    assert resp.status_code == 400
+
+
+def test_alerts_delete_removes_rule_by_index(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from collector.keyword_alerts import load_alert_rules
+
+    alerts_path = tmp_path / "alerts.yaml"
+    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n- keyword: "MiFID"\n  tag: mifid\n')
+    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+
+    client = TestClient(app_module.app, follow_redirects=False)
+    resp = client.post("/alerts/0/delete")
+    assert resp.status_code == 303
+    assert load_alert_rules(str(alerts_path)) == [{"keyword": "MiFID", "tag": "mifid"}]
+
+
+def test_alerts_delete_out_of_range_index_is_a_no_op(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from collector.keyword_alerts import load_alert_rules
+
+    alerts_path = tmp_path / "alerts.yaml"
+    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n')
+    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+
+    client = TestClient(app_module.app, follow_redirects=False)
+    resp = client.post("/alerts/5/delete")
+    assert resp.status_code == 303
+    assert load_alert_rules(str(alerts_path)) == [{"keyword": "MiCA", "tag": "mica"}]
