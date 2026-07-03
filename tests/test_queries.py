@@ -39,7 +39,8 @@ def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=N
         language=language,
         content_snippet="Content about crypto assets and MiCA.",
         source_type="rss",
-        tags=tags or ["casp"],
+        source_tags=tags or ["casp"],
+        content_tags=[],
         raw_content=raw_content,
     )
 
@@ -315,7 +316,7 @@ def test_get_warnings_filters_by_tag():
         insert_item(engine, make_item(tags=["news"], url="https://example.com/news"))
         results = get_warnings(engine, days=30)
         assert len(results) == 1
-        assert "warnings" in json.loads(results[0]["tags"])
+        assert "warnings" in json.loads(results[0]["source_tags"])
     finally:
         os.unlink(db_path)
 
@@ -327,7 +328,7 @@ def test_get_recent_filters_by_tag():
         insert_item(engine, make_item(tags=["news"], url="https://example.com/news"))
         results = get_recent(engine, tags=["casp"])
         assert len(results) == 1
-        assert "casp" in json.loads(results[0]["tags"])
+        assert "casp" in json.loads(results[0]["source_tags"])
     finally:
         os.unlink(db_path)
 
@@ -339,7 +340,7 @@ def test_search_items_filters_by_tag():
         insert_item(engine, make_item(tags=["news"], title="MiCA press release", url="https://example.com/news"))
         results = search_items(engine, query="MiCA", tags=["warnings"])
         assert len(results) == 1
-        assert "warnings" in json.loads(results[0]["tags"])
+        assert "warnings" in json.loads(results[0]["source_tags"])
     finally:
         os.unlink(db_path)
 
@@ -507,14 +508,73 @@ def test_get_recent_filters_by_keyword_derived_tag(tmp_path):
     insert_item(engine, Item(
         id=make_item_id("esma", "https://x/a", now), regulator_id="esma", source_label="all_news",
         title="New MiCA guidance", url="https://x/a", published_at=now, fetched_at=now, date_inferred=False,
-        language="en", content_snippet="details on MiCA", source_type="rss", tags=["casp", "mica"],
+        language="en", content_snippet="details on MiCA", source_type="rss", source_tags=["casp", "mica"],
     ))
     insert_item(engine, Item(
         id=make_item_id("esma", "https://x/b", now), regulator_id="esma", source_label="all_news",
         title="Unrelated notice", url="https://x/b", published_at=now, fetched_at=now, date_inferred=False,
-        language="en", content_snippet="staffing", source_type="rss", tags=["casp"],
+        language="en", content_snippet="staffing", source_type="rss", source_tags=["casp"],
     ))
 
     results = get_recent(engine, tags=["mica"])
     assert len(results) == 1
     assert results[0]["title"] == "New MiCA guidance"
+
+
+def _tagged_item(regulator_id, title, source_tags, content_tags, when=None):
+    when = when or datetime.now(timezone.utc)
+    return Item(
+        id=make_item_id(regulator_id, f"https://x/{title}", when), regulator_id=regulator_id,
+        source_label="all_news", title=title, url=f"https://x/{title}", published_at=when,
+        fetched_at=when, date_inferred=False, language="en", content_snippet=title,
+        source_type="rss", source_tags=source_tags, content_tags=content_tags,
+    )
+
+
+def test_get_recent_tags_param_searches_both_buckets_combined(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    insert_item(engine, _tagged_item("esma", "a", ["warnings"], []))
+    insert_item(engine, _tagged_item("esma", "b", [], ["mica"]))
+    insert_item(engine, _tagged_item("esma", "c", ["news"], ["mifid"]))
+
+    results = get_recent(engine, tags=["warnings"])
+    assert {r["title"] for r in results} == {"a"}
+
+    results = get_recent(engine, tags=["mica"])
+    assert {r["title"] for r in results} == {"b"}
+
+
+def test_get_recent_source_tags_param_filters_source_bucket_only(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    insert_item(engine, _tagged_item("esma", "a", ["warnings"], ["mica"]))
+    insert_item(engine, _tagged_item("esma", "b", [], ["warnings"]))  # "warnings" only in content_tags
+
+    results = get_recent(engine, source_tags=["warnings"])
+    assert {r["title"] for r in results} == {"a"}
+
+
+def test_get_recent_content_tags_param_filters_content_bucket_only(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    insert_item(engine, _tagged_item("esma", "a", ["mica"], []))  # "mica" only in source_tags
+    insert_item(engine, _tagged_item("esma", "b", [], ["mica"]))
+
+    results = get_recent(engine, content_tags=["mica"])
+    assert {r["title"] for r in results} == {"b"}
+
+
+def test_get_warnings_filters_source_tags_not_content_tags(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    insert_item(engine, _tagged_item("esma", "a", ["warnings"], []))
+    insert_item(engine, _tagged_item("esma", "b", [], ["warnings"]))  # would have matched under old combined tags column
+
+    results = get_warnings(engine, days=0)
+    assert {r["title"] for r in results} == {"a"}
+
+
+def test_get_item_returns_source_tags_and_content_tags(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _tagged_item("esma", "a", ["warnings"], ["mica"])
+    insert_item(engine, item)
+    result = get_item(engine, item.id)
+    assert result["source_tags"] == '["warnings"]'
+    assert result["content_tags"] == '["mica"]'

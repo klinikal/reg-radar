@@ -16,6 +16,31 @@ def _escape_like(value: str) -> str:
     return value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
 
+def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds SQL conditions/params for the three tag-filter parameter shapes
+    shared by search_items() and get_recent(): `tags` searches source_tags OR
+    content_tags combined (backward-compatible default), `source_tags` and
+    `content_tags` each filter their own column specifically."""
+    conditions = []
+    params = {}
+    if tags:
+        for i, tag in enumerate(tags):
+            key = f"{prefix}tag_{i}"
+            conditions.append(f"(source_tags LIKE :{key} ESCAPE '!' OR content_tags LIKE :{key} ESCAPE '!')")
+            params[key] = f'%"{_escape_like(tag)}"%'
+    if source_tags:
+        for i, tag in enumerate(source_tags):
+            key = f"{prefix}stag_{i}"
+            conditions.append(f"source_tags LIKE :{key} ESCAPE '!'")
+            params[key] = f'%"{_escape_like(tag)}"%'
+    if content_tags:
+        for i, tag in enumerate(content_tags):
+            key = f"{prefix}ctag_{i}"
+            conditions.append(f"content_tags LIKE :{key} ESCAPE '!'")
+            params[key] = f'%"{_escape_like(tag)}"%'
+    return conditions, params
+
+
 def _sanitize_fts_terms(terms: list[str]) -> str:
     quoted = []
     for term in terms:
@@ -47,14 +72,15 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
     return terms
 
 
-def search_items(engine, query: str, regulator_id=None, language=None, tags=None, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
+def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
+                  content_tags=None, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
     try:
         limit = min(int(limit), 100)
     except (TypeError, ValueError):
         limit = 20
 
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
+            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
 
     def _run(use_fts: bool):
         if use_fts:
@@ -74,10 +100,9 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         if language:
             conditions.append("language = :language")
             params["language"] = language
-        if tags:
-            for i, tag in enumerate(tags):
-                conditions.append(f"tags LIKE :tag_{i} ESCAPE '!'")
-                params[f"tag_{i}"] = f'%"{_escape_like(tag)}"%'
+        tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
+        conditions.extend(tag_conditions)
+        params.update(tag_params)
         if date_from:
             conditions.append("published_at >= :date_from")
             params["date_from"] = date_from
@@ -88,7 +113,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         where = " AND ".join(conditions)
         sql = f"""
             SELECT id, regulator_id, source_label, title, url, published_at,
-                   fetched_at, date_inferred, language, content_snippet, source_type, tags
+                   fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
             FROM items WHERE {where}
             ORDER BY published_at DESC NULLS LAST
             LIMIT :limit
@@ -162,7 +187,7 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
         offset = 0
 
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
+            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
 
     def _run(use_fts: bool):
         conditions, params = _search_conditions(query, exact, regulator_ids, use_fts=use_fts)
@@ -178,7 +203,7 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
             rows = conn.execute(
                 text(f"""
                     SELECT id, regulator_id, source_label, title, url, published_at,
-                           fetched_at, date_inferred, language, content_snippet, source_type, tags
+                           fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
                     FROM items {where}
                     ORDER BY published_at DESC NULLS LAST
                     LIMIT :limit OFFSET :offset
@@ -222,7 +247,7 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
         return _run(use_fts=False)
 
 
-def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=None) -> list[dict]:
+def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None, language=None) -> list[dict]:
     try:
         limit = min(int(limit), 100)
     except (TypeError, ValueError):
@@ -235,21 +260,20 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, language=N
     if language:
         conditions.append("language = :language")
         params["language"] = language
-    if tags:
-        for i, tag in enumerate(tags):
-            conditions.append(f"tags LIKE :rtag_{i} ESCAPE '!'")
-            params[f"rtag_{i}"] = f'%"{_escape_like(tag)}"%'
+    tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
+    conditions.extend(tag_conditions)
+    params.update(tag_params)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, tags
+               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
         FROM items {where}
         ORDER BY fetched_at DESC
         LIMIT :limit
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags"]
+            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
@@ -283,11 +307,11 @@ def list_regulators(engine) -> list[dict]:
 def get_item(engine, item_id: str) -> dict | None:
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, tags, raw_content
+               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags, raw_content
         FROM items WHERE id = :id
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "tags", "raw_content"]
+            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags", "raw_content"]
     with engine.connect() as conn:
         row = conn.execute(text(sql), {"id": item_id}).fetchone()
     if row is None:
@@ -319,7 +343,7 @@ def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
         days = max(0, min(int(days), 365))
     except (TypeError, ValueError):
         days = 30
-    conditions = ['tags LIKE \'%"warnings"%\'']
+    conditions = ['source_tags LIKE \'%"warnings"%\'']
     params: dict = {}
     if days > 0:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -332,12 +356,12 @@ def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
     where = " AND ".join(conditions)
     sql = f"""
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, language, content_snippet, tags
+               fetched_at, language, content_snippet, source_tags, content_tags
         FROM items WHERE {where}
         ORDER BY published_at DESC NULLS LAST
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "language", "content_snippet", "tags"]
+            "fetched_at", "language", "content_snippet", "source_tags", "content_tags"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
