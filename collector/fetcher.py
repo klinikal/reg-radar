@@ -39,6 +39,19 @@ _last_flaresolverr_request_at: dict[str, float] = {}
 _MAX_PDF_DOWNLOAD_BYTES = int(os.getenv("MAX_PDF_DOWNLOAD_BYTES", str(25 * 1024 * 1024)))  # 25 MB
 _MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 
+# Blanket regulation/instrument-name labels applied uniformly to every item
+# from a source regardless of what that specific item actually says (e.g.
+# every AMLA item gets "aml", every EBA item gets "art"/"emt") - stripped
+# from source_tags so a tag isn't rendered meaningless by being on nearly
+# everything. Everything else in a source's config tags (warnings,
+# press_releases, sanctions, enforcement, ...) genuinely describes the
+# notice's kind and is kept.
+_BLANKET_LABEL_DENYLIST = frozenset({"casp", "mica", "aml", "art", "emt", "dora"})
+
+
+def _filter_source_tags(tags: list[str]) -> list[str]:
+    return [t for t in tags if t not in _BLANKET_LABEL_DENYLIST]
+
 
 def _throttle_flaresolverr(domain: str) -> None:
     last = _last_flaresolverr_request_at.get(domain, 0.0)
@@ -293,7 +306,7 @@ def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[It
     now = datetime.now(timezone.utc)
     source_preferred_lang = source.get("preferred_language")
     source_label = source["label"]
-    tags = source.get("tags", [])
+    tags = _filter_source_tags(source.get("tags", []))
     source_type = source.get("type", "rss")
 
     for entry in feed.entries:
@@ -331,7 +344,8 @@ def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[It
             language=language,
             content_snippet=snippet,
             source_type=source_type,
-            tags=tags,
+            source_tags=tags,
+            content_tags=[],
             raw_content=raw_content,
         ))
     return items
@@ -372,7 +386,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
     items = []
     now = datetime.now(timezone.utc)
     source_preferred_lang = source.get("preferred_language")
-    tags = source.get("tags", [])
+    tags = _filter_source_tags(source.get("tags", []))
     source_label = source["label"]
 
     for element in soup.select(item_selector):
@@ -461,7 +475,8 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
             language=language,
             content_snippet=snippet,
             source_type="scrape",
-            tags=tags,
+            source_tags=tags,
+            content_tags=[],
             raw_content=raw_content,
         ))
     return items
@@ -492,7 +507,8 @@ def _parse_page_watch(html: str, source: dict, regulator_id: str) -> list[Item]:
         language=source.get("preferred_language", "en"),
         content_snippet=_truncate_snippet(text),
         source_type="page_watch",
-        tags=source.get("tags", []),
+        source_tags=_filter_source_tags(source.get("tags", [])),
+        content_tags=[],
         raw_content=text,
     )]
 

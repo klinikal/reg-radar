@@ -7,6 +7,7 @@ from collector.fetcher import (
     _resolve_language,
     _truncate_snippet,
     _parse_scrape,
+    _parse_rss,
     _validate_url_not_private,
     _extract_pdf_text,
     _fetch_html,
@@ -14,6 +15,8 @@ from collector.fetcher import (
     _looks_like_block_page,
     _fetch_bytes,
     _has_expected_content,
+    _filter_source_tags,
+    _BLANKET_LABEL_DENYLIST,
 )
 from collector.schema import make_page_watch_item_id
 
@@ -881,3 +884,31 @@ def test_parse_scrape_fiau_extracts_title_link_and_date():
     assert "Test FIAU headline" in items[0].title
     assert items[0].published_at is not None
     assert items[0].date_inferred is False
+
+
+def test_filter_source_tags_strips_blanket_regulation_labels():
+    assert _filter_source_tags(["casp", "mica", "warnings"]) == ["warnings"]
+
+
+def test_filter_source_tags_keeps_notice_type_tags():
+    assert _filter_source_tags(["press_releases", "sanctions", "enforcement"]) == ["press_releases", "sanctions", "enforcement"]
+
+
+def test_filter_source_tags_handles_empty_list():
+    assert _filter_source_tags([]) == []
+
+
+def test_blanket_label_denylist_contains_expected_entries():
+    assert _BLANKET_LABEL_DENYLIST == frozenset({"casp", "mica", "aml", "art", "emt", "dora"})
+
+
+def test_parse_rss_sets_source_tags_filtered_and_content_tags_empty():
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Test item</title><link>https://example.com/a</link>
+      <pubDate>Fri, 03 Jul 2026 10:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    source = {"label": "all_news", "tags": ["casp", "mica", "news"], "type": "rss"}
+    items = _parse_rss(rss, source, "esma")
+    assert items[0].source_tags == ["news"]
+    assert items[0].content_tags == []
