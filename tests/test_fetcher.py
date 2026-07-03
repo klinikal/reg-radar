@@ -346,6 +346,48 @@ def test_fetch_source_rss_routes_through_flaresolverr_when_cloudflare_protected(
         mock_fs.assert_called_once()
 
 
+def test_parse_scrape_amla_consultations_extracts_title_link_and_opening_date():
+    # Fixture mirrors the live page's real DOM (verified 2026-07-03): each
+    # item has two <time datetime="..."> elements (Opening date, Deadline) -
+    # date_selector must resolve to the FIRST one (Opening date comes before
+    # Deadline in document order), not both.
+    html = '''
+    <article class="ecl-content-item">
+      <div class="ecl-content-block__title">
+        <a class="ecl-link" href="/policy/public-consultations/test-consultation_en">Test AMLA consultation</a>
+      </div>
+      <dl class="ecl-description-list">
+        <dt>Opening date</dt>
+        <dd class="ecl-description-list__definition"><time datetime="2026-07-02T12:00:00Z">2 July 2026</time></dd>
+        <dt>Deadline</dt>
+        <dd class="ecl-description-list__definition"><time datetime="2026-09-20T21:59:59Z">20 September 2026</time></dd>
+      </dl>
+    </article>
+    '''
+    source = {
+        "type": "scrape",
+        "url": "https://www.amla.europa.eu/policy/public-consultations_en",
+        "label": "public_consultations",
+        "preferred_language": "en",
+        "tags": ["casp", "aml"],
+        "scrape": {
+            "item_selector": "article.ecl-content-item",
+            "title_selector": ".ecl-content-block__title a",
+            "link_selector": ".ecl-content-block__title a",
+            "date_selector": ".ecl-description-list__definition time",
+            "date_attribute": "datetime",
+            "content_selector": None,
+        },
+    }
+    items = _parse_scrape(html, source, "amla", SAMPLE_CONFIG)
+    assert len(items) == 1
+    assert "Test AMLA consultation" in items[0].title
+    assert items[0].published_at is not None
+    assert items[0].published_at.day == 2
+    assert items[0].published_at.month == 7
+    assert items[0].date_inferred is False
+
+
 def test_fetch_bytes_discards_response_over_max_bytes():
     mock_response = MagicMock()
     mock_response.iter_bytes.return_value = [b"x" * 1000]

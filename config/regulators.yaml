@@ -49,6 +49,37 @@
       tags: [casp, mica, page_watch]
       watch_selector: ".node__content"
 
+- id: amla
+  name: AMLA
+  full_name: Authority for Anti-Money Laundering and Countering the Financing of Terrorism
+  jurisdiction: EU
+  jurisdiction_type: supranational
+  website: https://www.amla.europa.eu
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: null
+  notes: "New EU AML/CFT supervisory authority (operational 2026) - directly relevant since CASPs are AML-obliged entities, distinct from ESMA/EBA's MiCA-specific roles. Document library (resources/document-library_en) is JS-rendered (facets/listing populate via client-side AJAX, confirmed empty even through FlareSolverr's real browser) and not reliably scrapeable with current tooling - known gap, not attempted. RSS news feed and the public-consultations page (server-rendered, clean markup) are both tracked instead."
+  sources:
+    - type: rss
+      url: https://www.amla.europa.eu/node/19/rss_en
+      label: all_news
+      preferred_language: en
+      tags: [casp, aml, mica]
+    - type: scrape
+      url: "https://www.amla.europa.eu/policy/public-consultations_en"
+      label: public_consultations
+      preferred_language: en
+      tags: [casp, aml, publications]
+      notes: "Each item has two <time datetime=...> elements (Opening date, then Deadline) - date_selector resolves to the first one via select_one()'s document-order match."
+      scrape:
+        item_selector: "article.ecl-content-item"
+        title_selector: ".ecl-content-block__title a"
+        link_selector: ".ecl-content-block__title a"
+        date_selector: ".ecl-description-list__definition time"
+        date_attribute: "datetime"
+        content_selector: null
+
 - id: eba
   name: EBA
   full_name: European Banking Authority

@@ -25,7 +25,7 @@ import time
 
 import httpx
 
-from collector.fetcher import fetch_source
+from collector.fetcher import _backoff_with_jitter, fetch_source
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -87,6 +87,9 @@ def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> N
     total_errors = 0
     error_detail = []
 
+    consecutive_failures = 0
+    max_consecutive_failures = 5
+
     for page in range(start_page, end_page + 1):
         page_url = BASE_URL if page == 0 else f"{BASE_URL}?page={page}"
         source = {**SOURCE_TEMPLATE, "url": page_url}
@@ -99,11 +102,32 @@ def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> N
                 new_count = sum(1 for item in items if insert_item(engine, item))
                 total_new += new_count
                 logger.info("page %d: %d items, %d new", page, len(items), new_count)
+            consecutive_failures = 0
         except Exception as e:
             total_errors += 1
+            consecutive_failures += 1
             msg = f"page {page}: {e}"
             error_detail.append(msg)
-            logger.error("Error fetching %s", msg)
+            # A 429 means we're being actively rate-limited - the site itself
+            # is telling us to slow down, not a one-off blip. Retrying the
+            # very next page immediately (the old behaviour) just gets
+            # rate-limited again, cascading into a wall of failures for every
+            # remaining page. Back off with growing delay instead, same
+            # pattern already used for FlareSolverr-routed sources.
+            backoff = _backoff_with_jitter(min(consecutive_failures, 5))
+            logger.error(
+                "Error fetching %s (consecutive failures: %d/%d) - backing off %.0fs",
+                msg, consecutive_failures, max_consecutive_failures, backoff,
+            )
+            if consecutive_failures >= max_consecutive_failures:
+                logger.error(
+                    "%d consecutive page failures - stopping (page %d..%d not attempted)",
+                    consecutive_failures, page + 1, end_page,
+                )
+                total_errors += end_page - page
+                break
+            time.sleep(backoff)
+            continue
 
         if page < end_page:
             time.sleep(delay)

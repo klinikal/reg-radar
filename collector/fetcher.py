@@ -397,12 +397,21 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
                 if date_str:
                     try:
                         from dateutil.parser import parse as parse_date
-                        # dayfirst: EEA/UK sources use DD/MM/YYYY - without this,
-                        # ambiguous dates like 02/07/2026 silently misparse as
-                        # 2 July -> 7 Feb. Safe as a global default: sources using
-                        # an unambiguous ISO datetime attribute are unaffected by
-                        # dayfirst, and every source parsing free-text dates in
-                        # this config is EEA/UK-formatted, not US-style MM/DD.
+                        # dayfirst: EEA/UK sources render free-text dates as
+                        # DD/MM/YYYY - without this, ambiguous dates like
+                        # 02/07/2026 silently misparse as 2 July -> 7 Feb.
+                        # Only applied when reading free text (no
+                        # date_attribute): dateutil's dayfirst=True does NOT
+                        # leave an unambiguous ISO datetime="..." attribute
+                        # alone - verified directly that dayfirst=True still
+                        # swaps month/day on a full "YYYY-MM-DDTHH:MM:SSZ"
+                        # string whenever both are <=12 (e.g.
+                        # "2026-07-02T12:00:00Z" parses as 7 Feb, not 2 July).
+                        # A prior version of this comment claimed ISO
+                        # attributes were "unaffected by dayfirst" - that was
+                        # wrong and silently corrupted any date_attribute
+                        # source's day<=12 dates (confirmed live against
+                        # ESMA's library scrape, which uses date_attribute).
                         #
                         # fuzzy is NOT a safe global default - it silently
                         # extracts a date-shaped substring from surrounding text
@@ -412,7 +421,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
                         # sources that genuinely need it (e.g. FCA's
                         # "Published: DD/MM/YYYY" text, which has no clean
                         # sub-element isolating just the date).
-                        parsed = parse_date(date_str, fuzzy=date_fuzzy, dayfirst=True)
+                        parsed = parse_date(date_str, fuzzy=date_fuzzy, dayfirst=not date_attribute)
                         published_at = parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
                         date_inferred = False
                     except Exception:
