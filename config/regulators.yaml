@@ -34,6 +34,12 @@
         date_selector: "td.views-field-created time"
         date_attribute: "datetime"
         content_selector: "td.views-field-field-document-type"
+    - type: page_watch
+      url: "https://www.esma.europa.eu/esmas-activities/digital-finance-and-innovation/markets-crypto-assets-regulation-mica"
+      label: mica_hub_page
+      preferred_language: en
+      tags: [casp, mica, page_watch]
+      watch_selector: ".node__content"
 
 - id: eba
   name: EBA

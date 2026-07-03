@@ -224,6 +224,29 @@ def test_run_collection_rss_source_zero_items_not_treated_as_error():
         os.unlink(db_path)
 
 
+def test_run_collection_page_watch_zero_items_not_treated_as_error():
+    # Unlike scrape sources, a page_watch source with genuinely nothing
+    # changed since the last check is completely normal - must not be
+    # flagged as a possible broken selector.
+    engine, db_path = _make_engine()
+    try:
+        reg = {
+            "id": "test-reg",
+            "name": "Test",
+            "enabled": True,
+            "sources": [{"label": "watched_page", "url": "http://example.com/page", "type": "page_watch"}],
+        }
+
+        with patch("collector.main.fetch_source", return_value=[]):
+            run_collection(engine, [reg], _base_cfg())
+
+        with Session(engine) as session:
+            rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="watched_page").all()
+            assert len(rows) == 0
+    finally:
+        os.unlink(db_path)
+
+
 def test_run_collection_completes_run_row_on_exception():
     """If fetch_source raises unexpectedly, the run row status must not remain 'running'."""
     engine, db_path = _make_engine()
