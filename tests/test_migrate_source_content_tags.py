@@ -142,3 +142,85 @@ def test_run_migrates_legacy_row_with_data_only_in_old_tags_column(tmp_path):
         row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id = 'legacy-1'")).fetchone()
     assert json.loads(row[0]) == ["warnings"]  # casp/mica denylisted, warnings kept - read from the OLD tags column
     assert json.loads(row[1]) == ["mica"]  # freshly computed from real text via keyword match
+
+
+def test_run_skips_new_style_rows_with_null_tags_column(tmp_path):
+    from collector.storage import init_db
+    from scripts.migrate_source_content_tags import run
+    from sqlalchemy import text as sa_text
+    from datetime import datetime, timezone
+    import json
+
+    db_path = str(tmp_path / "test.db")
+    engine = init_db(db_path)
+    now = datetime.now(timezone.utc)
+
+    # Legacy `tags` column added to match a real production DB's shape.
+    with engine.connect() as conn:
+        conn.execute(sa_text("ALTER TABLE items ADD COLUMN tags TEXT"))
+        conn.commit()
+
+    # New-style row: written by post-merge collector code, which never
+    # touches `tags` (NULL) and already has correct source_tags/content_tags.
+    # The migration must leave this row completely alone.
+    with engine.connect() as conn:
+        conn.execute(sa_text(
+            "INSERT INTO items (id, regulator_id, source_label, title, url, "
+            "published_at, fetched_at, date_inferred, language, content_snippet, "
+            "source_type, tags, source_tags, content_tags, raw_content) "
+            "VALUES ('new-1', 'esma', 'all_news', 'MiCA update', 'https://x/new', "
+            ":now, :now, 0, 'en', 'MiCA update', 'rss', NULL, :source_tags, :content_tags, "
+            "'MiCA update details')"
+        ), {
+            "now": now.isoformat(),
+            "source_tags": json.dumps(["warnings"]),
+            "content_tags": json.dumps(["mica"]),
+        })
+        conn.commit()
+
+    # Also seed a legacy row alongside it, to confirm the fix still migrates
+    # legacy rows correctly while leaving the new-style row untouched.
+    with engine.connect() as conn:
+        conn.execute(sa_text(
+            "INSERT INTO items (id, regulator_id, source_label, title, url, "
+            "published_at, fetched_at, date_inferred, language, content_snippet, "
+            "source_type, tags, source_tags, content_tags, raw_content) "
+            "VALUES ('legacy-1', 'esma', 'all_news', 'MiCA update', 'https://x/legacy', "
+            ":now, :now, 0, 'en', 'MiCA update', 'rss', :old_tags, NULL, NULL, 'MiCA update details')"
+        ), {"now": now.isoformat(), "old_tags": json.dumps(["casp", "mica", "warnings"])})
+        conn.commit()
+
+    alerts_path = str(tmp_path / "alerts.yaml")
+    with open(alerts_path, "w") as f:
+        f.write('- keyword: "MiCA"\n  tag: mica\n')
+
+    run(db_path, alerts_path, dry_run=False)
+
+    with engine.connect() as conn:
+        new_row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id = 'new-1'")).fetchone()
+        legacy_row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id = 'legacy-1'")).fetchone()
+
+    # New-style row must be untouched - NOT overwritten with [].
+    assert json.loads(new_row[0]) == ["warnings"]
+    assert json.loads(new_row[1]) == ["mica"]
+
+    # Legacy row still migrates correctly.
+    assert json.loads(legacy_row[0]) == ["warnings"]
+    assert json.loads(legacy_row[1]) == ["mica"]
+
+
+def test_run_on_db_with_no_legacy_tags_column_completes_without_error(tmp_path):
+    from collector.storage import init_db
+    from scripts.migrate_source_content_tags import run
+
+    db_path = str(tmp_path / "test.db")
+    # init_db() never creates the retired `tags` column - simulates a DB
+    # created fresh by the current, post-split schema.
+    init_db(db_path)
+
+    alerts_path = str(tmp_path / "alerts.yaml")
+    with open(alerts_path, "w") as f:
+        f.write('- keyword: "MiCA"\n  tag: mica\n')
+
+    # Should return cleanly, not raise sqlite3.OperationalError: no such column: tags
+    run(db_path, alerts_path, dry_run=False)

@@ -1,8 +1,8 @@
 #
 # Keyword tagging (like a self-hosted Google Alerts). Each entry checks every
 # newly-collected item's title and content for `keyword` (case-insensitive
-# substring match) and, if found, adds `tag` to that item — filterable via
-# the same tag search everywhere else in the app already works.
+# substring match) and, if found, adds `tag` to that item's content_tags -
+# filterable via the same tag search everywhere else in the app already works.
 #
 # This file is optional - delete it or leave it empty to disable keyword
 # tagging entirely; collection is unaffected either way.

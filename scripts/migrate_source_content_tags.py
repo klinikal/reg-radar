@@ -41,12 +41,22 @@ def migrate_item_tags(old_tags: list[str], text_for_matching: str, alert_rules: 
 
 def run(db_path: str, alerts_path: str, dry_run: bool, batch_size: int = 500) -> None:
     engine = init_db(db_path)
+
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(items)")).fetchall()]
+    if "tags" not in cols:
+        logger.info(
+            "No legacy `tags` column found - nothing to migrate, this database "
+            "was created after the schema split."
+        )
+        return
+
     alert_rules = load_alert_rules(alerts_path)
     logger.info("Loaded %d keyword rule(s) from %s", len(alert_rules), alerts_path)
 
     with engine.connect() as conn:
-        total = conn.execute(text("SELECT COUNT(*) FROM items")).scalar()
-    logger.info("Migrating tags for %d items%s", total, " [DRY RUN]" if dry_run else "")
+        total = conn.execute(text("SELECT COUNT(*) FROM items WHERE tags IS NOT NULL")).scalar()
+    logger.info("Migrating tags for %d legacy item(s)%s", total, " [DRY RUN]" if dry_run else "")
 
     migrated = 0
     offset = 0
@@ -54,7 +64,7 @@ def run(db_path: str, alerts_path: str, dry_run: bool, batch_size: int = 500) ->
         with engine.connect() as conn:
             rows = conn.execute(
                 text("SELECT id, title, content_snippet, raw_content, tags FROM items "
-                     "ORDER BY id LIMIT :limit OFFSET :offset"),
+                     "WHERE tags IS NOT NULL ORDER BY id LIMIT :limit OFFSET :offset"),
                 {"limit": batch_size, "offset": offset},
             ).fetchall()
         if not rows:
