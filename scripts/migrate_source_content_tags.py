@@ -53,15 +53,15 @@ def run(db_path: str, alerts_path: str, dry_run: bool, batch_size: int = 500) ->
     while True:
         with engine.connect() as conn:
             rows = conn.execute(
-                text("SELECT id, title, content_snippet, raw_content, source_tags FROM items "
+                text("SELECT id, title, content_snippet, raw_content, tags FROM items "
                      "ORDER BY id LIMIT :limit OFFSET :offset"),
                 {"limit": batch_size, "offset": offset},
             ).fetchall()
         if not rows:
             break
 
-        for item_id, title, content_snippet, raw_content, old_source_tags_json in rows:
-            old_tags = json.loads(old_source_tags_json) if old_source_tags_json else []
+        for item_id, title, content_snippet, raw_content, old_tags_json in rows:
+            old_tags = json.loads(old_tags_json) if old_tags_json else []
             combined_text = f"{title or ''} {content_snippet or ''} {raw_content or ''}"
             new_source_tags, new_content_tags = migrate_item_tags(old_tags, combined_text, alert_rules)
 
