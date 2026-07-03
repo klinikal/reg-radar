@@ -11,7 +11,8 @@
     <span>{{ regulator_name or item.regulator_id }}</span>
     {% if item.published_at %}<span>{{ item.published_at[:19] }}</span>{% endif %}
     {% if item.language %}<span>{{ item.language }}</span>{% endif %}
-    {% if item.tag_list %}<span>{{ item.tag_list | join(", ") }}</span>{% endif %}
+    {% if item.source_tag_list %}<span class="tag-group tag-source">{{ item.source_tag_list | join(", ") }}</span>{% endif %}
+    {% if item.content_tag_list %}<span class="tag-group tag-content">{{ item.content_tag_list | join(", ") }}</span>{% endif %}
   </div>
   <p class="source-link"><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">View original at source &rarr;</a></p>
 

@@ -293,6 +293,18 @@ table.items td.tags {
   white-space: nowrap;
 }
 
+.tag-group {
+  display: inline-block;
+}
+
+.tag-group + .tag-group::before {
+  content: " \00b7 ";
+}
+
+.tag-group.tag-content {
+  color: #666;
+}
+
 table.items td.empty {
   text-align: center;
   color: #888;

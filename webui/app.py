@@ -69,7 +69,8 @@ def _parse_tags(raw: str | None) -> list[str]:
 
 
 def _with_tags(item: dict) -> dict:
-    item["tag_list"] = _parse_tags(item.get("tags"))
+    item["source_tag_list"] = _parse_tags(item.get("source_tags"))
+    item["content_tag_list"] = _parse_tags(item.get("content_tags"))
     return item
 
 

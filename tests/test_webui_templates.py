@@ -74,3 +74,28 @@ def test_regulator_panel_handles_never_fetched_regulator():
     }]
     html = _render_index(regulators)
     assert "0 items" in html
+
+
+def test_index_renders_source_and_content_tags_separately(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from collector.storage import init_db, insert_item
+    from collector.schema import Item, make_item_id
+    from datetime import datetime, timezone
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+    app_module._engine = None
+    engine = app_module.get_engine()
+    now = datetime.now(timezone.utc)
+    insert_item(engine, Item(
+        id=make_item_id("esma", "https://x/a", now), regulator_id="esma", source_label="all_news",
+        title="Tagged item", url="https://x/a", published_at=now, fetched_at=now, date_inferred=False,
+        language="en", content_snippet="a", source_type="rss",
+        source_tags=["warnings"], content_tags=["mica"],
+    ))
+
+    client = TestClient(app_module.app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "warnings" in resp.text
+    assert "mica" in resp.text
