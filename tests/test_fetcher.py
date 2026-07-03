@@ -706,3 +706,40 @@ def test_fetch_source_page_watch_returns_item_when_content_present():
         items = fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
         assert len(items) == 1
         assert "Page text." in items[0].raw_content
+
+
+def test_parse_scrape_esma_news_extracts_title_link_and_date():
+    # Fixture mirrors the live page's real DOM (verified during this feature's
+    # design): .search-title/.search-date sit *inside* the real title <a>
+    # (rel="bookmark"), and a second, empty <a> lives elsewhere in the card
+    # (e.g. a "See Responses" link) - link_selector must key off rel="bookmark",
+    # not a bare "a" or ".search-title a", to avoid matching the wrong/empty one.
+    html = '''
+    <article class="node node--type-news">
+      <a href="/press-news/esma-news/test-headline" rel="bookmark">
+        <div class="search-title"><span class="field--name-title">Test ESMA headline</span></div>
+        <div class="search-date">03/07/2026</div>
+      </a>
+      <a href="" aria-label="See Responses"></a>
+    </article>
+    '''
+    source = {
+        "type": "scrape",
+        "url": "https://www.esma.europa.eu/press-news/esma-news",
+        "label": "all_news",
+        "preferred_language": "en",
+        "tags": ["casp"],
+        "scrape": {
+            "item_selector": "article.node--type-news",
+            "title_selector": ".search-title",
+            "link_selector": 'a[rel="bookmark"]',
+            "date_selector": ".search-date",
+            "date_attribute": None,
+            "content_selector": None,
+        },
+    }
+    items = _parse_scrape(html, source, "esma", SAMPLE_CONFIG)
+    assert len(items) == 1
+    assert "Test ESMA headline" in items[0].title
+    assert items[0].published_at is not None
+    assert items[0].date_inferred is False
