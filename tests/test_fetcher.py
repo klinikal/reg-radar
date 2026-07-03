@@ -15,6 +15,7 @@ from collector.fetcher import (
     _fetch_bytes,
     _has_expected_content,
 )
+from collector.schema import make_page_watch_item_id
 
 
 SAMPLE_CONFIG = {"user_agent": "test-agent/1.0", "timeout": 10, "retries": 1}
@@ -631,3 +632,77 @@ def test_ssrf_event_hook_blocks_hostname_resolving_to_private_ip():
         mock_resolve.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
         with pytest.raises(httpx.InvalidURL, match="private"):
             hook(fake_request)
+
+
+def test_parse_page_watch_extracts_content_and_hashes_it():
+    from collector.fetcher import _parse_page_watch
+    html = '<html><body><nav>ignore this</nav><div class="content">Real page text here.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    items = _parse_page_watch(html, source, "esma")
+    assert len(items) == 1
+    assert items[0].regulator_id == "esma"
+    assert items[0].source_type == "page_watch"
+    assert "Real page text here." in items[0].raw_content
+    assert items[0].date_inferred is True
+
+
+def test_parse_page_watch_same_content_produces_same_item_id():
+    from collector.fetcher import _parse_page_watch
+    html = '<html><body><div class="content">Unchanged text.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    items1 = _parse_page_watch(html, source, "esma")
+    items2 = _parse_page_watch(html, source, "esma")
+    assert items1[0].id == items2[0].id
+
+
+def test_parse_page_watch_changed_content_produces_different_item_id():
+    from collector.fetcher import _parse_page_watch
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    html1 = '<html><body><div class="content">Original text.</div></body></html>'
+    html2 = '<html><body><div class="content">Updated text.</div></body></html>'
+    items1 = _parse_page_watch(html1, source, "esma")
+    items2 = _parse_page_watch(html2, source, "esma")
+    assert items1[0].id != items2[0].id
+
+
+def test_fetch_source_page_watch_raises_when_expected_content_missing():
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_response = MagicMock()
+        mock_response.text = '<html><body><div class="wrong-page">Not what we expected.</div></body></html>'
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        source = {
+            "type": "page_watch",
+            "url": "https://example.com/page",
+            "label": "test_page",
+            "watch_selector": ".content",
+        }
+        with pytest.raises(RuntimeError):
+            fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
+
+
+def test_fetch_source_page_watch_returns_item_when_content_present():
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_response = MagicMock()
+        mock_response.text = '<html><body><div class="content">Page text.</div></body></html>'
+        mock_response.raise_for_status = MagicMock()
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        source = {
+            "type": "page_watch",
+            "url": "https://example.com/page",
+            "label": "test_page",
+            "watch_selector": ".content",
+        }
+        items = fetch_source(source, "esma", flaresolverr_url=None, config=SAMPLE_CONFIG)
+        assert len(items) == 1
+        assert "Page text." in items[0].raw_content

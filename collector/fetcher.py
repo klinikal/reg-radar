@@ -12,8 +12,9 @@ import feedparser
 import httpx
 from bs4 import BeautifulSoup
 
+from collector.chunking import content_hash
 from collector.language import detect_language
-from collector.schema import Item, make_item_id
+from collector.schema import Item, make_item_id, make_page_watch_item_id
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +443,36 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
     return items
 
 
+def _parse_page_watch(html: str, source: dict, regulator_id: str) -> list[Item]:
+    watch_selector = source["watch_selector"]
+    soup = BeautifulSoup(html, "lxml")
+    content_el = soup.select_one(watch_selector)
+    if content_el is None:
+        return []
+
+    text = " ".join(content_el.get_text(" ", strip=True).split())
+    if not text:
+        return []
+
+    hash_value = content_hash(text)
+    now = datetime.now(timezone.utc)
+    return [Item(
+        id=make_page_watch_item_id(regulator_id, source["url"], hash_value),
+        regulator_id=regulator_id,
+        source_label=source["label"],
+        title=source.get("label", "page"),
+        url=source["url"],
+        published_at=now,
+        fetched_at=now,
+        date_inferred=True,
+        language=source.get("preferred_language", "en"),
+        content_snippet=_truncate_snippet(text),
+        source_type="page_watch",
+        tags=source.get("tags", []),
+        raw_content=text,
+    )]
+
+
 def fetch_source(
     source: dict,
     regulator_id: str,
@@ -473,6 +504,20 @@ def fetch_source(
         if html is None:
             raise RuntimeError(f"Failed to fetch {url} for {regulator_id}/{source['label']}")
         return _parse_scrape(html, source, regulator_id, config)
+    elif source_type == "page_watch":
+        watch_selector = source.get("watch_selector")
+        html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url, watch_selector)
+        if html is None:
+            raise RuntimeError(f"Failed to fetch {url} for {regulator_id}/{source['label']}")
+        # _fetch_html()'s expected_selector check only runs inside the
+        # FlareSolverr code path - a plain-httpx fetch (the common case for
+        # a non-cloudflare-protected page_watch source) never verifies the
+        # page actually contains what we're monitoring, so a redirect or
+        # maintenance page returning HTTP 200 would otherwise silently hash
+        # the wrong content and get recorded as a legitimate "change".
+        if not _has_expected_content(html, watch_selector):
+            raise RuntimeError(f"Expected content not found at {url} for {regulator_id}/{source['label']}")
+        return _parse_page_watch(html, source, regulator_id)
     else:
         logger.warning("Unknown source type '%s' for %s/%s", source_type, regulator_id, source["label"])
         return []
