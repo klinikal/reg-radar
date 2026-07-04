@@ -10,11 +10,13 @@ from sqlalchemy.pool import NullPool
 
 from mcpserver.queries import (
     get_item,
+    get_month_facets,
     get_recent,
     get_run_log,
     get_warnings,
     list_regulators,
     search_items,
+    search_items_advanced,
 )
 
 logging.basicConfig(
@@ -138,6 +140,42 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     """
     results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
     return json.dumps(results, default=str)
+
+
+@mcp.tool()
+def count_items_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
+                      date_from: str | None = None, date_to: str | None = None) -> str:
+    """Returns the total count of items matching a search, without fetching rows.
+
+    Cheaper than search_items_tool when an agent only needs "how many", not
+    the items themselves. `query` uses the same AND/quoted-phrase semantics
+    as search_items_tool; `exact=True` treats the whole query as one literal
+    phrase. date_from/date_to are YYYY-MM-DD. regulator_id must be a valid
+    id from list_regulators_tool.
+    """
+    def _count():
+        _, total = search_items_advanced(
+            get_engine(), query=query, exact=exact,
+            regulator_ids=[regulator_id] if regulator_id else None,
+            date_from=date_from, date_to=date_to, limit=1,
+        )
+        return {"total": total}
+    return json.dumps(_safe("count_items_tool", _count), default=str)
+
+
+@mcp.tool()
+def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None) -> str:
+    """Returns item counts grouped by publish month (YYYY-MM), newest first.
+
+    Ignores date filters deliberately, so every month stays visible for a
+    month-picker regardless of any date range applied separately via
+    search_items_tool. query/exact/regulator_id semantics match count_items_tool.
+    """
+    return json.dumps(
+        _safe("get_month_facets_tool", get_month_facets, get_engine(), query=query, exact=exact,
+              regulator_ids=[regulator_id] if regulator_id else None),
+        default=str,
+    )
 
 
 if __name__ == "__main__":

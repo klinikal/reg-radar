@@ -1,8 +1,11 @@
 import importlib
 import typing
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text
+
+from collector.schema import Item, make_item_id
 
 
 def _fresh_server_module():
@@ -88,3 +91,34 @@ def test_search_items_tool_raises_sanitized_error_on_failure(tmp_path, monkeypat
     assert str(tmp_path) not in str(exc_info.value)
     assert "search_items_tool" in str(exc_info.value)
     assert str(tmp_path) in caplog.text
+
+
+def _item(title, regulator_id="esma", tags=None):
+    now = datetime.now(timezone.utc)
+    url = f"https://example.com/{title}"
+    return Item(
+        id=make_item_id(regulator_id, url, now), regulator_id=regulator_id, source_label="all_news",
+        title=title, url=url, published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet=title, source_type="rss", source_tags=tags or [], content_tags=[],
+    )
+
+
+def test_count_items_tool_returns_total(tmp_path, monkeypatch):
+    import json
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued"))
+    insert_item(write_engine, _item("MiCA travel rule notice"))
+    insert_item(write_engine, _item("unrelated press release"))
+    result = json.loads(server.count_items_tool(query="MiCA"))
+    assert result["total"] == 2
+
+
+def test_get_month_facets_tool_returns_facets(tmp_path, monkeypatch):
+    import json
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued"))
+    result = json.loads(server.get_month_facets_tool(query="MiCA"))
+    assert isinstance(result, list)
+    assert result[0]["count"] == 1
