@@ -589,12 +589,7 @@ def test_get_warnings_includes_items_on_cutoff_boundary_day():
     # regardless of time-of-day. days=N effectively returned ~N-1 days.
     engine, db_path = setup_engine()
     try:
-        # Create item with timestamp within the last 7 days to verify boundary handling
-        item_time = datetime.now(timezone.utc) - timedelta(days=6, hours=23)
-        item = make_item(tags=["warnings"], days_ago=0)
-        item.published_at = item_time
-        item.fetched_at = item_time
-        insert_item(engine, item)
+        insert_item(engine, make_item(tags=["warnings"], days_ago=6))
         results = get_warnings(engine, days=7)
         assert len(results) == 1
     finally:
