@@ -599,3 +599,41 @@ def test_get_warnings_includes_items_on_cutoff_boundary_day():
         assert len(results) == 1
     finally:
         os.unlink(db_path)
+
+
+def test_search_items_negative_limit_is_clamped():
+    # SQLite treats a negative LIMIT as "no limit" - a common "give me
+    # everything" convention an agent might pass, but here it means the
+    # entire matching result set (potentially tens of MB with raw_content
+    # included in the LIKE-fallback path) goes into one MCP response.
+    engine, db_path = setup_engine()
+    try:
+        for i in range(3):
+            insert_item(engine, make_item(title="MiCA warning issued", url=f"https://example.com/{i}"))
+        results = search_items(engine, query="MiCA", limit=-1)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_negative_limit_is_clamped():
+    engine, db_path = setup_engine()
+    try:
+        for i in range(3):
+            insert_item(engine, make_item(url=f"https://example.com/{i}"))
+        results = get_recent(engine, limit=-1)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_run_log_negative_limit_is_clamped():
+    engine, db_path = setup_engine()
+    try:
+        for _ in range(3):
+            run_id = record_run_start(engine)
+            record_run_complete(engine, run_id, 1, 1, 0, [])
+        results = get_run_log(engine, limit=-1)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)

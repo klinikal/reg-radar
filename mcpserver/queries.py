@@ -85,7 +85,7 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
                   content_tags=None, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
     try:
-        limit = min(int(limit), 100)
+        limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 20
 
@@ -259,7 +259,7 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
 
 def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None, language=None) -> list[dict]:
     try:
-        limit = min(int(limit), 100)
+        limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 20
     conditions = []
@@ -331,7 +331,7 @@ def get_item(engine, item_id: str) -> dict | None:
 
 def get_run_log(engine, limit: int = 10) -> list[dict]:
     try:
-        limit = min(int(limit), 100)
+        limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 10
     sql = """
