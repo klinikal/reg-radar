@@ -158,3 +158,26 @@ def test_get_health_tool_returns_status(tmp_path, monkeypatch):
     record_run_complete(write_engine, run_id, 10, 5, 0, [])
     result = json.loads(server.get_health_tool())
     assert result["status"] == "success"
+
+
+def test_get_recent_tool_docstring_documents_limit_and_language():
+    server = _fresh_server_module()
+    doc = server.get_recent_tool.__doc__
+    assert "max 100" in doc
+    assert "ISO 639-1" in doc
+
+
+def test_list_regulators_tool_docstring_documents_id_usage():
+    server = _fresh_server_module()
+    assert "regulator_id" in server.list_regulators_tool.__doc__
+
+
+def test_get_run_log_tool_docstring_documents_status_values():
+    server = _fresh_server_module()
+    doc = server.get_run_log_tool.__doc__
+    assert "partial" in doc and "failed" in doc
+
+
+def test_get_item_tool_docstring_documents_id_source():
+    server = _fresh_server_module()
+    assert "search_items_tool" in server.get_item_tool.__doc__

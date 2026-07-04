@@ -97,10 +97,14 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
 def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
                      language: str | None = None) -> str:
-    """Returns the most recent regulatory items, with optional filters.
+    """Returns the most recent regulatory items (ordered by fetched_at,
+    newest first), with optional filters.
 
+    limit defaults to 20, max 100. regulator_id must be a valid id from
+    list_regulators_tool. language is an ISO 639-1 code (e.g. "en", "de").
     `tags` searches both notice-type (source_tags) and topic (content_tags)
-    buckets combined; use `source_tags`/`content_tags` for a specific bucket.
+    buckets combined; use `source_tags`/`content_tags` to filter one bucket
+    only. Call list_tags_tool to see valid tag values with their counts.
     """
     results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
                      source_tags=source_tags, content_tags=content_tags, language=language)
@@ -109,21 +113,36 @@ def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list
 
 @mcp.tool()
 def list_regulators_tool() -> str:
-    """Returns all regulators in the registry with live fetch stats."""
+    """Returns all regulators in the registry with live fetch stats.
+
+    Each entry's `id` is the value to pass as `regulator_id` to every other
+    tool in this server. `last_fetched_at` and `consecutive_failures`
+    reflect the collector's health for that regulator specifically - see
+    get_health_tool for overall collector freshness.
+    """
     results = _safe("list_regulators_tool", list_regulators, get_engine())
     return json.dumps(results, default=str)
 
 
 @mcp.tool()
 def get_item_tool(item_id: str) -> str:
-    """Returns a single item by its ID, including raw_content."""
+    """Returns a single item by its id (as returned by search_items_tool,
+    get_recent_tool, get_warnings_tool, etc.), including its full raw_content.
+    """
     result = _safe("get_item_tool", get_item, get_engine(), item_id)
     return json.dumps(result, default=str)
 
 
 @mcp.tool()
 def get_run_log_tool(limit: int = 10) -> str:
-    """Returns recent collector run statistics."""
+    """Returns recent collector run statistics, most recent first.
+
+    limit defaults to 10, max 100. `status` on each run is one of "running",
+    "success", "partial", or "failed"; `error_detail` lists per-source
+    failures when status is "partial" or "failed". Pair with
+    get_items_since_tool's `since` param, using a run's completed_at, to
+    fetch exactly what that run collected.
+    """
     results = _safe("get_run_log_tool", get_run_log, get_engine(), limit=limit)
     return json.dumps(results, default=str)
 
