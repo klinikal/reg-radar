@@ -73,3 +73,18 @@ def test_get_item_tool_param_does_not_shadow_builtin():
     server = _fresh_server_module()
     assert "item_id" in typing.get_type_hints(server.get_item_tool)
     assert "id" not in typing.get_type_hints(server.get_item_tool)
+
+
+def test_search_items_tool_raises_sanitized_error_on_failure(tmp_path, monkeypatch, caplog):
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+
+    def _boom(*a, **k):
+        raise RuntimeError(f"SQL error against {tmp_path}")
+
+    monkeypatch.setattr(server, "search_items", _boom)
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as exc_info:
+            server.search_items_tool(query="x")
+    assert str(tmp_path) not in str(exc_info.value)
+    assert "search_items_tool" in str(exc_info.value)
+    assert str(tmp_path) in caplog.text

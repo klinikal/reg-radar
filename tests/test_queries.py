@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import pytest
 from datetime import datetime, timezone, timedelta
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
@@ -692,5 +693,44 @@ def test_search_items_like_fallback_multi_term_and(monkeypatch, caplog):
             results = queries_module.search_items(engine, "Bafin fines")
         assert len(results) == 1
         assert "administrative fines" in results[0]["title"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_non_operational_error_propagates(monkeypatch):
+    # Regression: `except Exception` around the FTS branch used to swallow
+    # genuine bugs (not just FTS5 syntax errors) and silently re-run the
+    # LIKE fallback, which would fail identically or mask the real problem.
+    import mcpserver.queries as queries_module
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: (_ for _ in ()).throw(ValueError("not a DB error")))
+        with pytest.raises(ValueError):
+            queries_module.search_items(engine, "MiCA")
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_advanced_non_operational_error_propagates(monkeypatch):
+    import mcpserver.queries as queries_module
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: (_ for _ in ()).throw(ValueError("not a DB error")))
+        with pytest.raises(ValueError):
+            queries_module.search_items_advanced(engine, query="MiCA")
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_month_facets_non_operational_error_propagates(monkeypatch):
+    import mcpserver.queries as queries_module
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: (_ for _ in ()).throw(ValueError("not a DB error")))
+        with pytest.raises(ValueError):
+            queries_module.get_month_facets(engine, query="MiCA")
     finally:
         os.unlink(db_path)

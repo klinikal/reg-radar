@@ -55,6 +55,18 @@ def get_engine():
     return _engine
 
 
+def _safe(label: str, fn, *args, **kwargs):
+    """Run a query function; on failure, log the real exception (with DB
+    path/SQL detail) and raise a sanitized RuntimeError so internals never
+    reach the MCP client.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        logger.exception("%s failed", label)
+        raise RuntimeError(f"{label} failed - see server logs") from None
+
+
 @mcp.tool()
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
@@ -67,9 +79,9 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     "warnings", "press_releases") or `content_tags` to filter by topic only
     (e.g. "mica", "travel-rule") when you need one bucket specifically.
     """
-    results = search_items(get_engine(), query=query, regulator_id=regulator_id, language=language,
-                            tags=tags, source_tags=source_tags, content_tags=content_tags,
-                            date_from=date_from, date_to=date_to, limit=limit)
+    results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
+                     language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
+                     date_from=date_from, date_to=date_to, limit=limit)
     return json.dumps(results, default=str)
 
 
@@ -82,29 +94,29 @@ def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list
     `tags` searches both notice-type (source_tags) and topic (content_tags)
     buckets combined; use `source_tags`/`content_tags` for a specific bucket.
     """
-    results = get_recent(get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
-                          source_tags=source_tags, content_tags=content_tags, language=language)
+    results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
+                     source_tags=source_tags, content_tags=content_tags, language=language)
     return json.dumps(results, default=str)
 
 
 @mcp.tool()
 def list_regulators_tool() -> str:
     """Returns all regulators in the registry with live fetch stats."""
-    results = list_regulators(get_engine())
+    results = _safe("list_regulators_tool", list_regulators, get_engine())
     return json.dumps(results, default=str)
 
 
 @mcp.tool()
 def get_item_tool(item_id: str) -> str:
     """Returns a single item by its ID, including raw_content."""
-    result = get_item(get_engine(), item_id)
+    result = _safe("get_item_tool", get_item, get_engine(), item_id)
     return json.dumps(result, default=str)
 
 
 @mcp.tool()
 def get_run_log_tool(limit: int = 10) -> str:
     """Returns recent collector run statistics."""
-    results = get_run_log(get_engine(), limit=limit)
+    results = _safe("get_run_log_tool", get_run_log, get_engine(), limit=limit)
     return json.dumps(results, default=str)
 
 
@@ -124,7 +136,7 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     broad feed as "may contain warnings," not a filtered warnings list -
     read the item to judge.
     """
-    results = get_warnings(get_engine(), days=days, regulator_id=regulator_id, limit=limit)
+    results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
     return json.dumps(results, default=str)
 
 

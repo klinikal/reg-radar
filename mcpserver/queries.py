@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         return _run(use_fts=False)
     try:
         return _run(use_fts=True)
-    except Exception as e:
+    except OperationalError as e:
         logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
         return _run(use_fts=False)
 
@@ -230,7 +231,7 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
 
     try:
         return _run(use_fts=True)
-    except Exception as e:
+    except OperationalError as e:
         logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
         return _run(use_fts=False)
 
@@ -258,7 +259,7 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
 
     try:
         return _run(use_fts=True)
-    except Exception as e:
+    except OperationalError as e:
         logger.warning("FTS query failed (%s), falling back to LIKE for query=%r", e, query)
         return _run(use_fts=False)
 
