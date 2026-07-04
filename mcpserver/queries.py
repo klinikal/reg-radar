@@ -348,13 +348,17 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
     return [_row_to_dict(r, keys) for r in rows]
 
 
-def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
+def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> list[dict]:
     try:
         days = max(0, min(int(days), 365))
     except (TypeError, ValueError):
         days = 30
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
     conditions = ['source_tags LIKE \'%"warnings"%\'']
-    params: dict = {}
+    params: dict = {"limit": limit}
     if days > 0:
         cutoff = _format_dt(datetime.now(timezone.utc) - timedelta(days=days))
         conditions.append("(published_at >= :cutoff OR (published_at IS NULL AND fetched_at >= :cutoff))")
@@ -369,6 +373,7 @@ def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
                fetched_at, language, content_snippet, source_tags, content_tags
         FROM items WHERE {where}
         ORDER BY published_at DESC NULLS LAST
+        LIMIT :limit
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "language", "content_snippet", "source_tags", "content_tags"]

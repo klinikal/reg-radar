@@ -637,3 +637,28 @@ def test_get_run_log_negative_limit_is_clamped():
         assert len(results) == 1
     finally:
         os.unlink(db_path)
+
+
+def test_get_warnings_respects_limit():
+    # No LIMIT clause at all previously - days=0 (per the tool's own
+    # docstring, "returns all") could return every warnings-tagged item ever
+    # collected in one response.
+    engine, db_path = setup_engine()
+    try:
+        for i in range(5):
+            insert_item(engine, make_item(tags=["warnings"], url=f"https://example.com/{i}"))
+        results = get_warnings(engine, days=0, limit=2)
+        assert len(results) == 2
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_warnings_limit_clamps_and_defaults():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(tags=["warnings"]))
+        assert len(get_warnings(engine, days=0, limit=-5)) == 1
+        assert isinstance(get_warnings(engine, days=0, limit=9999), list)
+        assert isinstance(get_warnings(engine, days=0, limit="abc"), list)
+    finally:
+        os.unlink(db_path)

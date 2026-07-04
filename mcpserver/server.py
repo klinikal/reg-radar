@@ -84,8 +84,11 @@ def get_run_log_tool(limit: int = 10) -> str:
 
 
 @mcp.tool()
-def get_warnings_tool(days: int = 30, regulator_id: str = None) -> str:
-    """Returns items tagged 'warnings' at the feed/source level. days=0 returns all, max 365.
+def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50) -> str:
+    """Returns items tagged 'warnings' at the feed/source level, newest first.
+
+    days=0 returns all (no date filter), max 365. limit defaults to 50, max
+    200. regulator_id must be a valid id from list_regulators_tool.
 
     Note: some regulators only have one general news/press-release feed, so
     it's tagged 'warnings' alongside 'news'/'publications' rather than
@@ -96,7 +99,7 @@ def get_warnings_tool(days: int = 30, regulator_id: str = None) -> str:
     broad feed as "may contain warnings," not a filtered warnings list -
     read the item to judge.
     """
-    results = get_warnings(get_engine(), days=days, regulator_id=regulator_id)
+    results = get_warnings(get_engine(), days=days, regulator_id=regulator_id, limit=limit)
     return json.dumps(results, default=str)
 
 
