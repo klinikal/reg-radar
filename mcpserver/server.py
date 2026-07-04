@@ -33,6 +33,9 @@ mcp = FastMCP(
     port=8000,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
+        # Assumes loopback-only exposure (docker-compose.yml publishes
+        # 127.0.0.1:8000:8000). If this server is ever reached by Docker
+        # service name from another container, add that hostname here too.
         allowed_hosts=["127.0.0.1", "127.0.0.1:8000", "localhost", "localhost:8000"],
     ),
 )
@@ -62,10 +65,15 @@ def get_engine():
 def _safe(label: str, fn, *args, **kwargs):
     """Run a query function; on failure, log the real exception (with DB
     path/SQL detail) and raise a sanitized RuntimeError so internals never
-    reach the MCP client.
+    reach the MCP client. ValueError is re-raised verbatim - the only
+    deliberate ValueError in this codebase (get_items_since's timestamp
+    parse error) contains only the caller's own input, never internal
+    detail, and the specific message is what lets an agent self-correct.
     """
     try:
         return fn(*args, **kwargs)
+    except ValueError:
+        raise
     except Exception:
         logger.exception("%s failed", label)
         raise RuntimeError(f"{label} failed - see server logs") from None

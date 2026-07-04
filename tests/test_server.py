@@ -93,6 +93,12 @@ def test_search_items_tool_raises_sanitized_error_on_failure(tmp_path, monkeypat
     assert str(tmp_path) in caplog.text
 
 
+def test_get_items_since_tool_surfaces_specific_parse_error(tmp_path, monkeypatch):
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="could not parse 'since' timestamp"):
+        server.get_items_since_tool(since="not-a-timestamp")
+
+
 def _item(title, regulator_id="esma", tags=None):
     now = datetime.now(timezone.utc)
     url = f"https://example.com/{title}"
