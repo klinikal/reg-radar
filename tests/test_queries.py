@@ -16,6 +16,7 @@ from mcpserver.queries import (
     get_warnings,
     list_tags,
     get_items_since,
+    get_health,
     _sanitize_fts_terms,
 )
 
@@ -809,5 +810,28 @@ def test_get_items_since_invalid_timestamp_raises():
     try:
         with pytest.raises(ValueError):
             get_items_since(engine, "not-a-timestamp")
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_no_runs_returns_no_runs_status():
+    engine, db_path = setup_engine()
+    try:
+        result = get_health(engine)
+        assert result["status"] == "no_runs"
+        assert result["latest_run"] is None
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_returns_latest_run_status_and_age():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [])
+        result = get_health(engine)
+        assert result["status"] == "success"
+        assert result["latest_run"]["run_id"] == run_id
+        assert result["age_seconds"] >= 0
     finally:
         os.unlink(db_path)

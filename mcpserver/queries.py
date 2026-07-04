@@ -444,3 +444,27 @@ def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(text(sql), {"cutoff": cutoff, "limit": limit}).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
+
+
+def get_health(engine) -> dict:
+    """Returns the most recent collector run's status and how long ago it
+    completed (or started, if still running), so callers can caveat "data
+    may be stale" without separately calling get_run_log and doing the date
+    math themselves.
+    """
+    sql = """
+        SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors
+        FROM runs ORDER BY started_at DESC LIMIT 1
+    """
+    keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors"]
+    with engine.connect() as conn:
+        row = conn.execute(text(sql)).fetchone()
+    if row is None:
+        return {"status": "no_runs", "latest_run": None, "age_seconds": None}
+    latest = _row_to_dict(row, keys)
+    reference = latest["completed_at"] or latest["started_at"]
+    age_seconds = None
+    if reference:
+        ref_dt = datetime.fromisoformat(str(reference).replace("T", " ")).replace(tzinfo=timezone.utc)
+        age_seconds = (datetime.now(timezone.utc) - ref_dt).total_seconds()
+    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds}

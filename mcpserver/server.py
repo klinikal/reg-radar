@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
 from mcpserver.queries import (
+    get_health,
     get_item,
     get_items_since,
     get_month_facets,
@@ -205,6 +206,16 @@ def get_items_since_tool(since: str, limit: int = 100) -> str:
     return json.dumps(
         _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit), default=str
     )
+
+
+@mcp.tool()
+def get_health_tool() -> str:
+    """Returns the most recent collector run's status and freshness (age in
+    seconds since it completed), so an agent can caveat "data may be stale"
+    without separately calling get_run_log_tool and doing the date math
+    itself.
+    """
+    return json.dumps(_safe("get_health_tool", get_health, get_engine()), default=str)
 
 
 if __name__ == "__main__":

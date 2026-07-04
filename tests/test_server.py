@@ -148,3 +148,13 @@ def test_get_items_since_tool_returns_newer_items(tmp_path, monkeypatch):
     result = json.loads(server.get_items_since_tool(since=cutoff))
     assert len(result) == 1
     assert result[0]["title"] == "new"
+
+
+def test_get_health_tool_returns_status(tmp_path, monkeypatch):
+    import json
+    from collector.storage import record_run_start, record_run_complete
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    run_id = record_run_start(write_engine)
+    record_run_complete(write_engine, run_id, 10, 5, 0, [])
+    result = json.loads(server.get_health_tool())
+    assert result["status"] == "success"
