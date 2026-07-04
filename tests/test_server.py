@@ -104,39 +104,35 @@ def _item(title, regulator_id="esma", tags=None):
 
 
 def test_count_items_tool_returns_total(tmp_path, monkeypatch):
-    import json
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     insert_item(write_engine, _item("MiCA warning issued"))
     insert_item(write_engine, _item("MiCA travel rule notice"))
     insert_item(write_engine, _item("unrelated press release"))
-    result = json.loads(server.count_items_tool(query="MiCA"))
+    result = server.count_items_tool(query="MiCA")
     assert result["total"] == 2
 
 
 def test_get_month_facets_tool_returns_facets(tmp_path, monkeypatch):
-    import json
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     insert_item(write_engine, _item("MiCA warning issued"))
-    result = json.loads(server.get_month_facets_tool(query="MiCA"))
+    result = server.get_month_facets_tool(query="MiCA")
     assert isinstance(result, list)
     assert result[0]["count"] == 1
 
 
 def test_list_tags_tool_returns_counts(tmp_path, monkeypatch):
-    import json
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     insert_item(write_engine, _item("a", tags=["warnings"]))
     insert_item(write_engine, _item("b", tags=["warnings"]))
-    result = json.loads(server.list_tags_tool())
+    result = server.list_tags_tool()
     source_by_tag = {e["tag"]: e["count"] for e in result["source_tags"]}
     assert source_by_tag["warnings"] == 2
 
 
 def test_get_items_since_tool_returns_newer_items(tmp_path, monkeypatch):
-    import json
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     old = _item("old")
@@ -145,18 +141,17 @@ def test_get_items_since_tool_returns_newer_items(tmp_path, monkeypatch):
     new = _item("new")
     new.fetched_at = old.fetched_at + timedelta(seconds=5)
     insert_item(write_engine, new)
-    result = json.loads(server.get_items_since_tool(since=cutoff))
+    result = server.get_items_since_tool(since=cutoff)
     assert len(result) == 1
     assert result[0]["title"] == "new"
 
 
 def test_get_health_tool_returns_status(tmp_path, monkeypatch):
-    import json
     from collector.storage import record_run_start, record_run_complete
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     run_id = record_run_start(write_engine)
     record_run_complete(write_engine, run_id, 10, 5, 0, [])
-    result = json.loads(server.get_health_tool())
+    result = server.get_health_tool()
     assert result["status"] == "success"
 
 
@@ -181,3 +176,28 @@ def test_get_run_log_tool_docstring_documents_status_values():
 def test_get_item_tool_docstring_documents_id_source():
     server = _fresh_server_module()
     assert "search_items_tool" in server.get_item_tool.__doc__
+
+
+def test_search_items_tool_returns_list_not_json_string(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued"))
+    result = server.search_items_tool(query="MiCA")
+    assert isinstance(result, list)
+    assert result[0]["title"] == "MiCA warning issued"
+
+
+def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("MiCA warning issued")
+    item.raw_content = "x" * 1000
+    insert_item(write_engine, item)
+    result = server.get_item_tool(item_id=item.id, max_content_chars=10)
+    assert len(result["raw_content"]) == 10
+
+
+def test_get_item_tool_missing_id_returns_none(tmp_path, monkeypatch):
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    result = server.get_item_tool(item_id="nonexistent")
+    assert result is None

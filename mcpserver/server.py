@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -76,7 +75,7 @@ def _safe(label: str, fn, *args, **kwargs):
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
                        content_tags: list[str] | None = None, date_from: str | None = None,
-                       date_to: str | None = None, limit: int = 20, offset: int = 0) -> str:
+                       date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
 
     `tags` searches both the notice-type (source_tags) and topic (content_tags)
@@ -90,13 +89,13 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
                      date_from=date_from, date_to=date_to, limit=limit, offset=offset)
-    return json.dumps(results, default=str)
+    return results
 
 
 @mcp.tool()
 def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
-                     language: str | None = None) -> str:
+                     language: str | None = None) -> list[dict]:
     """Returns the most recent regulatory items (ordered by fetched_at,
     newest first), with optional filters.
 
@@ -108,11 +107,11 @@ def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list
     """
     results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
                      source_tags=source_tags, content_tags=content_tags, language=language)
-    return json.dumps(results, default=str)
+    return results
 
 
 @mcp.tool()
-def list_regulators_tool() -> str:
+def list_regulators_tool() -> list[dict]:
     """Returns all regulators in the registry with live fetch stats.
 
     Each entry's `id` is the value to pass as `regulator_id` to every other
@@ -121,20 +120,26 @@ def list_regulators_tool() -> str:
     get_health_tool for overall collector freshness.
     """
     results = _safe("list_regulators_tool", list_regulators, get_engine())
-    return json.dumps(results, default=str)
+    return results
 
 
 @mcp.tool()
-def get_item_tool(item_id: str) -> str:
+def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | None:
     """Returns a single item by its id (as returned by search_items_tool,
     get_recent_tool, get_warnings_tool, etc.), including its full raw_content.
+
+    raw_content can be large (a full regulator notice/PDF text) - pass
+    max_content_chars to truncate it and protect your context window; omit
+    for the full text. Returns None if the id doesn't exist.
     """
     result = _safe("get_item_tool", get_item, get_engine(), item_id)
-    return json.dumps(result, default=str)
+    if result and max_content_chars is not None and result.get("raw_content"):
+        result["raw_content"] = result["raw_content"][:max_content_chars]
+    return result
 
 
 @mcp.tool()
-def get_run_log_tool(limit: int = 10) -> str:
+def get_run_log_tool(limit: int = 10) -> list[dict]:
     """Returns recent collector run statistics, most recent first.
 
     limit defaults to 10, max 100. `status` on each run is one of "running",
@@ -144,11 +149,11 @@ def get_run_log_tool(limit: int = 10) -> str:
     fetch exactly what that run collected.
     """
     results = _safe("get_run_log_tool", get_run_log, get_engine(), limit=limit)
-    return json.dumps(results, default=str)
+    return results
 
 
 @mcp.tool()
-def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50) -> str:
+def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50) -> list[dict]:
     """Returns items tagged 'warnings' at the feed/source level, newest first.
 
     days=0 returns all (no date filter), max 365. limit defaults to 50, max
@@ -164,12 +169,12 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     read the item to judge.
     """
     results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
-    return json.dumps(results, default=str)
+    return results
 
 
 @mcp.tool()
 def count_items_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
-                      date_from: str | None = None, date_to: str | None = None) -> str:
+                      date_from: str | None = None, date_to: str | None = None) -> dict:
     """Returns the total count of items matching a search, without fetching rows.
 
     Cheaper than search_items_tool when an agent only needs "how many", not
@@ -185,36 +190,33 @@ def count_items_tool(query: str = "", exact: bool = False, regulator_id: str | N
             date_from=date_from, date_to=date_to, limit=1,
         )
         return {"total": total}
-    return json.dumps(_safe("count_items_tool", _count), default=str)
+    return _safe("count_items_tool", _count)
 
 
 @mcp.tool()
-def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None) -> str:
+def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None) -> list[dict]:
     """Returns item counts grouped by publish month (YYYY-MM), newest first.
 
     Ignores date filters deliberately, so every month stays visible for a
     month-picker regardless of any date range applied separately via
     search_items_tool. query/exact/regulator_id semantics match count_items_tool.
     """
-    return json.dumps(
-        _safe("get_month_facets_tool", get_month_facets, get_engine(), query=query, exact=exact,
-              regulator_ids=[regulator_id] if regulator_id else None),
-        default=str,
-    )
+    return _safe("get_month_facets_tool", get_month_facets, get_engine(), query=query, exact=exact,
+                 regulator_ids=[regulator_id] if regulator_id else None)
 
 
 @mcp.tool()
-def list_tags_tool() -> str:
+def list_tags_tool() -> dict:
     """Returns every distinct source_tags and content_tags value currently
     in use, each with its item count, sorted most-common first. Use this to
     discover valid values for the tags/source_tags/content_tags filters on
     search_items_tool and get_recent_tool before guessing.
     """
-    return json.dumps(_safe("list_tags_tool", list_tags, get_engine()), default=str)
+    return _safe("list_tags_tool", list_tags, get_engine())
 
 
 @mcp.tool()
-def get_items_since_tool(since: str, limit: int = 100) -> str:
+def get_items_since_tool(since: str, limit: int = 100) -> list[dict]:
     """Returns items collected (fetched_at) strictly after `since`, oldest
     first, up to `limit` (default 100, max 200). This is the polling
     primitive: save the fetched_at of the last item you saw and pass it
@@ -222,19 +224,17 @@ def get_items_since_tool(since: str, limit: int = 100) -> str:
     get_run_log_tool's run_ids if you need to correlate results with a
     specific collector run.
     """
-    return json.dumps(
-        _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit), default=str
-    )
+    return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit)
 
 
 @mcp.tool()
-def get_health_tool() -> str:
+def get_health_tool() -> dict:
     """Returns the most recent collector run's status and freshness (age in
     seconds since it completed), so an agent can caveat "data may be stale"
     without separately calling get_run_log_tool and doing the date math
     itself.
     """
-    return json.dumps(_safe("get_health_tool", get_health, get_engine()), default=str)
+    return _safe("get_health_tool", get_health, get_engine())
 
 
 if __name__ == "__main__":
