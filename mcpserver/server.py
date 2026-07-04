@@ -10,6 +10,7 @@ from sqlalchemy.pool import NullPool
 
 from mcpserver.queries import (
     get_item,
+    get_items_since,
     get_month_facets,
     get_recent,
     get_run_log,
@@ -190,6 +191,20 @@ def list_tags_tool() -> str:
     search_items_tool and get_recent_tool before guessing.
     """
     return json.dumps(_safe("list_tags_tool", list_tags, get_engine()), default=str)
+
+
+@mcp.tool()
+def get_items_since_tool(since: str, limit: int = 100) -> str:
+    """Returns items collected (fetched_at) strictly after `since`, oldest
+    first, up to `limit` (default 100, max 200). This is the polling
+    primitive: save the fetched_at of the last item you saw and pass it
+    back in as `since` on the next call to get everything new. Pair with
+    get_run_log_tool's run_ids if you need to correlate results with a
+    specific collector run.
+    """
+    return json.dumps(
+        _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit), default=str
+    )
 
 
 if __name__ == "__main__":

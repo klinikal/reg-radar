@@ -411,3 +411,36 @@ def list_tags(engine) -> dict:
         "source_tags": [{"tag": t, "count": c} for t, c in source_counts.most_common()],
         "content_tags": [{"tag": t, "count": c} for t, c in content_counts.most_common()],
     }
+
+
+def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
+    """Returns items with fetched_at strictly after `since`, oldest first -
+    the natural polling primitive ("everything new since my last check").
+    `since` should be a fetched_at value as returned by this or other tools
+    (e.g. "2026-07-01 10:41:36.000000"); ISO 8601 with a "T" separator
+    and/or trailing "Z" is also accepted and normalized.
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 100
+    raw = since.strip().replace("T", " ")
+    if raw.endswith("Z"):
+        raw = raw[:-1]
+    try:
+        since_dt = datetime.fromisoformat(raw)
+    except ValueError:
+        raise ValueError(f"could not parse 'since' timestamp: {since!r}")
+    cutoff = _format_dt(since_dt)
+    sql = """
+        SELECT id, regulator_id, source_label, title, url, published_at,
+               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
+        FROM items WHERE fetched_at > :cutoff
+        ORDER BY fetched_at ASC
+        LIMIT :limit
+    """
+    keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
+            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), {"cutoff": cutoff, "limit": limit}).fetchall()
+    return [_row_to_dict(r, keys) for r in rows]

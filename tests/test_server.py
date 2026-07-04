@@ -1,6 +1,6 @@
 import importlib
 import typing
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from sqlalchemy import text
@@ -133,3 +133,18 @@ def test_list_tags_tool_returns_counts(tmp_path, monkeypatch):
     result = json.loads(server.list_tags_tool())
     source_by_tag = {e["tag"]: e["count"] for e in result["source_tags"]}
     assert source_by_tag["warnings"] == 2
+
+
+def test_get_items_since_tool_returns_newer_items(tmp_path, monkeypatch):
+    import json
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    old = _item("old")
+    insert_item(write_engine, old)
+    cutoff = old.fetched_at.strftime("%Y-%m-%d %H:%M:%S.%f")
+    new = _item("new")
+    new.fetched_at = old.fetched_at + timedelta(seconds=5)
+    insert_item(write_engine, new)
+    result = json.loads(server.get_items_since_tool(since=cutoff))
+    assert len(result) == 1
+    assert result[0]["title"] == "new"

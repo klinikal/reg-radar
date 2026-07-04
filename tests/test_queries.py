@@ -15,6 +15,7 @@ from mcpserver.queries import (
     get_run_log,
     get_warnings,
     list_tags,
+    get_items_since,
     _sanitize_fts_terms,
 )
 
@@ -771,5 +772,42 @@ def test_list_tags_counts_and_separates_buckets():
         assert source_by_tag["warnings"] == 2
         assert source_by_tag["casp"] == 1
         assert result["content_tags"] == []
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_items_since_returns_only_newer_items():
+    engine, db_path = setup_engine()
+    try:
+        old_item = make_item(url="https://example.com/old")
+        insert_item(engine, old_item)
+        cutoff = old_item.fetched_at.strftime("%Y-%m-%d %H:%M:%S.%f")
+        new_item = make_item(url="https://example.com/new")
+        new_item.fetched_at = old_item.fetched_at + timedelta(seconds=5)
+        insert_item(engine, new_item)
+        results = get_items_since(engine, cutoff)
+        assert len(results) == 1
+        assert results[0]["url"] == "https://example.com/new"
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_items_since_accepts_iso_t_separator_and_z_suffix():
+    engine, db_path = setup_engine()
+    try:
+        item = make_item(url="https://example.com/1")
+        insert_item(engine, item)
+        since = (item.fetched_at - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+        results = get_items_since(engine, since)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_items_since_invalid_timestamp_raises():
+    engine, db_path = setup_engine()
+    try:
+        with pytest.raises(ValueError):
+            get_items_since(engine, "not-a-timestamp")
     finally:
         os.unlink(db_path)
