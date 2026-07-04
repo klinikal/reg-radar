@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from datetime import datetime, timezone, timedelta
+from unittest import mock
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
 from mcpserver.queries import (
@@ -24,8 +25,8 @@ def setup_engine():
     return engine, f.name
 
 
-def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=None, language="en", days_ago=0, raw_content="raw"):
-    now = datetime.now(timezone.utc) - timedelta(days=days_ago)
+def make_item(regulator_id="esma", title="MiCA warning issued", url=None, tags=None, language="en", days_ago=0, raw_content="raw", _current_time=None):
+    now = (_current_time or datetime.now(timezone.utc)) - timedelta(days=days_ago)
     url = url or f"https://example.com/{regulator_id}/{now.timestamp()}"
     return Item(
         id=make_item_id(regulator_id, url, now),
@@ -589,8 +590,13 @@ def test_get_warnings_includes_items_on_cutoff_boundary_day():
     # regardless of time-of-day. days=N effectively returned ~N-1 days.
     engine, db_path = setup_engine()
     try:
-        insert_item(engine, make_item(tags=["warnings"], days_ago=6))
-        results = get_warnings(engine, days=7)
+        frozen_time = datetime.now(timezone.utc)
+        # Mock datetime.now() at the queries module level to ensure item and
+        # cutoff use the exact same base time, avoiding microsecond timing drift
+        with mock.patch('mcpserver.queries.datetime') as mock_dt:
+            mock_dt.now.return_value = frozen_time
+            insert_item(engine, make_item(tags=["warnings"], days_ago=7, _current_time=frozen_time))
+            results = get_warnings(engine, days=7)
         assert len(results) == 1
     finally:
         os.unlink(db_path)
