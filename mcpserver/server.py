@@ -1,10 +1,12 @@
 import json
 import logging
 import os
+import sys
 
 from mcp.server.fastmcp import FastMCP
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 
-from collector.storage import init_db
 from mcpserver.queries import (
     get_item,
     get_recent,
@@ -18,6 +20,7 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("casp-radar", host="0.0.0.0", port=8000)
 
@@ -28,7 +31,18 @@ def get_engine():
     global _engine
     if _engine is None:
         db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
-        _engine = init_db(db_path)
+        if not os.path.exists(db_path):
+            logger.error(
+                "Database file not found at %s - has the collector run yet? "
+                "The MCP server opens the DB read-only and does not create the schema itself.",
+                db_path,
+            )
+            sys.exit(1)
+        _engine = create_engine(
+            f"sqlite:///file:{db_path}?mode=ro&uri=true",
+            connect_args={"timeout": 30},
+            poolclass=NullPool,
+        )
     return _engine
 
 
