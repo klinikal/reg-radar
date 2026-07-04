@@ -73,17 +73,20 @@ def _safe(label: str, fn, *args, **kwargs):
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
                        content_tags: list[str] | None = None, date_from: str | None = None,
-                       date_to: str | None = None, limit: int = 20) -> str:
-    """Full-text search across regulatory items by title and snippet.
+                       date_to: str | None = None, limit: int = 20, offset: int = 0) -> str:
+    """Full-text search across regulatory items by title and snippet, paginated.
 
     `tags` searches both the notice-type (source_tags) and topic (content_tags)
     buckets combined. Use `source_tags` to filter by notice kind only (e.g.
     "warnings", "press_releases") or `content_tags` to filter by topic only
     (e.g. "mica", "travel-rule") when you need one bucket specifically.
+    limit defaults to 20, max 100. Use `offset` to page past the first
+    `limit` results (e.g. offset=20 for page 2 of a limit=20 search), or use
+    count_items_tool first to check the total before paging through it.
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
-                     date_from=date_from, date_to=date_to, limit=limit)
+                     date_from=date_from, date_to=date_to, limit=limit, offset=offset)
     return json.dumps(results, default=str)
 
 

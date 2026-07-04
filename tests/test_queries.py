@@ -734,3 +734,27 @@ def test_get_month_facets_non_operational_error_propagates(monkeypatch):
             queries_module.get_month_facets(engine, query="MiCA")
     finally:
         os.unlink(db_path)
+
+
+def test_search_items_offset_pagination():
+    engine, db_path = setup_engine()
+    try:
+        for i in range(5):
+            insert_item(engine, make_item(title="MiCA warning issued", url=f"https://example.com/{i}"))
+        page1 = search_items(engine, "MiCA", limit=2, offset=0)
+        page2 = search_items(engine, "MiCA", limit=2, offset=2)
+        assert len(page1) == 2
+        assert len(page2) == 2
+        assert {i["id"] for i in page1}.isdisjoint({i["id"] for i in page2})
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_negative_offset_is_clamped():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA warning issued"))
+        results = search_items(engine, "MiCA", offset=-5)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)

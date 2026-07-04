@@ -84,11 +84,15 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
 
 
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
-                  content_tags=None, date_from=None, date_to=None, limit: int = 20) -> list[dict]:
+                  content_tags=None, date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 20
+    try:
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        offset = 0
 
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
@@ -97,7 +101,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         terms = _parse_search_terms(query, exact=False)
         if use_fts:
             conditions = ["id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH :fts_q)"] if terms else []
-            params = {"fts_q": _sanitize_fts_terms(terms), "limit": limit} if terms else {"limit": limit}
+            params = {"fts_q": _sanitize_fts_terms(terms), "limit": limit, "offset": offset} if terms else {"limit": limit, "offset": offset}
         else:
             # Also checks raw_content, not just the 500-char content_snippet: a
             # multi-entity document (e.g. a regulator's batch warning notice naming
@@ -105,7 +109,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
             # entities unsearchable via title/snippet alone even though the full text
             # is stored. Widening the search only adds matches, never removes any.
             conditions = []
-            params = {"limit": limit}
+            params = {"limit": limit, "offset": offset}
             for i, term in enumerate(terms):
                 conditions.append(
                     f"(title LIKE :q_{i} ESCAPE '!' OR content_snippet LIKE :q_{i} ESCAPE '!' OR raw_content LIKE :q_{i} ESCAPE '!')"
@@ -133,7 +137,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
                    fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
             FROM items WHERE {where}
             ORDER BY published_at DESC NULLS LAST
-            LIMIT :limit
+            LIMIT :limit OFFSET :offset
         """
         with engine.connect() as conn:
             rows = conn.execute(text(sql), params).fetchall()
