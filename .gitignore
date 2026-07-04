@@ -22,3 +22,6 @@ skills/*/refs/context.md
 
 # OS
 .DS_Store
+
+# Local scratch space (e.g. db-repair backups/salvage scripts)
+scratch/
