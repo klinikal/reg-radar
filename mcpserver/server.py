@@ -4,6 +4,7 @@ import os
 import sys
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
@@ -22,7 +23,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("casp-radar", host="0.0.0.0", port=8000)
+mcp = FastMCP(
+    "casp-radar",
+    host="0.0.0.0",
+    port=8000,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["127.0.0.1", "127.0.0.1:8000", "localhost", "localhost:8000"],
+    ),
+)
 
 _engine = None
 

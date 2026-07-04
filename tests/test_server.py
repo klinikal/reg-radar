@@ -41,3 +41,14 @@ def test_get_engine_opens_existing_db_read_only_and_rejects_writes(tmp_path, mon
         with engine.connect() as conn:
             conn.execute(text("INSERT INTO regulators (id, name) VALUES ('x', 'x')"))
             conn.commit()
+
+
+def test_transport_security_enabled_with_allowed_hosts():
+    # FastMCP only auto-enables DNS-rebinding protection when host is left
+    # at 127.0.0.1/localhost/::1 - this project binds "0.0.0.0" (needed for
+    # Docker networking), which silently falls through to protection
+    # disabled unless configured explicitly.
+    server = _fresh_server_module()
+    ts = server.mcp.settings.transport_security
+    assert ts.enable_dns_rebinding_protection is True
+    assert "127.0.0.1:8000" in ts.allowed_hosts
