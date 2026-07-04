@@ -578,3 +578,24 @@ def test_get_item_returns_source_tags_and_content_tags(tmp_path):
     result = get_item(engine, item.id)
     assert result["source_tags"] == '["warnings"]'
     assert result["content_tags"] == '["mica"]'
+
+
+def test_get_warnings_includes_items_on_cutoff_boundary_day():
+    # Regression test: the old cutoff string used isoformat() ("T" separator
+    # + "+00:00" offset) while stored published_at/fetched_at use a space
+    # separator with no offset. A lexicographic string compare hits that
+    # mismatch at position 10 (' ' < 'T'), so every row from the cutoff day
+    # itself compared as "before" the cutoff and was silently excluded,
+    # regardless of time-of-day. days=N effectively returned ~N-1 days.
+    engine, db_path = setup_engine()
+    try:
+        # Create item with timestamp within the last 7 days to verify boundary handling
+        item_time = datetime.now(timezone.utc) - timedelta(days=6, hours=23)
+        item = make_item(tags=["warnings"], days_ago=0)
+        item.published_at = item_time
+        item.fetched_at = item_time
+        insert_item(engine, item)
+        results = get_warnings(engine, days=7)
+        assert len(results) == 1
+    finally:
+        os.unlink(db_path)

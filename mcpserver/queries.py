@@ -16,6 +16,16 @@ def _escape_like(value: str) -> str:
     return value.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
 
+def _format_dt(dt: datetime) -> str:
+    """Format a datetime to match SQLAlchemy's SQLite DATETIME storage format
+    ("YYYY-MM-DD HH:MM:SS.ffffff", space-separated, no timezone offset), so
+    string comparisons against published_at/fetched_at columns are correct.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+
 def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") -> tuple[list[str], dict]:
     """Builds SQL conditions/params for the three tag-filter parameter shapes
     shared by search_items() and get_recent(): `tags` searches source_tags OR
@@ -346,7 +356,7 @@ def get_warnings(engine, days: int = 30, regulator_id=None) -> list[dict]:
     conditions = ['source_tags LIKE \'%"warnings"%\'']
     params: dict = {}
     if days > 0:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = _format_dt(datetime.now(timezone.utc) - timedelta(days=days))
         conditions.append("(published_at >= :cutoff OR (published_at IS NULL AND fetched_at >= :cutoff))")
         params["cutoff"] = cutoff
     if regulator_id:
