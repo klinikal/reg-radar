@@ -93,17 +93,23 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
 
     def _run(use_fts: bool):
+        terms = _parse_search_terms(query, exact=False)
         if use_fts:
-            conditions = ["id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH :fts_q)"]
-            params = {"fts_q": _sanitize_fts_terms([query]), "limit": limit}
+            conditions = ["id IN (SELECT item_id FROM items_fts WHERE items_fts MATCH :fts_q)"] if terms else []
+            params = {"fts_q": _sanitize_fts_terms(terms), "limit": limit} if terms else {"limit": limit}
         else:
             # Also checks raw_content, not just the 500-char content_snippet: a
             # multi-entity document (e.g. a regulator's batch warning notice naming
             # several firms) can easily exceed that truncation, leaving later-listed
             # entities unsearchable via title/snippet alone even though the full text
             # is stored. Widening the search only adds matches, never removes any.
-            conditions = ["(title LIKE :q ESCAPE '!' OR content_snippet LIKE :q ESCAPE '!' OR raw_content LIKE :q ESCAPE '!')"]
-            params = {"q": f"%{_escape_like(query)}%", "limit": limit}
+            conditions = []
+            params = {"limit": limit}
+            for i, term in enumerate(terms):
+                conditions.append(
+                    f"(title LIKE :q_{i} ESCAPE '!' OR content_snippet LIKE :q_{i} ESCAPE '!' OR raw_content LIKE :q_{i} ESCAPE '!')"
+                )
+                params[f"q_{i}"] = f"%{_escape_like(term)}%"
         if regulator_id:
             conditions.append("regulator_id = :regulator_id")
             params["regulator_id"] = regulator_id
@@ -120,7 +126,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
             conditions.append("published_at <= :date_to")
             params["date_to"] = _extend_date_to(date_to)
 
-        where = " AND ".join(conditions)
+        where = " AND ".join(conditions) if conditions else "1=1"
         sql = f"""
             SELECT id, regulator_id, source_label, title, url, published_at,
                    fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags

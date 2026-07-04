@@ -662,3 +662,35 @@ def test_get_warnings_limit_clamps_and_defaults():
         assert isinstance(get_warnings(engine, days=0, limit="abc"), list)
     finally:
         os.unlink(db_path)
+
+
+def test_search_items_multi_word_query_uses_and_semantics():
+    # Regression: search_items() used to treat "mica travel rule" as one
+    # exact adjacent FTS phrase via _sanitize_fts_terms([query]) - an agent
+    # expecting AND semantics (words present anywhere, any order) got
+    # near-zero results with no signal why. _search_conditions() already had
+    # the correct term-splitting logic three functions away.
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="MiCA travel rule guidance issued", url="https://example.com/1"))
+        insert_item(engine, make_item(title="travel rule under the MiCA framework", url="https://example.com/2"))
+        results = search_items(engine, "mica travel rule")
+        assert len(results) == 2
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_like_fallback_multi_term_and(monkeypatch, caplog):
+    import mcpserver.queries as queries_module
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(title="Bafin imposes administrative fines", url="https://example.com/1"))
+        insert_item(engine, make_item(title="Bafin issues guidance note", url="https://example.com/2"))
+        insert_item(engine, make_item(title="ESMA imposes administrative fines", url="https://example.com/3"))
+        monkeypatch.setattr(queries_module, "_sanitize_fts_terms", lambda terms: '"unterminated')
+        with caplog.at_level("WARNING"):
+            results = queries_module.search_items(engine, "Bafin fines")
+        assert len(results) == 1
+        assert "administrative fines" in results[0]["title"]
+    finally:
+        os.unlink(db_path)
