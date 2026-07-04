@@ -122,3 +122,14 @@ def test_get_month_facets_tool_returns_facets(tmp_path, monkeypatch):
     result = json.loads(server.get_month_facets_tool(query="MiCA"))
     assert isinstance(result, list)
     assert result[0]["count"] == 1
+
+
+def test_list_tags_tool_returns_counts(tmp_path, monkeypatch):
+    import json
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("a", tags=["warnings"]))
+    insert_item(write_engine, _item("b", tags=["warnings"]))
+    result = json.loads(server.list_tags_tool())
+    source_by_tag = {e["tag"]: e["count"] for e in result["source_tags"]}
+    assert source_by_tag["warnings"] == 2

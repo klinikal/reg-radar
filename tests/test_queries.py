@@ -14,6 +14,7 @@ from mcpserver.queries import (
     get_item,
     get_run_log,
     get_warnings,
+    list_tags,
     _sanitize_fts_terms,
 )
 
@@ -756,5 +757,19 @@ def test_search_items_negative_offset_is_clamped():
         insert_item(engine, make_item(title="MiCA warning issued"))
         results = search_items(engine, "MiCA", offset=-5)
         assert len(results) == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_tags_counts_and_separates_buckets():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(tags=["warnings", "casp"]))
+        insert_item(engine, make_item(tags=["warnings"], url="https://example.com/2"))
+        result = list_tags(engine)
+        source_by_tag = {e["tag"]: e["count"] for e in result["source_tags"]}
+        assert source_by_tag["warnings"] == 2
+        assert source_by_tag["casp"] == 1
+        assert result["content_tags"] == []
     finally:
         os.unlink(db_path)

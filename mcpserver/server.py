@@ -15,6 +15,7 @@ from mcpserver.queries import (
     get_run_log,
     get_warnings,
     list_regulators,
+    list_tags,
     search_items,
     search_items_advanced,
 )
@@ -179,6 +180,16 @@ def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: st
               regulator_ids=[regulator_id] if regulator_id else None),
         default=str,
     )
+
+
+@mcp.tool()
+def list_tags_tool() -> str:
+    """Returns every distinct source_tags and content_tags value currently
+    in use, each with its item count, sorted most-common first. Use this to
+    discover valid values for the tags/source_tags/content_tags filters on
+    search_items_tool and get_recent_tool before guessing.
+    """
+    return json.dumps(_safe("list_tags_tool", list_tags, get_engine()), default=str)
 
 
 if __name__ == "__main__":

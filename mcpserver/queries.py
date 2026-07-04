@@ -1,5 +1,7 @@
+import json
 import logging
 import re
+from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
@@ -391,3 +393,21 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
+
+
+def list_tags(engine) -> dict:
+    """Returns distinct source_tags and content_tags values with item
+    counts, each bucket sorted most-common first."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT source_tags, content_tags FROM items")).fetchall()
+    source_counts = Counter()
+    content_counts = Counter()
+    for source_tags_json, content_tags_json in rows:
+        for tag in json.loads(source_tags_json or "[]"):
+            source_counts[tag] += 1
+        for tag in json.loads(content_tags_json or "[]"):
+            content_counts[tag] += 1
+    return {
+        "source_tags": [{"tag": t, "count": c} for t, c in source_counts.most_common()],
+        "content_tags": [{"tag": t, "count": c} for t, c in content_counts.most_common()],
+    }
