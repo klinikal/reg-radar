@@ -25,3 +25,6 @@ skills/*/refs/context.md
 
 # Local scratch space (e.g. db-repair backups/salvage scripts)
 scratch/
+
+# Litestream continuous-backup destination (local replica of the live DB)
+backups/

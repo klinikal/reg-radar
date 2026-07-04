@@ -1,0 +1,4 @@
+dbs:
+  - path: /app/data/casp_radar.db
+    replica:
+      path: /backups/casp_radar

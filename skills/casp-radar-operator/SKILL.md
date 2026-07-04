@@ -43,6 +43,25 @@ services:
 
 Use the `!override` merge tag — a plain list under `ports:` gets *appended* to the base file's port mapping by Compose, not replaced, and both would then try to bind and fail.
 
+**If you remap the MCP port, also set `MCP_EXTRA_ALLOWED_HOSTS`** in `.env` (comma-separated, e.g. `127.0.0.1:8001,localhost:8001`) — the server validates the `Host` header against the *external* port a client actually connects to, not its internal port (always 8000). Without this, every request 421s with "Invalid Host header" once the port is remapped.
+
+---
+
+## Backups & recovery
+
+The live database lives in a Docker-managed named volume (`casp_radar_data`), not a bind-mounted host folder — this is deliberate: SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident in July 2026. You can no longer browse the `.db` file directly from Finder/Terminal; use `docker compose exec mcp sqlite3 /app/data/casp_radar.db` (or similar) if you need to inspect it.
+
+A `litestream` service continuously replicates the database to `./backups/casp_radar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
+
+**To restore from backup** (e.g. after corruption or accidental data loss):
+```bash
+docker compose stop collector mcp webui
+docker run --rm -v "$(pwd)/backups:/backups:ro" -v casp_radar_data:/out litestream/litestream:0.5.9 restore -o /out/casp_radar.db file:///backups/casp_radar
+# verify before trusting it:
+docker run --rm -v casp_radar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/casp_radar.db 'PRAGMA integrity_check;'"
+docker compose up -d collector mcp webui
+```
+
 ---
 
 ## What's in the data

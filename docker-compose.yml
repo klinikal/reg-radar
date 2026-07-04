@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.collector
     volumes:
-      - ./data:/app/data
+      - casp_radar_data:/app/data
       - ./config:/app/config
     env_file: .env
     restart: unless-stopped
@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile.mcp
     volumes:
-      - ./data:/app/data
+      - casp_radar_data:/app/data
       - ./config:/app/config
     env_file: .env
     ports:
@@ -30,11 +30,29 @@ services:
       context: .
       dockerfile: Dockerfile.webui
     volumes:
-      - ./data:/app/data
+      - casp_radar_data:/app/data
       - ./config:/app/config
     env_file: .env
     ports:
       - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    depends_on:
+      - collector
+
+  # Continuously streams the SQLite database (from the named volume above -
+  # NOT a macOS bind mount, which is the storage layer suspected of causing
+  # the 2026-07 corruption incident: Docker Desktop's host<->VM bridge for
+  # bind mounts doesn't fully honour the file-locking guarantees SQLite's
+  # WAL mode relies on) to a plain folder on the host disk (./backups),
+  # so a restore is always available within Litestream's retention window.
+  # Restore: litestream restore -o restored.db file:///backups/casp_radar
+  litestream:
+    image: litestream/litestream:0.5.9
+    volumes:
+      - casp_radar_data:/app/data
+      - ./backups:/backups
+      - ./litestream.yml:/etc/litestream.yml:ro
+    command: replicate
     restart: unless-stopped
     depends_on:
       - collector
@@ -44,3 +62,7 @@ services:
     environment:
       - LOG_LEVEL=info
     restart: unless-stopped
+
+volumes:
+  casp_radar_data:
+    name: casp_radar_data
