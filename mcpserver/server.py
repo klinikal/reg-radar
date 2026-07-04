@@ -56,9 +56,10 @@ def get_engine():
 
 
 @mcp.tool()
-def search_items_tool(query: str, regulator_id: str = None, language: str = None, tags: list[str] = None,
-                       source_tags: list[str] = None, content_tags: list[str] = None,
-                       date_from: str = None, date_to: str = None, limit: int = 20) -> str:
+def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
+                       tags: list[str] | None = None, source_tags: list[str] | None = None,
+                       content_tags: list[str] | None = None, date_from: str | None = None,
+                       date_to: str | None = None, limit: int = 20) -> str:
     """Full-text search across regulatory items by title and snippet.
 
     `tags` searches both the notice-type (source_tags) and topic (content_tags)
@@ -73,8 +74,9 @@ def search_items_tool(query: str, regulator_id: str = None, language: str = None
 
 
 @mcp.tool()
-def get_recent_tool(limit: int = 20, regulator_id: str = None, tags: list[str] = None,
-                     source_tags: list[str] = None, content_tags: list[str] = None, language: str = None) -> str:
+def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
+                     source_tags: list[str] | None = None, content_tags: list[str] | None = None,
+                     language: str | None = None) -> str:
     """Returns the most recent regulatory items, with optional filters.
 
     `tags` searches both notice-type (source_tags) and topic (content_tags)
@@ -93,9 +95,9 @@ def list_regulators_tool() -> str:
 
 
 @mcp.tool()
-def get_item_tool(id: str) -> str:
+def get_item_tool(item_id: str) -> str:
     """Returns a single item by its ID, including raw_content."""
-    result = get_item(get_engine(), id)
+    result = get_item(get_engine(), item_id)
     return json.dumps(result, default=str)
 
 

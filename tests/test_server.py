@@ -1,4 +1,5 @@
 import importlib
+import typing
 
 import pytest
 from sqlalchemy import text
@@ -52,3 +53,23 @@ def test_transport_security_enabled_with_allowed_hosts():
     ts = server.mcp.settings.transport_security
     assert ts.enable_dns_rebinding_protection is True
     assert "127.0.0.1:8000" in ts.allowed_hosts
+
+
+def test_search_items_tool_signature_uses_optional_types():
+    server = _fresh_server_module()
+    hints = typing.get_type_hints(server.search_items_tool)
+    for name in ("regulator_id", "language", "tags", "source_tags", "content_tags", "date_from", "date_to"):
+        assert type(None) in typing.get_args(hints[name]), f"{name} is not Optional"
+
+
+def test_get_recent_tool_signature_uses_optional_types():
+    server = _fresh_server_module()
+    hints = typing.get_type_hints(server.get_recent_tool)
+    for name in ("regulator_id", "tags", "source_tags", "content_tags", "language"):
+        assert type(None) in typing.get_args(hints[name]), f"{name} is not Optional"
+
+
+def test_get_item_tool_param_does_not_shadow_builtin():
+    server = _fresh_server_module()
+    assert "item_id" in typing.get_type_hints(server.get_item_tool)
+    assert "id" not in typing.get_type_hints(server.get_item_tool)
