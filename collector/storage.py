@@ -65,6 +65,7 @@ class RunRow(Base):
     total_new = Column(Integer, default=0)
     total_errors = Column(Integer, default=0)
     error_detail = Column(Text)  # JSON array
+    db_integrity_ok = Column(Boolean, nullable=True)  # PRAGMA integrity_check result, checked once per run
 
 
 class SourceErrorRow(Base):
@@ -110,8 +111,24 @@ def init_db(db_path: str):
         conn.commit()
         _ensure_column(conn, "items", "source_tags", "TEXT")
         _ensure_column(conn, "items", "content_tags", "TEXT")
+        _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
     Base.metadata.create_all(engine)
     return engine
+
+
+def check_db_integrity(engine) -> bool:
+    """Runs SQLite's own PRAGMA integrity_check and returns True only if it
+    reports completely clean (a single "ok" row) - any other output, or the
+    check itself raising (e.g. "database disk image is malformed" on a
+    sufficiently corrupted file), counts as failed. Cheap enough to run every
+    collection cycle at this database's size (well under a second).
+    """
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("PRAGMA integrity_check")).fetchall()
+    except Exception:
+        return False
+    return len(rows) == 1 and rows[0][0] == "ok"
 
 
 def upsert_regulator(engine, entry: dict) -> None:
@@ -177,7 +194,7 @@ def record_run_start(engine) -> str:
     return run_id
 
 
-def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list, status: str | None = None) -> None:
+def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list, status: str | None = None, db_integrity_ok: bool | None = None) -> None:
     if status is None:
         status = "success" if total_errors == 0 else "partial"
     with Session(engine) as session:
@@ -189,6 +206,7 @@ def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int,
             row.total_new = total_new
             row.total_errors = total_errors
             row.error_detail = json.dumps(error_detail)
+            row.db_integrity_ok = db_integrity_ok
             session.commit()
 
 

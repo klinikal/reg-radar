@@ -84,16 +84,21 @@ Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliber
 
 ## MCP server
 
-The MCP server exposes six tools over streamable HTTP:
+The MCP server exposes eleven tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
 
 | Tool | Description |
 |---|---|
-| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails). Filter by `tags` (source + content tags combined), or `source_tags`/`content_tags` individually — see [Tags](#tags) |
+| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails), with AND semantics, quoted-phrase support, and `limit`/`offset` pagination. Filter by `tags` (source + content tags combined), or `source_tags`/`content_tags` individually — see [Tags](#tags) |
 | `get_recent_tool` | Most recent N items with optional filters, same `tags`/`source_tags`/`content_tags` options as above |
 | `list_regulators_tool` | Full registry with live fetch status |
-| `get_item_tool` | Single item by ID, including raw content |
+| `get_item_tool` | Single item by ID, including raw content; optional `max_content_chars` to truncate large text and protect context windows |
 | `get_run_log_tool` | Recent collector run stats |
 | `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below |
+| `count_items_tool` | Total count matching a search, without fetching rows — cheaper than `search_items_tool` when only the number matters |
+| `get_month_facets_tool` | Item counts grouped by publish month for a search, for a month-picker style view |
+| `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts — discover valid tag values before filtering by them |
+| `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — the polling primitive for "everything new since my last check" |
+| `get_health_tool` | Most recent collector run's status, freshness, and database integrity (see [Backups & recovery](#backups--recovery)) — check this before trusting search results after a long gap |
 
 **On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
 
@@ -107,6 +112,8 @@ services:
       - "127.0.0.1:8001:8000"
 ```
 Use the `!override` merge tag — a plain list under `ports:` gets *appended* to the base port mapping by Compose, not replaced, and both would then try to bind and fail.
+
+If you remap the port, also set `MCP_EXTRA_ALLOWED_HOSTS` in `.env` (e.g. `127.0.0.1:8001,localhost:8001`) — the server validates the `Host` header against the *external* port a client actually connects to, and rejects anything not on the list with a 421.
 
 ## Web UI
 
@@ -177,6 +184,15 @@ Copy `.env.example` to `.env` and adjust:
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
 | `FLARESOLVERR_MAX_RETRIES` | `3` | Retry attempts per FlareSolverr fetch |
 | `FLARESOLVERR_RETRY_BACKOFF_SECONDS` | `45` | Base backoff when a FlareSolverr fetch looks blocked (doubles per retry) |
+| `MCP_EXTRA_ALLOWED_HOSTS` | *(unset)* | Comma-separated `host:port` values to add to the MCP server's Host-header allowlist — required if you remap the published port (see above) |
+
+## Backups & recovery
+
+The live database lives in a Docker-managed named volume (`casp_radar_data`), not a bind-mounted host folder — SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident. A `litestream` service continuously replicates the database to `./backups/casp_radar` on the host disk, so a corruption or data-loss event is a restore, not a salvage job.
+
+The collector also runs a full `PRAGMA integrity_check` at the start of every collection cycle, so corruption is caught immediately and surfaced loudly (`get_health_tool`'s `db_integrity` field: `"ok"`, `"corrupted"`, or `"unknown"` if no run has completed yet) — not discovered later as a failed search.
+
+Full restore procedure and details: see [Backups & recovery in the operator skill](skills/casp-radar-operator/SKILL.md#backups--recovery).
 
 ### Keyword alerts
 

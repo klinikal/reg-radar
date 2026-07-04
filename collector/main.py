@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from collector.fetcher import fetch_source
 from collector.keyword_alerts import load_alert_rules, match_keywords
 from collector.storage import (
+    check_db_integrity,
     init_db,
     insert_item,
     record_run_complete,
@@ -64,6 +65,21 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
     total_errors = 0
     error_detail = []
     _exception = None
+
+    # Checked once per run, before fetching anything - corruption doesn't
+    # stop the collector from writing, only from being read back cleanly
+    # later, so nothing else in this run would ever notice on its own. A
+    # user hitting it first via a search failure (rather than this check)
+    # is exactly the silent-failure pattern this exists to prevent.
+    db_integrity_ok = check_db_integrity(engine)
+    if not db_integrity_ok:
+        logger.critical(
+            "DATABASE INTEGRITY CHECK FAILED - the SQLite file at %s may be "
+            "corrupted. Search and other read paths may already be broken. "
+            "See 'Backups & recovery' in skills/casp-radar-operator/SKILL.md "
+            "to restore from the Litestream backup.",
+            cfg.get("db_path", "<unknown>"),
+        )
 
     fetch_cfg = {
         "user_agent": cfg["user_agent"],
@@ -158,7 +174,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
             status = "failed"
         else:
             status = "success" if total_errors == 0 else "partial"
-        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status)
+        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok)
         if _exception is None:
             logger.info(
                 "Run complete: fetched=%d new=%d errors=%d", total_fetched, total_new, total_errors

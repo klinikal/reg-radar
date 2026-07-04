@@ -251,6 +251,14 @@ def get_health_tool() -> dict:
     seconds since it completed), so an agent can caveat "data may be stale"
     without separately calling get_run_log_tool and doing the date math
     itself.
+
+    Also includes `db_integrity`: "ok", "corrupted", or "unknown" (no runs
+    yet). The collector runs a full integrity check on the database once per
+    collection cycle specifically so corruption is caught here - if this
+    ever reads "corrupted", search results and other reads may already be
+    unreliable; see "Backups & recovery" in
+    skills/casp-radar-operator/SKILL.md to restore from the Litestream
+    backup rather than trusting query results.
     """
     return _safe("get_health_tool", get_health, get_engine())
 

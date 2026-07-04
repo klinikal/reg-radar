@@ -450,21 +450,29 @@ def get_health(engine) -> dict:
     """Returns the most recent collector run's status and how long ago it
     completed (or started, if still running), so callers can caveat "data
     may be stale" without separately calling get_run_log and doing the date
-    math themselves.
+    math themselves. Also surfaces db_integrity - the collector runs
+    PRAGMA integrity_check once per collection cycle specifically so
+    corruption is caught here loudly, not discovered later as a failed
+    search.
     """
     sql = """
-        SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors
+        SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok
         FROM runs ORDER BY started_at DESC LIMIT 1
     """
-    keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors"]
+    keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors", "db_integrity_ok"]
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
     if row is None:
-        return {"status": "no_runs", "latest_run": None, "age_seconds": None}
+        return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown"}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
     if reference:
         ref_dt = datetime.fromisoformat(str(reference).replace("T", " ")).replace(tzinfo=timezone.utc)
         age_seconds = (datetime.now(timezone.utc) - ref_dt).total_seconds()
-    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds}
+    integrity_flag = latest.pop("db_integrity_ok")
+    if integrity_flag is None:
+        db_integrity = "unknown"
+    else:
+        db_integrity = "ok" if integrity_flag else "corrupted"
+    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity}

@@ -167,6 +167,59 @@ def test_run_collection_clean_run_marks_success_not_ok():
         os.unlink(db_path)
 
 
+def test_run_collection_records_db_integrity_ok_for_healthy_db():
+    # A fresh init_db()'d temp file is a clean database - the integrity
+    # check run at the start of every collection cycle should pass and be
+    # recorded on the run row, not left null.
+    engine, db_path = _make_engine()
+    try:
+        reg = {
+            "id": "test-reg",
+            "name": "Test",
+            "enabled": True,
+            "sources": [{"label": "fine", "url": "http://example.com/fine"}],
+        }
+
+        with patch("collector.main.fetch_source", return_value=[]):
+            run_collection(engine, [reg], _base_cfg())
+
+        with Session(engine) as session:
+            rows = session.query(RunRow).all()
+            assert len(rows) == 1
+            assert bool(rows[0].db_integrity_ok) is True
+    finally:
+        os.unlink(db_path)
+
+
+def test_run_collection_logs_critical_when_db_integrity_check_fails():
+    # A failing integrity check must be surfaced loudly (not just recorded
+    # silently in a column nobody looks at until a search fails) - this is
+    # the whole point of checking at collection time rather than waiting for
+    # a read to trip over corruption first.
+    engine, db_path = _make_engine()
+    try:
+        reg = {
+            "id": "test-reg",
+            "name": "Test",
+            "enabled": True,
+            "sources": [{"label": "fine", "url": "http://example.com/fine"}],
+        }
+
+        with patch("collector.main.check_db_integrity", return_value=False), \
+                patch("collector.main.fetch_source", return_value=[]), \
+                patch("collector.main.logger") as mock_logger:
+            run_collection(engine, [reg], _base_cfg())
+
+        mock_logger.critical.assert_called_once()
+        assert "INTEGRITY CHECK FAILED" in mock_logger.critical.call_args[0][0]
+
+        with Session(engine) as session:
+            rows = session.query(RunRow).all()
+            assert bool(rows[0].db_integrity_ok) is False
+    finally:
+        os.unlink(db_path)
+
+
 def test_run_collection_scrape_source_zero_items_recorded_as_error():
     # A scrape source returning [] with no exception (a broken selector, a
     # site redesign) used to look identical to "nothing new today" - it

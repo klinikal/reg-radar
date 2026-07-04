@@ -820,6 +820,7 @@ def test_get_health_no_runs_returns_no_runs_status():
         result = get_health(engine)
         assert result["status"] == "no_runs"
         assert result["latest_run"] is None
+        assert result["db_integrity"] == "unknown"
     finally:
         os.unlink(db_path)
 
@@ -833,5 +834,41 @@ def test_get_health_returns_latest_run_status_and_age():
         assert result["status"] == "success"
         assert result["latest_run"]["run_id"] == run_id
         assert result["age_seconds"] >= 0
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_reports_db_integrity_ok():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [], db_integrity_ok=True)
+        result = get_health(engine)
+        assert result["db_integrity"] == "ok"
+        assert "db_integrity_ok" not in result["latest_run"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_reports_db_integrity_corrupted():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [], db_integrity_ok=False)
+        result = get_health(engine)
+        assert result["db_integrity"] == "corrupted"
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_reports_db_integrity_unknown_when_never_checked():
+    # A run recorded without db_integrity_ok specified (the pre-Task
+    # default) must read as "unknown", not silently look "ok" or "corrupted".
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [])
+        result = get_health(engine)
+        assert result["db_integrity"] == "unknown"
     finally:
         os.unlink(db_path)

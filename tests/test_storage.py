@@ -14,6 +14,7 @@ from collector.storage import (
     record_run_complete,
     record_source_error,
     reset_source_errors,
+    check_db_integrity,
 )
 from mcpserver.queries import get_recent
 
@@ -308,3 +309,54 @@ def test_insert_item_writes_source_tags_and_content_tags(tmp_path):
         row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id = :id"), {"id": item.id}).fetchone()
     assert json.loads(row[0]) == ["warnings"]
     assert json.loads(row[1]) == ["mica"]
+
+
+def test_check_db_integrity_true_for_healthy_db(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    assert check_db_integrity(engine) is True
+
+
+def test_check_db_integrity_false_for_corrupted_file(tmp_path):
+    # Insert real rows first - a freshly-initialised, empty database is
+    # mostly unallocated freelist pages, and integrity_check doesn't
+    # validate the *content* of those, so clobbering bytes in an empty file
+    # doesn't reliably trigger a failure. With real data pages present,
+    # overwriting the file's last page (where data actually lives) does.
+    db_path = tmp_path / "test.db"
+    engine = init_db(str(db_path))
+    now = datetime.now(timezone.utc)
+    for i in range(50):
+        insert_item(engine, Item(
+            id=make_item_id("esma", f"https://x/{i}", now), regulator_id="esma", source_label="all_news",
+            title=f"Item {i} " * 20, url=f"https://x/{i}", published_at=now, fetched_at=now,
+            date_inferred=False, language="en", content_snippet="content " * 50, source_type="rss",
+            source_tags=["casp"], raw_content="raw content here " * 100,
+        ))
+    engine.dispose()
+
+    size = os.path.getsize(db_path)
+    with open(db_path, "r+b") as f:
+        f.seek(max(0, size - 4096))
+        f.write(b"\xff" * 4096)
+
+    from sqlalchemy import create_engine as _create_engine
+    corrupt_engine = _create_engine(f"sqlite:///{db_path}", connect_args={"timeout": 30})
+    assert check_db_integrity(corrupt_engine) is False
+
+
+def test_record_run_complete_stores_db_integrity_ok(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    run_id = record_run_start(engine)
+    record_run_complete(engine, run_id, total_fetched=1, total_new=1, total_errors=0, error_detail=[], db_integrity_ok=True)
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT db_integrity_ok FROM runs WHERE run_id = :id"), {"id": run_id}).fetchone()
+    assert bool(row[0]) is True
+
+
+def test_record_run_complete_db_integrity_defaults_to_none(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    run_id = record_run_start(engine)
+    record_run_complete(engine, run_id, total_fetched=1, total_new=1, total_errors=0, error_detail=[])
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT db_integrity_ok FROM runs WHERE run_id = :id"), {"id": run_id}).fetchone()
+    assert row[0] is None
