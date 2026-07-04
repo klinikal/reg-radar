@@ -58,6 +58,20 @@ def test_transport_security_enabled_with_allowed_hosts():
     assert "127.0.0.1:8000" in ts.allowed_hosts
 
 
+def test_transport_security_allows_extra_hosts_from_env(monkeypatch):
+    # Operators remapping the published port (e.g. 127.0.0.1:8001:8000, per
+    # skills/casp-radar-operator/SKILL.md's port-conflict guidance) send a
+    # Host header reflecting that external port - it must be explicitly
+    # allow-listed via MCP_EXTRA_ALLOWED_HOSTS or every request 421s.
+    monkeypatch.setenv("MCP_EXTRA_ALLOWED_HOSTS", "127.0.0.1:8001, localhost:8001")
+    server = _fresh_server_module()
+    ts = server.mcp.settings.transport_security
+    assert "127.0.0.1:8001" in ts.allowed_hosts
+    assert "localhost:8001" in ts.allowed_hosts
+    # Defaults must still be present - this is additive, not a replacement.
+    assert "127.0.0.1:8000" in ts.allowed_hosts
+
+
 def test_search_items_tool_signature_uses_optional_types():
     server = _fresh_server_module()
     hints = typing.get_type_hints(server.search_items_tool)

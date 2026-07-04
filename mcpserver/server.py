@@ -27,6 +27,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# The Host header a client sends reflects the EXTERNAL port it connected to
+# (e.g. "127.0.0.1:8001"), not this container's internal port (always 8000)
+# - so an operator who remaps the published port via docker-compose.override.yml
+# (documented in skills/casp-radar-operator/SKILL.md for port conflicts) needs
+# their remapped host:port added here too, via MCP_EXTRA_ALLOWED_HOSTS
+# (comma-separated, e.g. "127.0.0.1:8001,localhost:8001").
+_extra_allowed_hosts = [
+    h.strip() for h in os.getenv("MCP_EXTRA_ALLOWED_HOSTS", "").split(",") if h.strip()
+]
+
 mcp = FastMCP(
     "casp-radar",
     host="0.0.0.0",
@@ -34,9 +44,9 @@ mcp = FastMCP(
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         # Assumes loopback-only exposure (docker-compose.yml publishes
-        # 127.0.0.1:8000:8000). If this server is ever reached by Docker
-        # service name from another container, add that hostname here too.
-        allowed_hosts=["127.0.0.1", "127.0.0.1:8000", "localhost", "localhost:8000"],
+        # 127.0.0.1:8000:8000 by default). If this server is ever reached by
+        # Docker service name from another container, add that hostname too.
+        allowed_hosts=["127.0.0.1", "127.0.0.1:8000", "localhost", "localhost:8000"] + _extra_allowed_hosts,
     ),
 )
 
