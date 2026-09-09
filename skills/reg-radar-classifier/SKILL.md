@@ -1,13 +1,13 @@
 ---
-name: regradar-classifier
-description: Use when asked to classify unclassified regradar items on the document_type or instrument axis, work through the regradar classification backlog, or "help regradar figure out what these items are". Triggers on "classify these regradar items", "work the unclassified backlog", "run the regradar classifier skill", or a direct request to label document_type/instrument for regradar via the MCP server.
+name: reg-radar-classifier
+description: Use when asked to classify unclassified reg-radar items on the document_type or instrument axis, work through the reg-radar classification backlog, or "help reg-radar figure out what these items are". Triggers on "classify these reg-radar items", "work the unclassified backlog", "run the reg-radar classifier skill", or a direct request to label document_type/instrument for reg-radar via the MCP server.
 ---
 
-# regradar Classifier
+# reg-radar Classifier
 
-Classifies regradar items on the `document_type` and `instrument` taxonomy axes (architecture doc §4.1) via the MCP write interface (§4.5), so an agent can work the classification backlog without the repo holding any provider keys or picking a vendor (§4.6). No code here calls an LLM API directly - the agent reading this skill *is* the classifier.
+Classifies reg-radar items on the `document_type` and `instrument` taxonomy axes (architecture doc §4.1) via the MCP write interface (§4.5), so an agent can work the classification backlog without the repo holding any provider keys or picking a vendor (§4.6). No code here calls an LLM API directly - the agent reading this skill *is* the classifier.
 
-**Read your operator context first, if it exists:** check `skills/regradar-operator/refs/context.md` (relative to repo root). If present, it names the entity this instance serves - that tells you which items are *worth reading closely* (prioritise), never which label to assign. The taxonomy is objective: what an item *is* (its document type, the legal instruments it substantively concerns) does not change based on who's asking. Do not label something `mica` just because the operator is a Maltese CASP and MiCA is relevant to them - label it `mica` only if the document is actually about MiCA.
+**Read your operator context first, if it exists:** check `skills/reg-radar-operator/refs/context.md` (relative to repo root). If present, it names the entity this instance serves - that tells you which items are *worth reading closely* (prioritise), never which label to assign. The taxonomy is objective: what an item *is* (its document type, the legal instruments it substantively concerns) does not change based on who's asking. Do not label something `mica` just because the operator is a Maltese CASP and MiCA is relevant to them - label it `mica` only if the document is actually about MiCA.
 
 ## Before you start
 

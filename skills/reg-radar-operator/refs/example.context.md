@@ -1,6 +1,6 @@
-# Operator Context — regradar (template)
+# Operator Context — reg-radar (template)
 
-This is a template for `refs/actual/context.md`, which is git-ignored and instance-specific. The `regradar-onboarding` skill (see `../../regradar-onboarding/`) can generate this file for you interactively — or copy this file by hand and fill it in. Don't edit this file with real details — it's the public example, tracked in the repo.
+This is a template for `refs/actual/context.md`, which is git-ignored and instance-specific. The `reg-radar-onboarding` skill (see `../../reg-radar-onboarding/`) can generate this file for you interactively — or copy this file by hand and fill it in. Don't edit this file with real details — it's the public example, tracked in the repo.
 
 ## Things Interested In
 
@@ -46,6 +46,6 @@ This is a template for `refs/actual/context.md`, which is git-ignored and instan
 
 [Counterparties or corporate affiliates whose regulatory treatment matters to this entity even though they aren't the entity itself — e.g. infrastructure partners, affiliated entities in adjacent business lines. Name them explicitly if possible so an agent can match by name, not just by category.]
 
-## Relevance to regradar Monitoring
+## Relevance to reg-radar Monitoring
 
 [Synthesis: given everything above, which regulators/jurisdictions and which topics should be treated as highest priority, and which as lower priority or not applicable? Usually best drafted by an agent from the rest of the answers, then confirmed by you, rather than written from scratch.]
