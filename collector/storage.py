@@ -1,6 +1,9 @@
+import hashlib
 import json
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import (
     Boolean,
@@ -15,6 +18,24 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from collector.schema import Item
+
+# Original-artefact storage (docs/design/regradar-architecture.md section
+# 3.3). Read at call time (not import time) so tests can point a single
+# call at a temp directory without needing to reload this module.
+_DEFAULT_ARTEFACTS_DIR = "/app/data/originals"
+_DEFAULT_MAX_ARTEFACT_BYTES = 25 * 1024 * 1024  # matches MAX_PDF_DOWNLOAD_BYTES's existing default
+
+
+def _artefacts_dir() -> str:
+    return os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
+
+
+def _max_artefact_bytes() -> int:
+    return int(os.getenv("MAX_ARTEFACT_BYTES", str(_DEFAULT_MAX_ARTEFACT_BYTES)))
+
+
+def _store_artefacts_enabled() -> bool:
+    return os.getenv("STORE_ARTEFACTS", "true").strip().lower() not in ("false", "0", "")
 
 
 class Base(DeclarativeBase):
@@ -52,6 +73,9 @@ class ItemRow(Base):
     source_tags = Column(Text)  # JSON array - structural (warnings, press_releases, ...)
     content_tags = Column(Text)  # JSON array - what the item is about (keyword-derived today)
     raw_content = Column(Text)
+    body_md = Column(Text)
+    extractor = Column(String)  # e.g. "markdownify/1.2.3" - which body_md conversion produced this row
+    updated_at = Column(DateTime)  # bumps on any change to body, labels or artefact; drives the sync cursor
 
 
 class RunRow(Base):
@@ -77,6 +101,17 @@ class SourceErrorRow(Base):
     consecutive_failures = Column(Integer, default=0)
     last_error = Column(Text)
     last_attempt_at = Column(DateTime)
+
+
+class ItemArtefactRow(Base):
+    __tablename__ = "item_artefacts"
+
+    item_id = Column(String, primary_key=True)
+    path = Column(String, nullable=False)  # relative to ARTEFACTS_DIR
+    mime = Column(String, nullable=False)
+    sha256 = Column(String, nullable=False)
+    bytes = Column(Integer, nullable=False)
+    fetched_at = Column(DateTime, nullable=False)
 
 
 class ItemChunkRow(Base):
@@ -111,6 +146,9 @@ def init_db(db_path: str):
         conn.commit()
         _ensure_column(conn, "items", "source_tags", "TEXT")
         _ensure_column(conn, "items", "content_tags", "TEXT")
+        _ensure_column(conn, "items", "body_md", "TEXT")
+        _ensure_column(conn, "items", "extractor", "TEXT")
+        _ensure_column(conn, "items", "updated_at", "DATETIME")
         _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
     Base.metadata.create_all(engine)
     return engine
@@ -144,6 +182,31 @@ def upsert_regulator(engine, entry: dict) -> None:
         session.commit()
 
 
+def _write_artefact(item: Item) -> dict | None:
+    """Writes item.raw_bytes to ARTEFACTS_DIR/<id2>/<id>.<ext> and returns
+    the row fields for item_artefacts, or None if there's nothing to store
+    (no raw_bytes, STORE_ARTEFACTS=false, or over MAX_ARTEFACT_BYTES).
+    """
+    if not item.raw_bytes or not _store_artefacts_enabled():
+        return None
+    if len(item.raw_bytes) > _max_artefact_bytes():
+        return None
+    ext = "pdf" if item.mime == "application/pdf" else "html"
+    id2 = item.id[:2]
+    rel_path = f"{id2}/{item.id}.{ext}"
+    full_path = Path(_artefacts_dir()) / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(item.raw_bytes)
+    return {
+        "item_id": item.id,
+        "path": rel_path,
+        "mime": item.mime or "application/octet-stream",
+        "sha256": hashlib.sha256(item.raw_bytes).hexdigest(),
+        "bytes": len(item.raw_bytes),
+        "fetched_at": item.fetched_at,
+    }
+
+
 def insert_item(engine, item: Item) -> bool:
     with Session(engine) as session:
         existing = session.get(ItemRow, item.id)
@@ -164,6 +227,9 @@ def insert_item(engine, item: Item) -> bool:
             source_tags=json.dumps(item.source_tags),
             content_tags=json.dumps(item.content_tags),
             raw_content=item.raw_content,
+            body_md=item.body_md,
+            extractor=item.extractor,
+            updated_at=item.fetched_at,
         )
         session.add(row)
         session.execute(
@@ -178,8 +244,42 @@ def insert_item(engine, item: Item) -> bool:
                 "raw_content": item.raw_content or "",
             },
         )
+        artefact = _write_artefact(item)
+        if artefact:
+            session.execute(
+                text(
+                    "INSERT INTO item_artefacts (item_id, path, mime, sha256, bytes, fetched_at) "
+                    "VALUES (:item_id, :path, :mime, :sha256, :bytes, :fetched_at)"
+                ),
+                artefact,
+            )
         session.commit()
         return True
+
+
+def get_artefact(engine, item_id: str) -> dict | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT item_id, path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id=:id"),
+            {"id": item_id},
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row._mapping)
+
+
+def update_item_body(engine, item_id: str, body_md: str, extractor: str) -> None:
+    """Used by scripts/reprocess_bodies.py to re-run Markdown conversion on
+    an existing row. Bumps updated_at, per section 3.2's sync-cursor rule.
+    """
+    with Session(engine) as session:
+        row = session.get(ItemRow, item_id)
+        if row is None:
+            return
+        row.body_md = body_md
+        row.extractor = extractor
+        row.updated_at = datetime.now(timezone.utc)
+        session.commit()
 
 
 def record_run_start(engine) -> str:
