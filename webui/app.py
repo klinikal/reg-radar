@@ -21,7 +21,7 @@ logging.basicConfig(
 
 _HERE = os.path.dirname(__file__)
 
-app = FastAPI(title="casp-radar")
+app = FastAPI(title="regradar")
 app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
@@ -48,7 +48,7 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+        db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
         _engine = init_db(db_path)
     return _engine
 

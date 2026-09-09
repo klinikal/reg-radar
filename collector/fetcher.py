@@ -447,7 +447,7 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
             # notices link straight to a PDF, no separate HTML landing page).
             pdf_bytes = _fetch_bytes(
                 href,
-                config.get("user_agent", "casp-radar/1.0"),
+                config.get("user_agent", "regradar/2.0"),
                 int(config.get("timeout", 30)),
                 int(config.get("retries", 3)),
                 max_bytes=_MAX_PDF_DOWNLOAD_BYTES,
@@ -519,7 +519,7 @@ def fetch_source(
     flaresolverr_url: str | None,
     config: dict,
 ) -> list[Item]:
-    user_agent = config.get("user_agent", "casp-radar/1.0")
+    user_agent = config.get("user_agent", "regradar/2.0")
     timeout = int(config.get("timeout", 30))
     retries = int(config.get("retries", 3))
     source_type = source.get("type", "rss")

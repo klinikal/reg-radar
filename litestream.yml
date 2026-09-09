@@ -1,4 +1,4 @@
 dbs:
-  - path: /app/data/casp_radar.db
+  - path: /app/data/regradar.db
     replica:
-      path: /backups/casp_radar
+      path: /backups/regradar

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # The Host header a client sends reflects the EXTERNAL port it connected to
 # (e.g. "127.0.0.1:8001"), not this container's internal port (always 8000)
 # - so an operator who remaps the published port via docker-compose.override.yml
-# (documented in skills/casp-radar-operator/SKILL.md for port conflicts) needs
+# (documented in skills/regradar-operator/SKILL.md for port conflicts) needs
 # their remapped host:port added here too, via MCP_EXTRA_ALLOWED_HOSTS
 # (comma-separated, e.g. "127.0.0.1:8001,localhost:8001").
 _extra_allowed_hosts = [
@@ -38,7 +38,7 @@ _extra_allowed_hosts = [
 ]
 
 mcp = FastMCP(
-    "casp-radar",
+    "regradar",
     host="0.0.0.0",
     port=8000,
     transport_security=TransportSecuritySettings(
@@ -56,7 +56,7 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+        db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
         if not os.path.exists(db_path):
             logger.error(
                 "Database file not found at %s - has the collector run yet? "
@@ -257,7 +257,7 @@ def get_health_tool() -> dict:
     collection cycle specifically so corruption is caught here - if this
     ever reads "corrupted", search results and other reads may already be
     unreliable; see "Backups & recovery" in
-    skills/casp-radar-operator/SKILL.md to restore from the Litestream
+    skills/regradar-operator/SKILL.md to restore from the Litestream
     backup rather than trusting query results.
     """
     return _safe("get_health_tool", get_health, get_engine())

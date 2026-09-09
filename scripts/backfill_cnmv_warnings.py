@@ -60,10 +60,10 @@ def _page_url(base_url: str, page: int) -> str:
 
 def run(delay: float, dry_run: bool) -> None:
     source = _load_source()
-    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    user_agent = os.getenv("USER_AGENT", "regradar/2.0")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
-    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     resp = httpx.get(source["url"], headers={"User-Agent": user_agent}, timeout=timeout, follow_redirects=True)

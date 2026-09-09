@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 def load_config():
     return {
-        "db_path": os.getenv("DB_PATH", "/app/data/casp_radar.db"),
+        "db_path": os.getenv("DB_PATH", "/app/data/regradar.db"),
         "schedule": os.getenv("SCHEDULE", "0 6 * * *"),
-        "user_agent": os.getenv("USER_AGENT", "casp-radar/1.0"),
+        "user_agent": os.getenv("USER_AGENT", "regradar/2.0"),
         "timeout": int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,
@@ -76,7 +76,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
         logger.critical(
             "DATABASE INTEGRITY CHECK FAILED - the SQLite file at %s may be "
             "corrupted. Search and other read paths may already be broken. "
-            "See 'Backups & recovery' in skills/casp-radar-operator/SKILL.md "
+            "See 'Backups & recovery' in skills/regradar-operator/SKILL.md "
             "to restore from the Litestream backup.",
             cfg.get("db_path", "<unknown>"),
         )
