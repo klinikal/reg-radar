@@ -303,6 +303,31 @@ def test_get_item_missing_returns_none():
         os.unlink(db_path)
 
 
+def test_get_item_includes_body_md_and_document_frontmatter():
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational", "website": "https://esma.europa.eu",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="esma")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+
+        assert result["body_md"] == ""  # make_item() (this test file's helper) doesn't set body_md
+        assert "document" in result
+        document = result["document"]
+        assert document["id"] == item.id
+        assert document["regulator"] == "esma"
+        assert document["regulator_name"] == "European Securities and Markets Authority"
+        assert document["jurisdiction"] == "eu"
+        assert document["regradar_schema"] == 1
+    finally:
+        os.unlink(db_path)
+
+
 def test_get_run_log():
     engine, db_path = setup_engine()
     try:

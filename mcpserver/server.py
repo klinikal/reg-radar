@@ -147,7 +147,10 @@ def list_regulators_tool() -> list[dict]:
 @mcp.tool()
 def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | None:
     """Returns a single item by its id (as returned by search_items_tool,
-    get_recent_tool, get_warnings_tool, etc.), including its full raw_content.
+    get_recent_tool, get_warnings_tool, etc.), including its full
+    raw_content and body_md (the same text as Markdown), plus a `document`
+    object holding the canonical document frontmatter fields (section 3.2
+    of the architecture doc) for this item.
 
     raw_content can be large (a full regulator notice/PDF text) - pass
     max_content_chars to truncate it and protect your context window; omit

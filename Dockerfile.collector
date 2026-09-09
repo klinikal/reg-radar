@@ -8,6 +8,9 @@ RUN pip install --no-cache-dir -r collector/requirements.txt
 COPY collector/ ./collector/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
+COPY regradar/ ./regradar/
+COPY pyproject.toml ./pyproject.toml
+RUN pip install --no-cache-dir --no-deps .
 
 RUN mkdir -p /app/data && \
     addgroup --system appgroup && \
@@ -16,7 +19,8 @@ RUN mkdir -p /app/data && \
 
 USER appuser
 
-ENV DB_PATH=/app/data/regradar.db \
+ENV PYTHONPATH=/app \
+    DB_PATH=/app/data/regradar.db \
     SCHEDULE="0 6 * * *" \
     LOG_LEVEL=INFO \
     USER_AGENT="regradar/2.0 (+https://github.com/klinikal/regradar)" \

@@ -33,3 +33,7 @@ class Item:
     source_tags: list[str] = field(default_factory=list)
     content_tags: list[str] = field(default_factory=list)
     raw_content: str = ""
+    body_md: str = ""
+    extractor: str = ""
+    raw_bytes: Optional[bytes] = None
+    mime: Optional[str] = None

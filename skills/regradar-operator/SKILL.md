@@ -53,12 +53,16 @@ The live database lives in a Docker-managed named volume (`regradar_data`), not 
 
 A `litestream` service continuously replicates the database to `./backups/regradar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
 
+**`originals/` (fetched HTML/PDF artefacts, under `ARTEFACTS_DIR` on the data volume) is not covered by Litestream** — it only replicates the SQLite file. Include `originals/` in whatever host-level backup you run against the `regradar_data` volume (e.g. a periodic `docker run --rm -v regradar_data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/originals-$(date +%F).tar.gz -C /data originals`), or accept that a lost volume means item text survives (in the DB backup) but the original artefacts don't.
+
 **To restore from backup** (e.g. after corruption or accidental data loss):
 ```bash
 docker compose stop collector mcp webui
 docker run --rm -v "$(pwd)/backups:/backups:ro" -v regradar_data:/out litestream/litestream:0.5.9 restore -o /out/regradar.db file:///backups/regradar
 # verify before trusting it:
 docker run --rm -v regradar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/regradar.db 'PRAGMA integrity_check;'"
+# if you also back up originals/, restore it into the same volume:
+# docker run --rm -v regradar_data:/data -v $(pwd)/backups:/backup:ro alpine tar xzf /backup/originals-<date>.tar.gz -C /data
 docker compose up -d collector mcp webui
 ```
 
@@ -79,7 +83,7 @@ Registry with per-source status lives at `config/regulators.yaml`. Each item has
 | `search_items_tool` | Full-text search across title + snippet. Filters: `regulator_id`, `language`, `tags`, `date_from`, `date_to`. |
 | `get_recent_tool` | Most recent N items, optional `regulator_id`/`tags`/`language` filters. |
 | `list_regulators_tool` | Full registry + live fetch stats (last success, error counts) — use to check source health. |
-| `get_item_tool` | Single item by ID, includes `raw_content` (search/recent only return a snippet). |
+| `get_item_tool` | Single item by ID, includes `raw_content`, `body_md`, and a `document` frontmatter object (search/recent only return a snippet). |
 | `get_run_log_tool` | Recent collector run stats — use to check if collection is working. |
 | `get_warnings_tool` | Items tagged `warnings`, optionally filtered by `regulator_id` and a day window. Some regulators tag their *entire* general news feed as `warnings` (no dedicated warnings feed exists), so results from those regulators are "may contain warnings," not a precise list — read the item, don't assume every result is a genuine warning notice. |
 
