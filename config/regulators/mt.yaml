@@ -14,8 +14,7 @@
     url: https://www.mfsa.mt/feed/
     label: all_news
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
   - type: scrape
     url: "https://www.mfsa.mt/publications/circulars/"
     label: circulars

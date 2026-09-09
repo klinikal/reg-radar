@@ -14,8 +14,7 @@
     url: https://www.knf.gov.pl/api/rss
     label: all_news_pl
     preferred_language: pl
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Portugal ─────────────────────────────────────────────────────────────────
 

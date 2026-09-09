@@ -14,8 +14,7 @@
     url: https://www.fsc.bg/en/feed/
     label: all_news
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Croatia ──────────────────────────────────────────────────────────────────
 

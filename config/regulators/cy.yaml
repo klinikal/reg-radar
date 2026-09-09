@@ -14,8 +14,7 @@
     url: https://www.cysec.gov.cy/en-GB/home/announcements/
     label: announcements
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
     scrape:
       item_selector: ".card-documents"
       title_selector: "a.card-title"

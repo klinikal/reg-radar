@@ -14,8 +14,7 @@
     url: "https://www.esma.europa.eu/press-news/esma-news"
     label: all_news
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
     notes: "Switched from RSS to scrape 2026-07-03 - the RSS feed has no pubDate field (date is embedded in the item's HTML description, which feedparser never extracts), so every all_news item had published_at=NULL. This page behind the same feed has clean, scrapeable date markup instead. Each news card has two <a> tags (a real title link marked rel=\"bookmark\", wrapping .search-title/.search-date, plus an empty decorative one elsewhere in the card) - link_selector must key off a[rel=\"bookmark\"], not a bare 'a' or '.search-title a', to avoid matching the wrong one."
     scrape:
       item_selector: "article.node--type-news"
@@ -117,8 +116,7 @@
     url: https://www.eiopa.europa.eu/node/4816/rss_en
     label: news
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Austria ──────────────────────────────────────────────────────────────────
 

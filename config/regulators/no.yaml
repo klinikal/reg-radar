@@ -14,8 +14,7 @@
     url: https://www.finanstilsynet.no/en/rss/news-feed/
     label: all_content_en
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Poland ───────────────────────────────────────────────────────────────────
 

@@ -14,8 +14,7 @@
     url: https://www.centralbank.ie/feeds/news-media-feed
     label: all_news
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Italy ────────────────────────────────────────────────────────────────────
 

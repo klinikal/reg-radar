@@ -14,8 +14,7 @@
     url: https://www.asfromania.ro/en/rss/rss.xml
     label: all_news_en
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 - id: ro-bnr
   name: BNR

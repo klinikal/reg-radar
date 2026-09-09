@@ -14,8 +14,7 @@
     url: https://www.fi.ee/en/uudised/rss
     label: news_en
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Finland ──────────────────────────────────────────────────────────────────
 

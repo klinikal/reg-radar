@@ -14,8 +14,7 @@
     url: https://cb.is/api/documents/views/articles/RSS-feed-english/rss
     label: all_news_en
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Ireland ──────────────────────────────────────────────────────────────────
 

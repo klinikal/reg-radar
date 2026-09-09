@@ -19,8 +19,7 @@
     url: https://www.mnb.hu/enrss/23
     label: market_supervision
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
   - type: rss
     url: https://www.mnb.hu/enrss/16
     label: press_room
@@ -31,8 +30,7 @@
     url: https://www.mnb.hu/enrss/6
     label: latest_releases
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Iceland ──────────────────────────────────────────────────────────────────
 
