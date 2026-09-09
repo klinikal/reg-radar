@@ -1,0 +1,96 @@
+name: publish-dataset
+
+# Publishes the full corpus (docs/issues/10-published-dataset-release.md)
+# as a GitHub release every night: a tarball of the section 3.1 document
+# tree plus export.jsonl, a manifest.json, and a moving `latest` tag
+# alongside an immutable `dataset-YYYY-MM-DD` tag.
+#
+# ASSUMPTION: this workflow needs the collector's live SQLite database
+# (the `regradar_data` named Docker volume - see docker-compose.yml), which
+# a GitHub-hosted runner never has (it starts a fresh VM with no access to
+# any host's Docker volumes). It is written to run on a SELF-HOSTED runner
+# alongside the collector's own compose stack, with the `regradar` label so
+# it only lands on that machine. Verify this before enabling the schedule
+# for real: either point `runs-on` at a self-hosted runner on the box that
+# runs the collector, or change this workflow to restore a Litestream
+# backup onto a hosted runner first (slower, but works without a
+# self-hosted runner). The same assumption covers `.env`: docker-compose.yml
+# declares `env_file: .env`, so `docker compose run` below needs the
+# collector host's own (gitignored) .env present in the checkout directory.
+
+"on":
+  schedule:
+    # 02:00 UTC daily - ahead of the collector's own default 06:00 UTC run,
+    # so a fresh nightly dataset never contains a half-finished run's items.
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: [self-hosted, regradar]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build collector image
+        run: docker compose build collector
+
+      - name: Export markdown + jsonl from the live database
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/export-md
+          # One call, both formats, one shared cursor in --out (regradar/
+          # exporter.py's module docstring): --format markdown --format
+          # jsonl writes the section 3.1 tree and export.jsonl from the
+          # same pass over the change set. Two separate `regradar export`
+          # calls into the same --out would have the second one read the
+          # first's already-advanced cursor and see nothing left.
+          docker compose run --rm -v "$PWD/dist:/app/dist" collector \
+            regradar export --format markdown --format jsonl --out /app/dist/export-md \
+            --exclude-regulator-file config/dataset_exclusions.yaml
+
+      - name: Build manifest and tarball
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+          echo "DATE=$DATE" >> "$GITHUB_ENV"
+          TAXONOMY_VERSION=$(docker compose run --rm collector python -c \
+            "from regradar.taxonomy import load_and_exit_on_error; print(load_and_exit_on_error('config/taxonomy.yaml','config/jurisdictions.yaml').version())")
+          cat > dist/build_manifest.py <<'PYEOF'
+          import os
+          from pathlib import Path
+          import yaml
+          from regradar.dataset import publish_dataset
+
+          excluded = set(yaml.safe_load(open("config/dataset_exclusions.yaml")) or [])
+          publish_dataset(
+              Path("dist/export-md"), Path("dist/release"),
+              tarball_name=f"regradar-dataset-{os.environ['DATE']}.tar.gz",
+              taxonomy_version=int(os.environ["TAXONOMY_VERSION"]),
+              excluded_regulators=excluded,
+          )
+          PYEOF
+          docker compose run --rm -v "$PWD/dist:/app/dist" \
+            -e DATE="$DATE" -e TAXONOMY_VERSION="$TAXONOMY_VERSION" \
+            collector python3 /app/dist/build_manifest.py
+
+      - name: Publish GitHub release
+        run: |
+          set -euo pipefail
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+          gh release create "dataset-$DATE" \
+            dist/release/regradar-dataset-$DATE.tar.gz dist/release/manifest.json \
+            --title "RegRadar dataset $DATE" \
+            --notes "Full corpus snapshot. See manifest.json for counts and excluded regulators. NOTICE at the repository root records what's known about reuse terms per regulator." \
+            --latest=false
+          gh release create latest \
+            dist/release/regradar-dataset-$DATE.tar.gz dist/release/manifest.json \
+            --title "RegRadar dataset (latest)" \
+            --notes "Rolling pointer to the most recent nightly snapshot - pin to a dated release (dataset-$DATE) for a fixed corpus." \
+            --target main
+        env:
+          GH_TOKEN: ${{ github.token }}
