@@ -263,15 +263,21 @@ def remove_classification(engine, taxonomy, item_id: str, axis: str, value: str,
 
 
 def import_classification(engine, item_id: str, axis: str, value: str, taxonomy_version: int,
-                           confidence: float = 0.5, classifier_id: str | None = None) -> None:
-    """Inserts one `by: import` row WITHOUT taxonomy validation - used only
-    by scripts/migrate_content_tags.py to preserve legacy content_tags as
-    history even where a value no longer maps to a current taxonomy value
-    (architecture doc §4.7: imported rows "survive but rank below anything
-    better"; effective_labels() already ignores axes/values it doesn't
-    recognise, so an unmappable import is inert rather than an error). Does
-    not supersede anything and does not materialise labels itself - call
-    materialize_labels() once per item after importing all of its tags.
+                           confidence: float = 0.5, classifier_id: str | None = None,
+                           by: str = "import") -> None:
+    """Inserts one classification row WITHOUT taxonomy validation - used by
+    scripts/migrate_content_tags.py (always `by="import"`, the default) to
+    preserve legacy content_tags as history even where a value no longer
+    maps to a current taxonomy value (architecture doc §4.7: imported rows
+    "survive but rank below anything better"; effective_labels() already
+    ignores axes/values it doesn't recognise, so an unmappable import is
+    inert rather than an error), and by regradar/dataset.py's
+    `import-dataset` command, which passes the original `by` recorded in a
+    published dataset's `label_provenance` (source_default/rule/llm:*/
+    human:*) so a re-imported classification keeps its real provenance
+    rather than being flattened to "import". Does not supersede anything
+    and does not materialise labels itself - call materialize_labels() once
+    per item after importing all of its tags.
     """
     now = db_now()
     with engine.connect() as conn:
@@ -279,11 +285,11 @@ def import_classification(engine, item_id: str, axis: str, value: str, taxonomy_
             text(
                 "INSERT INTO classifications (item_id, axis, value, by, confidence, "
                 "taxonomy_version, classifier_id, created_at, superseded_at) "
-                "VALUES (:item_id, :axis, :value, 'import', :confidence, :taxonomy_version, "
+                "VALUES (:item_id, :axis, :value, :by, :confidence, :taxonomy_version, "
                 ":classifier_id, :created_at, NULL)"
             ),
             {
-                "item_id": item_id, "axis": axis, "value": value, "confidence": confidence,
+                "item_id": item_id, "axis": axis, "value": value, "by": by, "confidence": confidence,
                 "taxonomy_version": taxonomy_version, "classifier_id": classifier_id, "created_at": now,
             },
         )

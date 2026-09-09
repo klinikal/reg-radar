@@ -551,6 +551,37 @@ def get_digest_cursor(engine, name: str) -> str | None:
     return row[0] if row else None
 
 
+class SyncStateRow(Base):
+    """A small generic key/value store for one-off sync bookkeeping that
+    doesn't warrant its own table - currently just the change-stream cursor
+    `regradar import-dataset` (regradar/dataset.py) records for the
+    published dataset's `generated_at`.
+
+    It marks where the imported snapshot ends; it does NOT filter what the
+    collector fetches, and nothing consumes it automatically. A collection
+    run reads whatever is on each source's current feed pages either way,
+    and `regradar export` always starts full into a fresh --out. It is a
+    bookmark for change-stream consumers - get_changes()/`/api/changes`/a
+    webhook subscriber - that want only what arrived after the snapshot,
+    surfaced by get_health()'s `dataset_import`. Distinct from
+    `webhook_subscriptions`, which is keyed per outbound subscriber rather
+    than per inbound sync source.
+    """
+    __tablename__ = "sync_state"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime)
+
+
+def get_sync_state(engine, key: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT value FROM sync_state WHERE key = :key"), {"key": key},
+        ).fetchone()
+    return row[0] if row else None
+
+
 def set_digest_cursor(engine, name: str, cursor: str) -> None:
     with Session(engine) as session:
         row = session.get(DigestStateRow, name)
@@ -561,4 +592,15 @@ def set_digest_cursor(engine, name: str, cursor: str) -> None:
             session.add(DigestStateRow(
                 name=name, last_sent_cursor=cursor, last_sent_at=datetime.now(timezone.utc),
             ))
+        session.commit()
+
+
+def set_sync_state(engine, key: str, value: str) -> None:
+    with Session(engine) as session:
+        row = session.get(SyncStateRow, key)
+        if row:
+            row.value = value
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(SyncStateRow(key=key, value=value, updated_at=datetime.now(timezone.utc)))
         session.commit()

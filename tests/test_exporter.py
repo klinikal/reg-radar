@@ -6,6 +6,7 @@ import jsonschema
 
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator
+from regradar.changes import encode_cursor
 from regradar.cli import main
 
 SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
@@ -251,3 +252,70 @@ def test_export_profile_narrows_items(tmp_path, monkeypatch):
     lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["regulator"] == "esma"
+
+
+def test_export_repeatable_format_writes_both_from_one_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc = main([
+        "export", "--format", "markdown", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path,
+    ])
+
+    assert rc == 0
+    md_files = list((out_dir / "export").rglob("*.md"))
+    assert len(md_files) == 1
+    lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+    # One shared cursor for both formats, not one each.
+    assert (out_dir / ".regradar-cursor").exists()
+
+
+def test_export_second_format_with_no_prior_output_falls_back_to_full_export(tmp_path, monkeypatch, caplog):
+    """Running --format markdown, then a later --format jsonl call into the
+    SAME --out, must not silently produce an empty export.jsonl just
+    because markdown's earlier run already advanced the persisted cursor
+    past everything. (regradar/exporter.py's module docstring recommends
+    --format markdown --format jsonl in one call instead - this is the
+    safety net for when that isn't followed.)
+    """
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc1 = main(["export", "--format", "markdown", "--out", str(out_dir), "--db-path", db_path])
+    assert rc1 == 0
+    assert not (out_dir / "export.jsonl").exists()
+
+    with caplog.at_level("WARNING"):
+        rc2 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+
+    assert rc2 == 0
+    assert "falling back to a full export" in caplog.text
+    lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+
+
+def test_explicit_since_into_an_empty_out_dir_is_not_second_guessed(tmp_path, monkeypatch, caplog):
+    """The no-prior-output safety net exists for a cursor persisted in THIS
+    --out that a different format advanced past. An explicit --since makes
+    no claim about the directory, so an empty --out is expected, not a
+    symptom - silently widening it to a full export would ignore what the
+    caller asked for."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    # A cursor far in the future: nothing is newer, so a respected --since
+    # exports nothing, while a discarded one would export the whole corpus.
+    future = encode_cursor(datetime(2999, 1, 1, tzinfo=timezone.utc), "z")
+    with caplog.at_level("WARNING"):
+        rc = main([
+            "export", "--format", "jsonl", "--out", str(out_dir),
+            "--db-path", db_path, "--since", future,
+        ])
+
+    assert rc == 0
+    assert "falling back to a full export" not in caplog.text
+    assert (out_dir / "export.jsonl").read_text() == ""

@@ -18,6 +18,19 @@ whole corpus right now", not "everything that has ever changed". It is
 still rebuilt cheaply on each run by reading the existing snapshot, folding
 in only what get_changes() reports as new since the cursor, and skipping
 the rewrite entirely when the resulting content is byte-identical.
+
+`--format` is repeatable (`--format markdown --format jsonl`, default just
+`markdown`) and all requested formats share the ONE `.regradar-cursor` in
+`--out` and the one pass over get_changes(). Running markdown and jsonl as
+two separate invocations into the same `--out` is a trap: the first
+invocation's cursor advances past everything, so the second sees nothing
+left and writes an empty (or truncated) snapshot for whichever format it
+covers. Pass both formats in one `--format markdown --format jsonl` call
+instead. As a safety net, export_profile() also detects a persisted cursor
+paired with a format that has no prior output in `--out` (no export.jsonl
+for jsonl, no *.md under export/ for markdown) and falls back to a full
+export rather than trusting a cursor that was never advanced for that
+format.
 """
 import argparse
 import json
@@ -32,6 +45,7 @@ from sqlalchemy import create_engine
 from collector.storage import get_artefact
 from mcpserver.queries import get_changes
 from regradar.changes import CursorError, decode_cursor
+from regradar.dataset import load_exclusions
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.render import render_item_to_dir
 from regradar.taxonomy import load_and_exit_on_error
@@ -68,6 +82,12 @@ def resolve_since(out_dir: Path, cli_since: str | None) -> str | None:
     An unparseable one is treated the same way (logged, not raised) - the
     issue's requirement that a stale/missing cursor falls back to a full
     export rather than corrupting the target directory.
+
+    Deliberately does NOT consult the `regradar import-dataset` sync
+    cursor: an export into a fresh --out must contain the whole corpus,
+    which is the point of having imported one. That cursor is for
+    change-stream consumers asking "what has arrived since the snapshot" -
+    pass it as `--since` explicitly if that is what you want here.
     """
     if cli_since:
         return cli_since
@@ -123,6 +143,13 @@ def _write_jsonl_snapshot(out_dir: Path, snapshot: dict[str, str]) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _markdown_tree_empty(out_dir: Path) -> bool:
+    export_dir = out_dir / "export"
+    if not export_dir.exists():
+        return True
+    return next(export_dir.rglob("*.md"), None) is None
+
+
 def _copy_original(engine, item_id: str, out_dir: Path) -> None:
     artefact = get_artefact(engine, item_id)
     if not artefact:
@@ -139,22 +166,53 @@ def _copy_original(engine, item_id: str, out_dir: Path) -> None:
 
 
 def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = None,
-                    with_originals: bool = False, export_format: str = "markdown", taxonomy=None) -> dict:
+                    with_originals: bool = False, export_formats=("markdown",),
+                    taxonomy=None, exclude_regulators: set | None = None,
+                    since_from_out_dir: bool = True) -> dict:
     """Writes every item matching `profile` changed after `since` (an
-    opaque cursor, or None for everything) to out_dir: the section 3.1
-    layout for "markdown" (idempotent per render_item_to_dir - unchanged
-    items are not rewritten). For "jsonl", export.jsonl is a full
-    current-state snapshot - one line per item id, latest wins - rebuilt
-    from the existing snapshot plus whatever changed since `since`, and
-    only rewritten if its content actually changed (so an unchanged run
-    doesn't touch the file's mtime either). Returns {"written": int,
-    "cursor": str | None} - `cursor` is the new head of the stream (or
-    `since` again if nothing changed), for the caller to persist.
+    opaque cursor, or None for everything) to out_dir, in every format
+    listed in `export_formats` ("markdown", "jsonl", or both) from a
+    single pass over get_changes() and a single shared cursor - see the
+    module docstring for why the formats must not be exported in separate
+    invocations into the same `--out`. "markdown" is the section 3.1
+    layout (idempotent per render_item_to_dir - unchanged items are not
+    rewritten). "jsonl" is export.jsonl, a full current-state snapshot -
+    one line per item id, latest wins - rebuilt from the existing snapshot
+    plus whatever changed since `since`, and only rewritten if its content
+    actually changed (so an unchanged run doesn't touch the file's mtime
+    either). Returns {"written": int, "cursor": str | None} - `cursor` is
+    the new head of the stream (or `since` again if nothing changed), for
+    the caller to persist.
+
+    `exclude_regulators` (a set of regulator ids, see regradar.dataset.
+    load_exclusions - issue #12) drops matching items from every format
+    entirely, so a published dataset built from this same command never
+    contains them regardless of `--profile`. `taxonomy`, when given, is
+    passed straight through to get_changes(), which populates each
+    document's jurisdiction_ancestors/label_provenance.
     """
+    formats = set(export_formats)
     out_dir.mkdir(parents=True, exist_ok=True)
     written = 0
     cursor = since
-    snapshot = _read_jsonl_snapshot(out_dir) if export_format == "jsonl" else None
+
+    # A cursor persisted in THIS --out with no prior output for a requested
+    # format means some earlier run here only covered a *different* format -
+    # trusting it would silently truncate this format's output to "whatever
+    # changed since a run that never wrote it". Fall back to a full export
+    # instead. `since_from_out_dir=False` (a --since on the command line)
+    # means the cursor was never a claim about this directory's contents,
+    # so an empty --out is expected, not a symptom.
+    if cursor is not None and since_from_out_dir:
+        if ("jsonl" in formats and not _jsonl_path(out_dir).exists()) or \
+                ("markdown" in formats and _markdown_tree_empty(out_dir)):
+            logger.warning(
+                "Persisted cursor at %s has no prior output for a requested format - "
+                "falling back to a full export", _cursor_path(out_dir),
+            )
+            cursor = None
+
+    snapshot = _read_jsonl_snapshot(out_dir) if "jsonl" in formats else None
 
     while True:
         items, next_cursor = get_changes(engine, since=cursor, profile=profile, limit=_PAGE_SIZE,
@@ -163,11 +221,15 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
             break
         for doc in items:
             item_id = doc["id"]
-            if export_format == "markdown":
-                if render_item_to_dir(engine, item_id, out_dir, taxonomy=taxonomy) is not None:
-                    written += 1
-            else:
+            if exclude_regulators and doc.get("regulator") in exclude_regulators:
+                continue  # cursor still advances past it (below) - it's just never written
+            item_written = False
+            if "markdown" in formats and render_item_to_dir(engine, item_id, out_dir, taxonomy=taxonomy) is not None:
+                item_written = True
+            if "jsonl" in formats:
                 snapshot[item_id] = json.dumps(doc, sort_keys=False)
+                item_written = True
+            if item_written:
                 written += 1
             if with_originals:
                 _copy_original(engine, item_id, out_dir)
@@ -184,12 +246,20 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
         "export", help="Export items to the canonical document layout or JSONL, cursor-tracked",
     )
     parser.add_argument("--profile", help="Shipped profile template name or path (default: all items)")
-    parser.add_argument("--format", choices=["markdown", "jsonl"], default="markdown")
+    parser.add_argument(
+        "--format", choices=["markdown", "jsonl"], action="append", dest="formats",
+        help="Repeatable - e.g. --format markdown --format jsonl to write both from one change set "
+             "(default: markdown)",
+    )
     parser.add_argument("--out", required=True, help="Output directory")
     parser.add_argument(
         "--since", help="Cursor to export from (default: the persisted .regradar-cursor in --out, or a full export if none)",
     )
     parser.add_argument("--with-originals", action="store_true", help="Also copy artefacts into <out>/originals/")
+    parser.add_argument(
+        "--exclude-regulator-file",
+        help="Path to a YAML file listing regulator ids (flat list) to drop from this export entirely",
+    )
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
@@ -215,10 +285,23 @@ def run(args: argparse.Namespace) -> int:
             print(f"regradar export: {e}", file=sys.stderr)
             return 1
 
+    exclude_regulators = None
+    if args.exclude_regulator_file:
+        try:
+            exclude_regulators = load_exclusions(args.exclude_regulator_file)
+        except Exception as e:
+            print(f"regradar export: {e}", file=sys.stderr)
+            return 1
+
+    export_formats = list(dict.fromkeys(args.formats or ["markdown"]))
+
+    persisted = read_cursor(out_dir)
     since = resolve_since(out_dir, args.since)
     result = export_profile(
         engine, out_dir, profile=expanded_profile, since=since,
-        with_originals=args.with_originals, export_format=args.format, taxonomy=taxonomy,
+        with_originals=args.with_originals, export_formats=export_formats,
+        taxonomy=taxonomy, exclude_regulators=exclude_regulators,
+        since_from_out_dir=since is not None and since == persisted,
     )
     if result["cursor"] and result["cursor"] != since:
         write_cursor(out_dir, result["cursor"])
