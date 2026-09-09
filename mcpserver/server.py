@@ -368,6 +368,11 @@ def get_health_tool() -> dict:
     env-configurable): fetches are succeeding but the parser keeps finding
     nothing, which usually means the source's page changed and its
     selectors need updating.
+
+    `dataset_import` is {cursor, generated_at, imported_at} if this database
+    was seeded from a published dataset (`regradar import-dataset`), else
+    null. Pass its `cursor` to get_changes_tool's `since` to see only what
+    has arrived since that snapshot was built - nothing applies it for you.
     """
     return _safe("get_health_tool", get_health, get_engine())
 

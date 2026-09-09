@@ -1,7 +1,9 @@
 """Published dataset packaging and import (architecture doc section 8, row
 10 / issue #12): the manifest + tarball builder `.github/workflows/
 publish-dataset.yml` drives, and the `regradar import-dataset <url|path>`
-command that loads a published dataset into an empty database.
+command that loads a published dataset into an empty database - which
+saves a new install the historic backfill scripts, not the routine
+collection run (that fetches current feed pages either way).
 
 Wired into regradar/cli.py's subcommand registry (add_subparser()/run() -
 see that module's docstring for the convention).
@@ -45,7 +47,7 @@ from sqlalchemy import text
 from collector.pipeline import truncate_snippet
 from collector.schema import Item
 from collector.storage import init_db, insert_item, set_sync_state, upsert_regulator
-from regradar.changes import encode_cursor
+from regradar.changes import DATASET_IMPORT_CURSOR_KEY, encode_cursor
 from regradar.classification import import_classification, materialize_labels
 from regradar.taxonomy import load_and_exit_on_error
 
@@ -53,7 +55,11 @@ logger = logging.getLogger(__name__)
 
 MANIFEST_FILENAME = "manifest.json"
 JSONL_FILENAME = "export.jsonl"
-SYNC_STATE_KEY = "dataset_import_cursor"
+SYNC_STATE_KEY = DATASET_IMPORT_CURSOR_KEY
+DEFAULT_TIMEOUT_SECONDS = 60
+# GitHub's per-release-asset limit, so a download larger than this cannot be
+# the dataset we published and is either the wrong URL or something hostile.
+DEFAULT_MAX_BYTES = 2 * 1024 ** 3
 # The tie-break id half of the stored cursor (regradar.changes'
 # "<updated_at>|<item_id>" shape - encode_cursor() requires a non-empty
 # id). Real item ids are lowercase-hex sha256 digests (0-9a-f), so any
@@ -155,15 +161,36 @@ def publish_dataset(export_dir: Path, dist_dir: Path, *, tarball_name: str, taxo
     return manifest
 
 
-def _download(url: str, dest_dir: Path) -> Path:
+def _download(url: str, dest_dir: Path, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+               max_bytes: int = DEFAULT_MAX_BYTES) -> Path:
+    """Streams `url` to a file under dest_dir. `timeout` bounds the connect
+    and each socket read, so a hung or trickling server can't wedge the
+    command forever; `max_bytes` caps the total written, so an endless or
+    mis-addressed response can't fill the disk. Either failure deletes the
+    partial file before raising - a truncated tarball must never be left
+    behind for a later run to find and trust.
+    """
     dest = dest_dir / "dataset.tar.gz"
     logger.info("Downloading dataset from %s", url)
-    with urllib.request.urlopen(url) as resp, dest.open("wb") as f:  # noqa: S310 - operator-supplied URL, CLI tool
-        while True:
-            chunk = resp.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
+    written = 0
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, dest.open("wb") as f:  # noqa: S310 - operator-supplied URL, CLI tool
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    raise DatasetError(
+                        f"download from {url} exceeded the {max_bytes} byte limit "
+                        "- wrong URL, or raise --max-bytes if the dataset really is this large"
+                    )
+                f.write(chunk)
+    except BaseException as e:
+        dest.unlink(missing_ok=True)
+        if isinstance(e, (DatasetError, KeyboardInterrupt, SystemExit)):
+            raise
+        raise DatasetError(f"download from {url} failed: {e}") from e
     return dest
 
 
@@ -186,26 +213,37 @@ def _find_manifest(tarball_path: Path) -> dict:
 
 def _extract(tarball_path: Path, dest_dir: Path) -> None:
     with tarfile.open(tarball_path, "r:gz") as tar:
-        # Python 3.11's default extraction filter already rejects absolute
-        # paths / traversal outside dest_dir - nothing extra needed for a
-        # tarball we've just sha256-verified against a signed release, but
-        # explicit is cheap.
+        # filter="data" is load-bearing, not decoration: on Python 3.11 the
+        # default filter is still the legacy one that happily writes absolute
+        # paths and ../ traversal outside dest_dir. The sha256 check above
+        # only proves the archive matches its manifest, which says nothing
+        # about what the manifest's author put in it.
         tar.extractall(dest_dir, filter="data")
 
 
 def import_dataset(engine, source: str, *, taxonomy, force: bool = False,
-                    work_dir: Path | None = None) -> dict:
+                    work_dir: Path | None = None, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+                    max_bytes: int = DEFAULT_MAX_BYTES) -> dict:
     """Downloads or reads `source` (a URL or a local path to either the
     tarball itself or a directory already containing one), verifies its
     sha256 against the manifest, refuses a non-empty items table unless
     `force` is set, then loads every item and its classifications from
-    export.jsonl. Returns a summary dict: {"items_loaded", "item_count",
+    export.jsonl, and records the manifest's `generated_at` as a sync
+    cursor. Returns a summary dict: {"items_loaded", "item_count",
     "excluded_regulators", "generated_at", "cursor"}.
+
+    The cursor marks where the snapshot ends. It does NOT make later
+    collection incremental - a collection run fetches each source's current
+    feed pages regardless. What importing actually saves is the historic
+    backfill scripts (README's "Historic backfills"), which are the slow
+    part. The cursor is for asking "what has arrived since the snapshot":
+    get_changes(since=...), `regradar export --since`, and get_health()'s
+    `dataset_import`.
     """
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         tmp_path = Path(tmp)
         if source.startswith("http://") or source.startswith("https://"):
-            tarball_path = _download(source, tmp_path)
+            tarball_path = _download(source, tmp_path, timeout=timeout, max_bytes=max_bytes)
         else:
             tarball_path = Path(source)
             if not tarball_path.exists():
@@ -335,6 +373,14 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("source", help="URL or local path to the dataset tarball")
     parser.add_argument("--force", action="store_true", help="Import even if the database already has items")
+    parser.add_argument(
+        "--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"Per-read timeout in seconds when source is a URL (default: {DEFAULT_TIMEOUT_SECONDS})",
+    )
+    parser.add_argument(
+        "--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
+        help=f"Abort a URL download larger than this (default: {DEFAULT_MAX_BYTES}, GitHub's asset limit)",
+    )
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
@@ -349,7 +395,10 @@ def run(args: argparse.Namespace) -> int:
     engine = init_db(args.db_path)
     taxonomy = load_and_exit_on_error(args.taxonomy_path, args.jurisdictions_path)
     try:
-        summary = import_dataset(engine, args.source, taxonomy=taxonomy, force=args.force)
+        summary = import_dataset(
+            engine, args.source, taxonomy=taxonomy, force=args.force,
+            timeout=args.timeout, max_bytes=args.max_bytes,
+        )
     except DatasetError as e:
         print(f"regradar import-dataset: {e}", file=sys.stderr)
         return 1
@@ -361,4 +410,13 @@ def run(args: argparse.Namespace) -> int:
             f"{len(excluded)} regulator(s) excluded from this dataset, need a manual backfill if wanted: "
             + ", ".join(excluded)
         )
+    if summary["cursor"]:
+        # Nothing applies this automatically - a collection run fetches the
+        # current feed pages either way. Print it so "what arrived since the
+        # snapshot" is a copy-paste away rather than a cursor nobody reads.
+        print(f"\nSync cursor stored: {summary['cursor']}")
+        print("Everything new since this snapshot:")
+        print(f"  regradar export --format jsonl --out <dir> --since {summary['cursor']}")
+        print(f"  get_changes_tool(since=\"{summary['cursor']}\")")
+        print("It is also reported as get_health_tool()'s `dataset_import`.")
     return 0

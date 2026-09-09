@@ -17,6 +17,13 @@ from datetime import datetime, timezone
 
 _CURSOR_TS_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
+# collector.storage sync_state key holding the cursor `regradar
+# import-dataset` stores (the published dataset's generated_at). Lives here,
+# with the cursor codec, because the writer (regradar.dataset) and both
+# readers (mcpserver.queries.get_health, regradar.exporter.resolve_since)
+# would otherwise have to import each other.
+DATASET_IMPORT_CURSOR_KEY = "dataset_import_cursor"
+
 
 class CursorError(ValueError):
     """Raised when a cursor string doesn't parse: missing separator, an

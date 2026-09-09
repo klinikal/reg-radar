@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 from regradar.classification import winning_classification_rows
 from regradar.document import build_frontmatter, effective_body_md, frontmatter_to_json_safe
 from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS
-from regradar.changes import decode_cursor, encode_cursor
+from regradar.changes import DATASET_IMPORT_CURSOR_KEY, CursorError, decode_cursor, encode_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -754,6 +754,33 @@ def get_items_since(engine, since: str, limit: int = 100, profile=None) -> list[
     return [_row_to_dict(r, keys) for r in rows]
 
 
+def _dataset_import_state(conn) -> dict | None:
+    """The `regradar import-dataset` sync cursor, or None if this database
+    was never seeded from a published dataset. `generated_at` is decoded
+    from the cursor itself (it IS the manifest's generated_at - see
+    regradar.dataset) rather than stored twice; `imported_at` is the
+    sync_state row's own updated_at.
+    """
+    try:
+        row = conn.execute(
+            text("SELECT value, updated_at FROM sync_state WHERE key = :key"),
+            {"key": DATASET_IMPORT_CURSOR_KEY},
+        ).fetchone()
+    except OperationalError:
+        return None  # pre-sync_state database
+    if row is None or not row[0]:
+        return None
+    try:
+        generated_at, _ = decode_cursor(row[0])
+    except CursorError:
+        return None
+    return {
+        "cursor": row[0],
+        "generated_at": generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "imported_at": str(row[1]) if row[1] else None,
+    }
+
+
 def get_health(engine) -> dict:
     """Returns the most recent collector run's status and how long ago it
     completed (or started, if still running), so callers can caveat "data
@@ -767,6 +794,12 @@ def get_health(engine) -> dict:
     STALL_THRESHOLD_RUNS (default 7, env-configurable) consecutive
     successful-but-empty fetches - the "200 OK, selectors matching nothing"
     case a single run's zero-items check can't distinguish from a quiet day.
+
+    `dataset_import` is {cursor, generated_at, imported_at} when this
+    database was seeded by `regradar import-dataset`, else None. Nothing
+    consumes the cursor automatically - it is here so an operator or agent
+    can pass it to get_changes()/`regradar export --since` and see only what
+    arrived after the published snapshot.
     """
     sql = """
         SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok
@@ -780,13 +813,14 @@ def get_health(engine) -> dict:
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
         stalled_rows = conn.execute(text(stalled_sql), {"threshold": STALL_THRESHOLD_RUNS}).fetchall()
+        dataset_import = _dataset_import_state(conn)
     stalled_sources = [
         {"regulator_id": r[0], "source_label": r[1], "consecutive_empty_runs": r[2]}
         for r in stalled_rows
     ]
     if row is None:
         return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown",
-                "stalled_sources": stalled_sources}
+                "stalled_sources": stalled_sources, "dataset_import": dataset_import}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
@@ -799,7 +833,7 @@ def get_health(engine) -> dict:
     else:
         db_integrity = "ok" if integrity_flag else "corrupted"
     return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
-            "stalled_sources": stalled_sources}
+            "stalled_sources": stalled_sources, "dataset_import": dataset_import}
 
 
 def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regulator_id=None, since=None,
