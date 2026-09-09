@@ -44,6 +44,100 @@ rules:
   - pattern: enforcement\ action
     weight: 0.7
     flags: i
+  - pattern: \bfine\b
+    weight: 0.85
+    flags: i
+  - pattern: \bpenalty\b
+    weight: 0.85
+    flags: i
+  - pattern: final notice
+    weight: 0.85
+    flags: i
+  - pattern: decision notice
+    weight: 0.85
+    flags: i
   fields:
   - title
-  - body
+  title_multiplier: 1.0
+- axis: document_type
+  value: consultation
+  match:
+  - pattern: ^(CP|Consultation Paper)\s*\d
+    weight: 0.95
+  fields:
+  - title
+- axis: document_type
+  value: final_guidance
+  match:
+  - pattern: Policy Statement
+    weight: 0.85
+    flags: i
+  - pattern: \bPS\d+/\d+\b
+    weight: 0.85
+  - pattern: Final report
+    weight: 0.85
+    flags: i
+  - pattern: Guidelines on
+    weight: 0.85
+    flags: i
+  fields:
+  - title
+- axis: document_type
+  value: technical_standard
+  match:
+  - pattern: \bRTS\b
+    weight: 0.85
+  - pattern: \bITS\b
+    weight: 0.85
+  - pattern: regulatory technical standard
+    weight: 0.85
+    flags: i
+  - pattern: implementing technical standard
+    weight: 0.85
+    flags: i
+  - pattern: delegated regulation
+    weight: 0.85
+    flags: i
+  fields:
+  - title
+- axis: document_type
+  value: warning
+  match:
+  - pattern: \bwarning\b
+    weight: 0.85
+    flags: i
+  - pattern: \bunauthorised\b
+    weight: 0.85
+    flags: i
+  - pattern: \bunauthorized\b
+    weight: 0.85
+    flags: i
+  - pattern: \bscam\b
+    weight: 0.85
+    flags: i
+  - pattern: clone firm
+    weight: 0.85
+    flags: i
+  fields:
+  - title
+- axis: document_type
+  value: speech
+  match:
+  - pattern: ^Speech
+    weight: 0.85
+  - pattern: \bkeynote\b
+    weight: 0.85
+    flags: i
+  - pattern: remarks by
+    weight: 0.85
+    flags: i
+  fields:
+  - title
+- axis: document_type
+  value: press_release
+  match:
+  - pattern: ^Press release
+    weight: 0.9
+    flags: i
+  fields:
+  - title
