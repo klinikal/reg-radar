@@ -134,8 +134,11 @@ def list_regulators_tool() -> list[dict]:
 
     Each entry's `id` is the value to pass as `regulator_id` to every other
     tool in this server. `last_fetched_at` and `consecutive_failures`
-    reflect the collector's health for that regulator specifically - see
-    get_health_tool for overall collector freshness.
+    reflect the collector's health for that regulator specifically -
+    `stalled` is True if any of its sources has hit the consecutive
+    zero-item-run threshold (selectors likely matching nothing despite a
+    successful fetch) - see get_health_tool for overall collector freshness
+    and per-source stall detail.
     """
     results = _safe("list_regulators_tool", list_regulators, get_engine())
     return results
@@ -259,6 +262,12 @@ def get_health_tool() -> dict:
     unreliable; see "Backups & recovery" in
     skills/regradar-operator/SKILL.md to restore from the Litestream
     backup rather than trusting query results.
+
+    `stalled_sources` lists every regulator_id/source_label that has hit the
+    consecutive zero-item-run threshold (default 7, STALL_THRESHOLD_RUNS
+    env-configurable): fetches are succeeding but the parser keeps finding
+    nothing, which usually means the source's page changed and its
+    selectors need updating.
     """
     return _safe("get_health_tool", get_health, get_engine())
 
