@@ -89,7 +89,7 @@ def _deliver_with_retry(client: httpx.Client, url: str, body: bytes, signature: 
         try:
             resp = client.post(
                 url, content=body,
-                headers={"Content-Type": "application/json", "X-RegRadar-Signature": signature},
+                headers={"Content-Type": "application/json", "X-Reg-Radar-Signature": signature},
             )
             if 200 <= resp.status_code < 300:
                 return True

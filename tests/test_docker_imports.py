@@ -1,6 +1,6 @@
 """Regression test for the "ModuleNotFoundError inside the container" class
 of bug: a Dockerfile must COPY every top-level package that regradar/
-actually imports, or `regradar --help` etc. crash at import time inside
+actually imports, or `reg-radar --help` etc. crash at import time inside
 that image.
 """
 

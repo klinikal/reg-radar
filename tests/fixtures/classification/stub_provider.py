@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stub `command` provider for tests/test_classify.py - reads a prompt on
-stdin (like a real `regradar classify --provider command` invocation would
+stdin (like a real `reg-radar classify --provider command` invocation would
 feed a subscription CLI) and writes a JSON classification response to
 stdout. Behaviour is controlled by the CLASSIFY_STUB_MODE env var so the
 same script covers both the happy path and every validation-rejection

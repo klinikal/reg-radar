@@ -554,13 +554,13 @@ def get_digest_cursor(engine, name: str) -> str | None:
 class SyncStateRow(Base):
     """A small generic key/value store for one-off sync bookkeeping that
     doesn't warrant its own table - currently just the change-stream cursor
-    `regradar import-dataset` (regradar/dataset.py) records for the
+    `reg-radar import-dataset` (regradar/dataset.py) records for the
     published dataset's `generated_at`.
 
     It marks where the imported snapshot ends; it does NOT filter what the
     collector fetches, and nothing consumes it automatically. A collection
     run reads whatever is on each source's current feed pages either way,
-    and `regradar export` always starts full into a fresh --out. It is a
+    and `reg-radar export` always starts full into a fresh --out. It is a
     bookmark for change-stream consumers - get_changes()/`/api/changes`/a
     webhook subscriber - that want only what arrived after the snapshot,
     surfaced by get_health()'s `dataset_import`. Distinct from

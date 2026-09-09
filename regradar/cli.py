@@ -28,7 +28,7 @@ _SUBCOMMAND_MODULES = [render, reclassify, exporter, digest, classify, dataset]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="regradar")
+    parser = argparse.ArgumentParser(prog="reg-radar")
     subparsers = parser.add_subparsers(dest="command", required=True)
     for module in _SUBCOMMAND_MODULES:
         module.add_subparser(subparsers)

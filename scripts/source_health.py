@@ -75,7 +75,7 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
         raise ValueError(f"unknown source type '{source_type}'")
 
     ctx = FetchContext(
-        user_agent=cfg.get("user_agent", "regradar/2.0"),
+        user_agent=cfg.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
         timeout=int(cfg.get("timeout", 30)),
         retries=int(cfg.get("retries", 3)),
         flaresolverr_url=cfg.get("flaresolverr_url") if regulator.get("cloudflare_protected", False) else None,

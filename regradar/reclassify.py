@@ -196,7 +196,7 @@ def add_subparser(subparsers) -> None:
                               "config/rules.yaml (llm:* is agent-driven via the classifier skill, not "
                               "this command)")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))

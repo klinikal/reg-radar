@@ -62,7 +62,7 @@ def test_transport_security_enabled_with_allowed_hosts():
 
 def test_transport_security_allows_extra_hosts_from_env(monkeypatch):
     # Operators remapping the published port (e.g. 127.0.0.1:8001:8000, per
-    # skills/regradar-operator/SKILL.md's port-conflict guidance) send a
+    # skills/reg-radar-operator/SKILL.md's port-conflict guidance) send a
     # Host header reflecting that external port - it must be explicitly
     # allow-listed via MCP_EXTRA_ALLOWED_HOSTS or every request 421s.
     monkeypatch.setenv("MCP_EXTRA_ALLOWED_HOSTS", "127.0.0.1:8001, localhost:8001")

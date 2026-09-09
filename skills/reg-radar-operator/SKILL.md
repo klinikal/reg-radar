@@ -1,13 +1,13 @@
 ---
-name: regradar-operator
-description: Use when operating, querying, or debugging regradar — the regulatory intelligence tool for firms tracking European financial regulators. Triggers on questions about EU/UK regulator news, MiCA developments, CASP warnings, or direct requests to run/query/debug the regradar MCP server, collector, exporter or digests.
+name: reg-radar-operator
+description: Use when operating, querying, or debugging reg-radar — the regulatory intelligence tool for firms tracking European financial regulators. Triggers on questions about EU/UK regulator news, MiCA developments, CASP warnings, or direct requests to run/query/debug the reg-radar MCP server, collector, exporter or digests.
 ---
 
-# regradar Operator
+# reg-radar Operator
 
-How to run, query, and navigate regradar — a regulatory intelligence tool that collects news, warnings, and publications from 40-odd European financial regulators (every EU/EEA member state plus ESMA/EBA/EIOPA and AMLA, and the UK FCA) on a schedule, stores them in SQLite, classifies them against a configurable taxonomy, and exposes the data via an MCP server, a web UI, an export/change stream and digests.
+How to run, query, and navigate reg-radar — a regulatory intelligence tool that collects news, warnings, and publications from 40-odd European financial regulators (every EU/EEA member state plus ESMA/EBA/EIOPA and AMLA, and the UK FCA) on a schedule, stores them in SQLite, classifies them against a configurable taxonomy, and exposes the data via an MCP server, a web UI, an export/change stream and digests.
 
-**Read your context first:** check `skills/regradar-operator/refs/context.md` (relative to repo root). If it exists, read it — it tells you what entity is operating this instance and what's relevant to them. That file is git-ignored on purpose (it's instance-specific and contains private company details) so it won't exist in a fresh clone. If it's missing, read `refs/example.context.md` instead — a template showing what that file should contain — and treat this as an unconfigured instance until the operator fills one in (see the `regradar-onboarding` skill, in the sibling `skills/regradar-onboarding/` folder, to generate it interactively).
+**Read your context first:** check `skills/reg-radar-operator/refs/context.md` (relative to repo root). If it exists, read it — it tells you what entity is operating this instance and what's relevant to them. That file is git-ignored on purpose (it's instance-specific and contains private company details) so it won't exist in a fresh clone. If it's missing, read `refs/example.context.md` instead — a template showing what that file should contain — and treat this as an unconfigured instance until the operator fills one in (see the `reg-radar-onboarding` skill, in the sibling `skills/reg-radar-onboarding/` folder, to generate it interactively).
 
 ---
 
@@ -51,20 +51,20 @@ Use the `!override` merge tag — a plain list under `ports:` gets *appended* to
 
 ## Backups & recovery
 
-The live database lives in a Docker-managed named volume (`regradar_data`), not a bind-mounted host folder — this is deliberate: SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident in July 2026. You can no longer browse the `.db` file directly from Finder/Terminal; use `docker compose exec mcp sqlite3 /app/data/regradar.db` (or similar) if you need to inspect it.
+The live database lives in a Docker-managed named volume (`reg_radar_data`), not a bind-mounted host folder — this is deliberate: SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident in July 2026. You can no longer browse the `.db` file directly from Finder/Terminal; use `docker compose exec mcp sqlite3 /app/data/reg_radar.db` (or similar) if you need to inspect it.
 
-A `litestream` service continuously replicates the database to `./backups/regradar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
+A `litestream` service continuously replicates the database to `./backups/reg_radar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
 
-**`originals/` (fetched HTML/PDF artefacts, under `ARTEFACTS_DIR` on the data volume) is not covered by Litestream** — it only replicates the SQLite file. Include `originals/` in whatever host-level backup you run against the `regradar_data` volume (e.g. a periodic `docker run --rm -v regradar_data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/originals-$(date +%F).tar.gz -C /data originals`), or accept that a lost volume means item text survives (in the DB backup) but the original artefacts don't.
+**`originals/` (fetched HTML/PDF artefacts, under `ARTEFACTS_DIR` on the data volume) is not covered by Litestream** — it only replicates the SQLite file. Include `originals/` in whatever host-level backup you run against the `reg_radar_data` volume (e.g. a periodic `docker run --rm -v reg_radar_data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/originals-$(date +%F).tar.gz -C /data originals`), or accept that a lost volume means item text survives (in the DB backup) but the original artefacts don't.
 
 **To restore from backup** (e.g. after corruption or accidental data loss):
 ```bash
 docker compose stop collector mcp webui
-docker run --rm -v "$(pwd)/backups:/backups:ro" -v regradar_data:/out litestream/litestream:0.5.9 restore -o /out/regradar.db file:///backups/regradar
+docker run --rm -v "$(pwd)/backups:/backups:ro" -v reg_radar_data:/out litestream/litestream:0.5.9 restore -o /out/reg_radar.db file:///backups/reg_radar
 # verify before trusting it:
-docker run --rm -v regradar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/regradar.db 'PRAGMA integrity_check;'"
+docker run --rm -v reg_radar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/reg_radar.db 'PRAGMA integrity_check;'"
 # if you also back up originals/, restore it into the same volume:
-# docker run --rm -v regradar_data:/data -v $(pwd)/backups:/backup:ro alpine tar xzf /backup/originals-<date>.tar.gz -C /data
+# docker run --rm -v reg_radar_data:/data -v $(pwd)/backups:/backup:ro alpine tar xzf /backup/originals-<date>.tar.gz -C /data
 docker compose up -d collector mcp webui
 ```
 
@@ -83,7 +83,7 @@ Every label is written into a provenance-tracked classification store, never str
 | `by` | Written by |
 |---|---|
 | `human:<name>` (e.g. `human:web-ui`) | A person correcting a label in the web UI or through the API. Never overwritten by any automated path. |
-| `llm:<provider>/<model>` | An agent classifying the backlog through `classify_item_tool`/`classify_items_tool`, or the `regradar classify` runner. |
+| `llm:<provider>/<model>` | An agent classifying the backlog through `classify_item_tool`/`classify_items_tool`, or the `reg-radar classify` runner. |
 | `rule` | `config/rules.yaml`, a deterministic weighted regex engine that scores each item on collection. |
 | `source_default` | A `sources[].labels` block in `config/regulators/*.yaml`, for a genuinely single-purpose feed. |
 | `import` | Migrated v1 content tags, kept at low confidence so anything better outranks them. |
@@ -104,7 +104,7 @@ A **profile** is a saved filter — jurisdictions, activities, instruments, docu
 
 `include_unclassified` (default true) decides whether items with no instrument label yet are included. Leave it true unless the operator explicitly wants a strict view — with it false and no instruments selected, a profile matches nothing at all.
 
-**Historic backfills:** the daily collector only picks up the newest page of any scrape-type source — full historic archives are pulled separately via one-off scripts in `scripts/` (`backfill_esma_library.py`, `backfill_fca_publications.py`), not run automatically. A new install can skip most of that by importing the published dataset (`regradar import-dataset`) instead. If asked "why is there a gap in older data" for a scrape-type source, check whether its backfill script has actually been run — see the README's "Historic backfills" section.
+**Historic backfills:** the daily collector only picks up the newest page of any scrape-type source — full historic archives are pulled separately via one-off scripts in `scripts/` (`backfill_esma_library.py`, `backfill_fca_publications.py`), not run automatically. A new install can skip most of that by importing the published dataset (`reg-radar import-dataset`) instead. If asked "why is there a gap in older data" for a scrape-type source, check whether its backfill script has actually been run — see the README's "Historic backfills" section.
 
 ## MCP tools
 
@@ -135,28 +135,28 @@ Write:
 | `classify_item_tool` | Write one classification. `by` should be `llm:<provider>/<model>` for an agent-driven label. An unknown `item_id` raises rather than recording an orphan row. |
 | `classify_items_tool` | Up to 100 at once, all validated before anything is written. Returns `written` plus a per-entry `errors` list, so one bad entry never costs the batch. |
 
-See the sibling `skills/regradar-classifier/` skill for the classification loop itself (how to pick a confidence, when to leave an axis unset).
+See the sibling `skills/reg-radar-classifier/` skill for the classification loop itself (how to pick a confidence, when to leave an axis unset).
 
 ## The change stream, export and digests
 
 Everything downstream is built on one primitive: "what changed since cursor X", where the cursor is an opaque `<updated_at>|<item_id>` string. It is exposed as `get_changes_tool` and `GET /api/changes`, and consumed by:
 
-- **`regradar export --profile <p> --format markdown --format jsonl --out <dir>`** — writes the canonical document layout and/or `export.jsonl` (a full current-state snapshot, one line per item), idempotent, tracking its own `.regradar-cursor` inside `--out`. `--with-originals` also copies stored artefacts. **Pass both formats in one call**: running them as separate invocations into the same `--out` means the first run's cursor has already advanced past everything. (The exporter detects that case and falls back to a full export, but the one-call form is the intended usage.)
+- **`reg-radar export --profile <p> --format markdown --format jsonl --out <dir>`** — writes the canonical document layout and/or `export.jsonl` (a full current-state snapshot, one line per item), idempotent, tracking its own `.reg-radar-cursor` inside `--out`. `--with-originals` also copies stored artefacts. **Pass both formats in one call**: running them as separate invocations into the same `--out` means the first run's cursor has already advanced past everything. (The exporter detects that case and falls back to a full export, but the one-call form is the intended usage.)
 - **`GET /feeds/<profile>.atom`** — a per-profile Atom feed for any RSS reader. Summaries and links only, never full bodies.
 - **`config/webhooks.yaml`** — subscribers that get an HMAC-signed POST of new matching items after every collection run, with per-subscriber cursors and retry backoff. Opt-in; a delivery failure never fails the collection run.
-- **`config/digests.yaml` / `regradar digest`** — scheduled digests grouped by jurisdiction then regulator, delivered by email (SMTP, verified TLS), Telegram, or webhook. `regradar digest --preview --profile <p>` renders one to stdout and sends nothing; `regradar digest --send --name <n>` delivers and only advances that digest's cursor if every channel succeeded. The collector's own scheduler runs these — there is no second cron.
-- **`regradar import-dataset <url|path>`** — seeds a fresh database from the published nightly dataset release instead of backfilling by hand. Verifies the tarball's sha256, refuses a non-empty database without `--force`, and records a sync cursor you can hand to any change-stream consumer.
+- **`config/digests.yaml` / `reg-radar digest`** — scheduled digests grouped by jurisdiction then regulator, delivered by email (SMTP, verified TLS), Telegram, or webhook. `reg-radar digest --preview --profile <p>` renders one to stdout and sends nothing; `reg-radar digest --send --name <n>` delivers and only advances that digest's cursor if every channel succeeded. The collector's own scheduler runs these — there is no second cron.
+- **`reg-radar import-dataset <url|path>`** — seeds a fresh database from the published nightly dataset release instead of backfilling by hand. Verifies the tarball's sha256, refuses a non-empty database without `--force`, and records a sync cursor you can hand to any change-stream consumer.
 
 ## Other CLI commands
 
-Run these inside the collector container (`docker compose exec collector regradar <command>`), or locally against a `--db-path`.
+Run these inside the collector container (`docker compose exec collector reg-radar <command>`), or locally against a `--db-path`.
 
 | Command | Use for |
 |---|---|
-| `regradar reclassify --axis <a> [--by rule\|source_default] [--dry-run]` | Re-apply source defaults or re-score every item against the current `config/rules.yaml` after a config change. Human corrections are never touched. Always dry-run first. |
-| `regradar classify --provider <p> [--axis <a>] [--limit N] [--dry-run]` | Batch LLM classifier runner: works through `get_unclassified` for an axis via a pluggable provider. Run `regradar classify --help` for the providers this build supports, including `command`, which shells out to any CLI that reads a prompt on stdin. Writes `by: llm:<provider>/<model>` provenance. |
-| `regradar render --out <dir>` | Render items to the canonical document format without the export cursor machinery. |
-| `regradar export` / `regradar digest` / `regradar import-dataset` | See above. |
+| `reg-radar reclassify --axis <a> [--by rule\|source_default] [--dry-run]` | Re-apply source defaults or re-score every item against the current `config/rules.yaml` after a config change. Human corrections are never touched. Always dry-run first. |
+| `reg-radar classify --provider <p> [--axis <a>] [--limit N] [--dry-run]` | Batch LLM classifier runner: works through `get_unclassified` for an axis via a pluggable provider. Run `reg-radar classify --help` for the providers this build supports, including `command`, which shells out to any CLI that reads a prompt on stdin. Writes `by: llm:<provider>/<model>` provenance. |
+| `reg-radar render --out <dir>` | Render items to the canonical document format without the export cursor machinery. |
+| `reg-radar export` / `reg-radar digest` / `reg-radar import-dataset` | See above. |
 
 ## Source health
 

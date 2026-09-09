@@ -229,7 +229,7 @@ def main() -> None:
         help="path to ONE regulators YAML file to migrate in place, e.g. config/regulators/mt.yaml "
              "(this is a completed, one-off migration - already-migrated files are a no-op, not an error)",
     )
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "data/reg_radar.db"))
     args = parser.parse_args()
     run(args.regulators_path, args.db_path, args.dry_run)
 

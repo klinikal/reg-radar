@@ -70,10 +70,10 @@ def _detect_last_page(user_agent: str, timeout: int) -> int:
 
 
 def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> None:
-    user_agent = os.getenv("USER_AGENT", "regradar/2.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
-    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     if end_page is None:

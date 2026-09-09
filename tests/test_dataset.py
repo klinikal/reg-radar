@@ -57,7 +57,7 @@ def _export_and_publish(tmp_path, db_path, *, exclude_file=None, out_name="out")
 
     dist_dir = tmp_path / f"{out_name}-dist"
     manifest = publish_dataset(
-        out_dir, dist_dir, tarball_name="regradar-dataset-test.tar.gz",
+        out_dir, dist_dir, tarball_name="reg-radar-dataset-test.tar.gz",
         taxonomy_version=1, excluded_regulators=load_exclusions(str(exclude_file)) if exclude_file else set(),
     )
     tarball_path = dist_dir / manifest["tarball"]
@@ -258,7 +258,7 @@ def test_import_dataset_cli_end_to_end(tmp_path, monkeypatch):
 
 
 def test_import_summary_prints_cursor_and_ready_to_use_commands(tmp_path, monkeypatch, capsys):
-    """The cursor is not applied automatically anywhere except `regradar
+    """The cursor is not applied automatically anywhere except `reg-radar
     export`'s no-cursor fallback, so the summary has to hand it over in a
     form the operator can paste, or it may as well not be stored."""
     monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
@@ -275,7 +275,7 @@ def test_import_summary_prints_cursor_and_ready_to_use_commands(tmp_path, monkey
     out = capsys.readouterr().out
     stored = get_sync_state(create_engine(f"sqlite:///{empty_db_path}"), "dataset_import_cursor")
     assert stored in out
-    assert f"regradar export --format jsonl --out <dir> --since {stored}" in out
+    assert f"reg-radar export --format jsonl --out <dir> --since {stored}" in out
     assert f'get_changes_tool(since="{stored}")' in out
 
 

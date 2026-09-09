@@ -95,7 +95,7 @@ def test_dispatch_delivers_signed_payload_and_advances_cursor(tmp_path, monkeypa
 
     def handler(request: httpx.Request) -> httpx.Response:
         received["body"] = request.content
-        received["signature"] = request.headers["X-RegRadar-Signature"]
+        received["signature"] = request.headers["X-Reg-Radar-Signature"]
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -149,7 +149,7 @@ def test_dispatch_rejects_receiver_that_rejects_signature(tmp_path, monkeypatch)
     def handler(request: httpx.Request) -> httpx.Response:
         body = request.content
         expected = sign_payload(body, "supersecret")
-        if request.headers["X-RegRadar-Signature"] != expected:
+        if request.headers["X-Reg-Radar-Signature"] != expected:
             return httpx.Response(401)
         return httpx.Response(200)
 

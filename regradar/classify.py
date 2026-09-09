@@ -209,7 +209,7 @@ def run(args) -> int:
     prices = load_prices(args.prices_path)
     limiter = RateLimiter(provider.rpm)
     taxonomy_dict = taxonomy.to_dict()
-    classifier_id = f"regradar-classify/{args.provider}"
+    classifier_id = f"reg-radar-classify/{args.provider}"
 
     written = 0
     skipped = 0
@@ -270,7 +270,7 @@ def add_subparser(subparsers) -> None:
     parser.add_argument("--model", help="Override the provider's default model id")
     parser.add_argument("--command", help='Shell command for --provider command, e.g. "claude -p"')
     parser.add_argument("--rpm", type=int, help="Override the provider's default requests-per-minute limit")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.add_argument("--prices-path", default=os.getenv("LLM_PRICES_PATH", DEFAULT_PRICES_PATH))

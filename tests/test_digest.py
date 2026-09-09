@@ -309,7 +309,7 @@ def test_webhook_channel_signature_validates_the_same_way_issue_8_does():
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["body"] = request.content
-        captured["signature"] = request.headers["X-RegRadar-Signature"]
+        captured["signature"] = request.headers["X-Reg-Radar-Signature"]
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -378,7 +378,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
         "from_addr": "ops@example.org", "starttls": True,
     }
 
-    ok = send_email("dest@example.org", "RegRadar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
+    ok = send_email("dest@example.org", "reg-radar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
 
     assert ok is True
     # STARTTLS must verify the certificate and hostname, not just encrypt.
@@ -391,7 +391,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     from_addr, to_addrs, msg_str = _FakeSMTP.sent[0]
     assert from_addr == "ops@example.org"
     assert to_addrs == ["dest@example.org"]
-    assert "Subject: RegRadar digest: test" in msg_str
+    assert "Subject: reg-radar digest: test" in msg_str
     assert "From: ops@example.org" in msg_str
     assert "To: dest@example.org" in msg_str
     assert "multipart/alternative" in msg_str
@@ -585,7 +585,7 @@ def test_scheduler_skips_invalid_digests_yaml_without_crashing(tmp_path):
 
 
 def test_digest_preview_documents_carry_jurisdiction_ancestors_and_label_provenance(tmp_path, monkeypatch, capsys):
-    """`regradar digest --preview` must pass the taxonomy through to
+    """`reg-radar digest --preview` must pass the taxonomy through to
     render_digest(), or every document it builds loses
     jurisdiction_ancestors and label_provenance."""
     import argparse

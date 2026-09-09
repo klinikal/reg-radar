@@ -48,7 +48,7 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="regradar", lifespan=_lifespan)
+app = FastAPI(title="reg-radar", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
@@ -66,7 +66,7 @@ PROFILES_DIR = os.getenv("PROFILES_DIR", "/app/config/profiles")
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+        db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
         _engine = init_db(db_path)
     return _engine
 
@@ -489,13 +489,13 @@ def _atom_summary(doc: dict) -> str:
 def _atom_feed_xml(profile_name: str, items: list[dict], feed_url: str) -> bytes:
     ET.register_namespace("", _ATOM_NS)
     feed = ET.Element(f"{{{_ATOM_NS}}}feed")
-    ET.SubElement(feed, f"{{{_ATOM_NS}}}title").text = f"regradar - {profile_name}"
+    ET.SubElement(feed, f"{{{_ATOM_NS}}}title").text = f"reg-radar - {profile_name}"
     ET.SubElement(feed, f"{{{_ATOM_NS}}}id").text = feed_url
     link = ET.SubElement(feed, f"{{{_ATOM_NS}}}link")
     link.set("href", feed_url)
     ET.SubElement(feed, f"{{{_ATOM_NS}}}updated").text = items[0]["updated_at"] if items else _now_z()
     author = ET.SubElement(feed, f"{{{_ATOM_NS}}}author")
-    ET.SubElement(author, f"{{{_ATOM_NS}}}name").text = "regradar"
+    ET.SubElement(author, f"{{{_ATOM_NS}}}name").text = "reg-radar"
 
     for doc in items:
         entry = ET.SubElement(feed, f"{{{_ATOM_NS}}}entry")

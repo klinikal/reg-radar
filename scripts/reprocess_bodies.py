@@ -141,7 +141,7 @@ def main() -> None:
                          help="Backfill body_md from raw_content for artefact-less pre-v2 items instead")
     args = parser.parse_args()
 
-    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     artefacts_dir = os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
     engine = init_db(db_path)
     if args.from_raw_content:

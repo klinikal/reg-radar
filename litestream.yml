@@ -1,4 +1,4 @@
 dbs:
-  - path: /app/data/regradar.db
+  - path: /app/data/reg_radar.db
     replica:
-      path: /backups/regradar
+      path: /backups/reg_radar

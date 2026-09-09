@@ -137,11 +137,11 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
 
 
 def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | None) -> None:
-    user_agent = os.getenv("USER_AGENT", "regradar/2.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
-    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     if not flaresolverr_url:

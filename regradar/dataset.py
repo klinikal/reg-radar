@@ -18,7 +18,7 @@ Manifest shape (issue #10's "Manifest shape"):
       "per_regulator_counts": {"esma": 7260, "fca": 9743},
       "excluded_regulators": ["mfsa"],
       "sha256": "...",
-      "tarball": "regradar-dataset-2026-09-09.tar.gz"
+      "tarball": "reg-radar-dataset-2026-09-09.tar.gz"
     }
 
 The manifest is written BESIDE the tarball, never inside it - its own
@@ -383,7 +383,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
         "--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
         help=f"Abort a URL download larger than this (default: {DEFAULT_MAX_BYTES}, GitHub's asset limit)",
     )
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.set_defaults(func=run)
@@ -418,7 +418,7 @@ def run(args: argparse.Namespace) -> int:
         # snapshot" is a copy-paste away rather than a cursor nobody reads.
         print(f"\nSync cursor stored: {summary['cursor']}")
         print("Everything new since this snapshot:")
-        print(f"  regradar export --format jsonl --out <dir> --since {summary['cursor']}")
+        print(f"  reg-radar export --format jsonl --out <dir> --since {summary['cursor']}")
         print(f"  get_changes_tool(since=\"{summary['cursor']}\")")
         print("It is also reported as get_health_tool()'s `dataset_import`.")
     return 0

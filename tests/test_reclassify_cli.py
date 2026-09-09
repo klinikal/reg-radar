@@ -1,6 +1,6 @@
 """Confirms `regradar.reclassify` is wired into regradar/cli.py's
 subcommand registry (Task 4's add_subparser()/run() convention) and
-reachable as `regradar reclassify ...` end to end."""
+reachable as `reg-radar reclassify ...` end to end."""
 import tempfile
 
 import yaml

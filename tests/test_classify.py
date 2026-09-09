@@ -1,4 +1,4 @@
-"""Tests for `regradar classify` (docs/issues/12-batch-llm-classifier
+"""Tests for `reg-radar classify` (docs/issues/12-batch-llm-classifier
 -runner.md): validation, parsing, prompt building, rate limiting, cost
 logging, each provider (mocked HTTP / injected client / a stub script for
 `command`), and a full CLI run wired through regradar/cli.py."""
@@ -430,7 +430,7 @@ def test_classify_command_provider_end_to_end_writes_via_write_classification(tm
         assert value == "press_release"
         assert by == "llm:command/stub"
         assert confidence == 0.8
-        assert classifier_id == "regradar-classify/command"
+        assert classifier_id == "reg-radar-classify/command"
 
 
 def test_classify_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):

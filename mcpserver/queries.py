@@ -761,7 +761,7 @@ def get_items_since(engine, since: str, limit: int = 100, profile=None) -> list[
 
 
 def _dataset_import_state(conn) -> dict | None:
-    """The `regradar import-dataset` sync cursor, or None if this database
+    """The `reg-radar import-dataset` sync cursor, or None if this database
     was never seeded from a published dataset. `generated_at` is decoded
     from the cursor itself (it IS the manifest's generated_at - see
     regradar.dataset) rather than stored twice; `imported_at` is the
@@ -802,10 +802,10 @@ def get_health(engine) -> dict:
     case a single run's zero-items check can't distinguish from a quiet day.
 
     `dataset_import` is {cursor, generated_at, imported_at} when this
-    database was seeded by `regradar import-dataset`, else None. Nothing
+    database was seeded by `reg-radar import-dataset`, else None. Nothing
     consumes the cursor automatically - it is a bookmark, here so an
     operator or agent can pass it as `since` to get_changes() (or
-    `/api/changes`, or a webhook subscriber, or `regradar export --since`)
+    `/api/changes`, or a webhook subscriber, or `reg-radar export --since`)
     and see only what arrived after the published snapshot.
     """
     sql = """

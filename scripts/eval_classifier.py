@@ -18,7 +18,7 @@ labels we have ground truth for.
 Run from the repository root:
 
     .venv/bin/python -m scripts.eval_classifier
-    .venv/bin/python -m scripts.eval_classifier --gold path/to/gold.csv --db-path data/regradar.db
+    .venv/bin/python -m scripts.eval_classifier --gold path/to/gold.csv --db-path data/reg_radar.db
 """
 import argparse
 import csv
@@ -119,7 +119,7 @@ def run(gold_path: str, db_path: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--gold", default="tests/fixtures/classification/gold.csv")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "data/reg_radar.db"))
     args = parser.parse_args()
     run(args.gold, args.db_path)
 

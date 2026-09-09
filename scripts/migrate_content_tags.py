@@ -107,7 +107,7 @@ def run(db_path: str, taxonomy_path: str, jurisdictions_path: str, dry_run: bool
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Compute and log what would be imported but write nothing")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     args = parser.parse_args()

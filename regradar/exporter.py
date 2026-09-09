@@ -6,7 +6,7 @@ see that module's docstring for the convention). Reuses
 regradar.render.render_item_to_dir for the markdown format - the section
 3.1 layout is not reimplemented here.
 
-`--out` gets its own `.regradar-cursor` file, so a scheduled export doesn't
+`--out` gets its own `.reg-radar-cursor` file, so a scheduled export doesn't
 need external state tracking: the next run without `--since` picks up
 exactly where the last one left off. `--since` on the command line always
 overrides the persisted cursor for that one run.
@@ -20,7 +20,7 @@ in only what get_changes() reports as new since the cursor, and skipping
 the rewrite entirely when the resulting content is byte-identical.
 
 `--format` is repeatable (`--format markdown --format jsonl`, default just
-`markdown`) and all requested formats share the ONE `.regradar-cursor` in
+`markdown`) and all requested formats share the ONE `.reg-radar-cursor` in
 `--out` and the one pass over get_changes(). Running markdown and jsonl as
 two separate invocations into the same `--out` is a trap: the first
 invocation's cursor advances past everything, so the second sees nothing
@@ -52,7 +52,7 @@ from regradar.taxonomy import load_and_exit_on_error
 
 logger = logging.getLogger(__name__)
 
-CURSOR_FILENAME = ".regradar-cursor"
+CURSOR_FILENAME = ".reg-radar-cursor"
 JSONL_FILENAME = "export.jsonl"
 # Items are fetched from get_changes() in pages of this size regardless of
 # how many actually match - keeps memory bounded on a large catch-up
@@ -269,14 +269,14 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("--out", required=True, help="Output directory")
     parser.add_argument(
-        "--since", help="Cursor to export from (default: the persisted .regradar-cursor in --out, or a full export if none)",
+        "--since", help="Cursor to export from (default: the persisted .reg-radar-cursor in --out, or a full export if none)",
     )
     parser.add_argument("--with-originals", action="store_true", help="Also copy artefacts into <out>/originals/")
     parser.add_argument(
         "--exclude-regulator-file",
         help="Path to a YAML file listing regulator ids (flat list) to drop from this export entirely",
     )
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.add_argument("--activities-path", default=os.getenv("ACTIVITIES_PATH", "config/activities.yaml"))

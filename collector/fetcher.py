@@ -24,7 +24,7 @@ def fetch_source(
     config: dict,
     rules_engine=None,
 ) -> list[Item]:
-    user_agent = config.get("user_agent", "regradar/2.0")
+    user_agent = config.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(config.get("timeout", 30))
     retries = int(config.get("retries", 3))
     source_type = source.get("type", "rss")
