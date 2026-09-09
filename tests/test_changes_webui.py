@@ -157,3 +157,27 @@ def test_feed_atom_respects_feed_max_items(tmp_path, monkeypatch):
 
     root = ET.fromstring(client.get("/feeds/eu-casp.atom").content)
     assert len(root.findall(f"{ATOM_NS}entry")) == 2
+
+
+def test_api_changes_documents_carry_jurisdiction_ancestors_and_label_provenance(tmp_path, monkeypatch):
+    """/api/changes must pass the taxonomy through to get_changes(), or
+    every document it serves loses jurisdiction_ancestors and
+    label_provenance - the fields a downstream consumer uses to know where
+    an item sits in the hierarchy and who classified it."""
+    from regradar.classification import write_classification
+
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    upsert_regulator(engine, {"id": "fr-amf", "name": "AMF", "full_name": "AMF", "jurisdiction": "fr"})
+    insert_item(engine, _item("i-amf", regulator_id="fr-amf"))
+    write_classification(engine, app_module.get_taxonomy(), "i-amf", "document_type", "warning",
+                         by="human:test", confidence=1.0)
+
+    resp = client.get("/api/changes", params={"limit": 1})
+
+    assert resp.status_code == 200
+    doc = resp.json()["items"][0]
+    assert doc["jurisdiction"] == "fr"
+    assert doc["jurisdiction_ancestors"] == ["eu"]
+    assert [(p["axis"], p["value"], p["by"]) for p in doc["label_provenance"]] == [
+        ("document_type", "warning", "human:test")
+    ]

@@ -475,7 +475,7 @@ def api_changes(since: str = "", profile: str = "", limit: int = 100, include_bo
     try:
         items, next_cursor = get_changes(
             get_engine(), since=since or None, profile=_resolve_profile(profile),
-            limit=limit, include_body=include_body,
+            limit=limit, include_body=include_body, taxonomy=get_taxonomy(),
         )
     except CursorError as e:
         raise HTTPException(status_code=400, detail=str(e))

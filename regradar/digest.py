@@ -338,7 +338,7 @@ def run(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"regradar digest: {e}", file=sys.stderr)
             return 1
-        result = render_digest(engine, expanded_profile, args.profile, args.since)
+        result = render_digest(engine, expanded_profile, args.profile, args.since, taxonomy=taxonomy)
         print(result["markdown"])
         return 0
 

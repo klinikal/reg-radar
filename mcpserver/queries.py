@@ -145,7 +145,7 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
         conditions.extend(tag_conditions)
         params.update(tag_params)
-        if jurisdictions and taxonomy is not None:
+        if jurisdictions:
             jur_conditions, jur_params = _jurisdiction_filter_conditions(jurisdictions, taxonomy)
             conditions.extend(jur_conditions)
             params.update(jur_params)
@@ -218,9 +218,15 @@ def _jurisdiction_filter_conditions(jurisdictions, taxonomy, prefix: str = "") -
     """Expands each requested jurisdiction through taxonomy.ancestors() (a
     profile selecting "fr" also matches "eu" - architecture doc §4.2) and
     builds a condition matching any item whose regulator's jurisdiction (or
-    an ancestor of it) is in that expanded set."""
+    an ancestor of it) is in that expanded set.
+
+    A jurisdictions filter without a taxonomy cannot be expanded, and
+    silently returning no conditions would widen the query to the whole
+    corpus - the opposite of what the caller asked for - so it raises."""
     if not jurisdictions:
         return [], {}
+    if taxonomy is None:
+        raise ValueError("jurisdictions filter requires a taxonomy")
     expanded = set()
     for j in jurisdictions:
         j = j.lower()
@@ -878,12 +884,14 @@ def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regula
 
     where = " AND ".join(conditions)
     sql = f"""
-        SELECT id, regulator_id, source_label, title, body_md, published_at, fetched_at, language, labels
+        SELECT id, regulator_id, source_label, title, body_md, raw_content, content_snippet, source_type, url,
+               published_at, fetched_at, language, labels
         FROM items WHERE {where}
         ORDER BY COALESCE(published_at, fetched_at) ASC
         LIMIT :limit OFFSET :offset
     """
-    keys = ["id", "regulator_id", "source_label", "title", "body_md", "published_at", "fetched_at", "language", "labels"]
+    keys = ["id", "regulator_id", "source_label", "title", "body_md", "raw_content", "content_snippet",
+            "source_type", "url", "published_at", "fetched_at", "language", "labels"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
         reg_rows = conn.execute(text("SELECT id, name, jurisdiction FROM regulators")).fetchall()
@@ -892,8 +900,14 @@ def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regula
     results = []
     for r in rows:
         item = _row_to_dict(r, keys)
-        body_md = item.pop("body_md") or ""
-        item["body_md"] = body_md[:max_content_chars]
+        # effective_body_md() derives a body from raw_content when body_md
+        # is empty (a v1-upgraded row) - without it a classifier reading
+        # this backlog sees nothing to classify. raw_content/content_snippet/
+        # source_type/url are selected only to feed that derivation and are
+        # dropped again, so the returned shape is unchanged.
+        item["body_md"] = effective_body_md(item)[:max_content_chars]
+        for helper_key in ("raw_content", "content_snippet", "source_type", "url"):
+            item.pop(helper_key, None)
         other_labels = json.loads(item.pop("labels") or "{}")
         other_labels.pop(axis, None)
         item["labels"] = other_labels
