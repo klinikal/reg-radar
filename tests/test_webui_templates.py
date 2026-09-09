@@ -84,7 +84,10 @@ def test_index_renders_source_and_content_tags_separately(monkeypatch, tmp_path)
     from datetime import datetime, timezone
 
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
     app_module._engine = None
+    app_module._taxonomy = None
     engine = app_module.get_engine()
     now = datetime.now(timezone.utc)
     insert_item(engine, Item(

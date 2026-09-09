@@ -5,7 +5,7 @@ import os
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import Body, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from collector.keyword_alerts import load_alert_rules, write_alert_rules
 from collector.storage import init_db
 from mcpserver.queries import get_item, get_month_facets, list_regulators, search_items_advanced
+from regradar.classification import remove_classification, write_classification
+from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -43,6 +45,7 @@ JURISDICTION_NAMES = {
 }
 
 _engine = None
+_taxonomy = None
 
 
 def get_engine():
@@ -51,6 +54,31 @@ def get_engine():
         db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
         _engine = init_db(db_path)
     return _engine
+
+
+def get_taxonomy():
+    global _taxonomy
+    if _taxonomy is None:
+        _taxonomy = load_and_exit_on_error(
+            os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
+            os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
+        )
+    return _taxonomy
+
+
+def _regulator_ids_for_jurisdictions(jurisdictions: list[str], regulators: list[dict]) -> list[str] | None:
+    """Expands each selected jurisdiction through ancestors() (architecture
+    doc §4.2 - a filter on "eu" also matches "fr", "de", ...) and returns
+    the matching regulator ids, or None if no jurisdiction filter is set."""
+    if not jurisdictions:
+        return None
+    taxonomy = get_taxonomy()
+    wanted = set()
+    for j in jurisdictions:
+        j = j.lower()
+        wanted.add(j)
+        wanted.update(taxonomy.ancestors(j))
+    return [r["id"] for r in regulators if (r.get("jurisdiction") or "").lower() in wanted]
 
 
 def _clean_text(raw_content: str | None, fallback: str | None) -> str:
@@ -113,31 +141,48 @@ def index(
     q: str = "",
     exact: bool = False,
     regulator_id: list[str] = Query([]),
+    jurisdiction: list[str] = Query([]),
     date_from: str = "",
     date_to: str = "",
     page: int = Query(1, ge=1),
 ):
-    items, total = _search(q, exact, regulator_id, date_from, date_to, page)
-    items = [_with_tags(i) for i in items]
     regulators = [_with_search_fields(r) for r in list_regulators(get_engine())]
     regulators.sort(key=lambda r: (r["country"], r["name"]))
     regulator_names = {r["id"]: r["name"] for r in regulators}
+
+    jurisdiction_regulator_ids = _regulator_ids_for_jurisdictions(jurisdiction, regulators)
+    effective_regulator_ids = regulator_id
+    if jurisdiction_regulator_ids is not None:
+        effective_regulator_ids = (
+            [r for r in regulator_id if r in jurisdiction_regulator_ids] if regulator_id
+            else jurisdiction_regulator_ids
+        )
+
+    items, total = _search(q, exact, effective_regulator_ids, date_from, date_to, page)
+    items = [_with_tags(i) for i in items]
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    months = get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=regulator_id or None)
+    months = get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=effective_regulator_ids or None)
     for m in months:
         m["date_from"], m["date_to"] = _month_bounds(m["month"])
         m["active"] = date_from == m["date_from"] and date_to == m["date_to"]
 
+    # Jurisdiction filter panel options: only jurisdictions actually in use
+    # by a configured regulator, so the panel doesn't list ids nobody has.
+    taxonomy = get_taxonomy()
+    used_jurisdictions = sorted({(r.get("jurisdiction") or "").lower() for r in regulators} - {""})
+    jurisdiction_options = [{"id": j, "name": taxonomy.jurisdiction_name(j)} for j in used_jurisdictions]
+
     def qs(**overrides):
         base = {"q": q, "exact": "true" if exact else "", "regulator_id": regulator_id,
-                "date_from": date_from, "date_to": date_to}
+                "jurisdiction": jurisdiction, "date_from": date_from, "date_to": date_to}
         base.update(overrides)
         return urlencode({k: v for k, v in base.items() if v}, doseq=True)
 
     filter_qs = qs()
     filter_qs_no_date = qs(date_from="", date_to="")
     filter_qs_no_regulator = qs(regulator_id=[])
+    filter_qs_no_jurisdiction = qs(jurisdiction=[])
 
     return templates.TemplateResponse(
         "index.html",
@@ -146,6 +191,7 @@ def index(
             "items": items,
             "regulators": regulators,
             "regulator_names": regulator_names,
+            "jurisdiction_options": jurisdiction_options,
             "total": total,
             "page": page,
             "total_pages": total_pages,
@@ -153,14 +199,25 @@ def index(
             "filter_qs": filter_qs,
             "filter_qs_no_date": filter_qs_no_date,
             "filter_qs_no_regulator": filter_qs_no_regulator,
+            "filter_qs_no_jurisdiction": filter_qs_no_jurisdiction,
             "months": months,
             "q": q,
             "exact": exact,
             "regulator_id": regulator_id,
+            "jurisdiction": jurisdiction,
             "date_from": date_from,
             "date_to": date_to,
         },
     )
+
+
+def _parse_labels(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
 
 
 @app.get("/item/{item_id}", response_class=HTMLResponse)
@@ -173,10 +230,40 @@ def item_view(request: Request, item_id: str):
     item["has_full_text"] = bool(item.get("raw_content"))
     item["clean_text"] = _clean_text(item.get("raw_content"), item.get("content_snippet"))
     item = _with_tags(item)
+    item_labels = _parse_labels(item.get("labels"))
     regulators = {r["id"]: r["name"] for r in list_regulators(get_engine())}
+    taxonomy = get_taxonomy()
+    document_type_values = [v.id for v in taxonomy.axis_values("document_type")]
+    instrument_values = [v.id for v in taxonomy.axis_values("instrument")]
     return templates.TemplateResponse(
-        "item.html", {"request": request, "item": item, "regulator_name": regulators.get(item["regulator_id"])}
+        "item.html",
+        {
+            "request": request,
+            "item": item,
+            "regulator_name": regulators.get(item["regulator_id"]),
+            "item_labels": item_labels,
+            "document_type_values": document_type_values,
+            "instrument_values": instrument_values,
+            "current_document_type": item_labels.get("document_type"),
+            "current_instruments": item_labels.get("instrument", []),
+        },
     )
+
+
+@app.post("/item/{item_id}/classify")
+def item_classify(item_id: str, axis: str = Form(...), value: str = Form(...), action: str = Form("set")):
+    # ponytail: no auth/identity system in this single-instance tool - "who"
+    # made a web UI correction is a fixed provenance string, not a real name.
+    by = "human:web-ui"
+    taxonomy = get_taxonomy()
+    if action == "remove":
+        remove_classification(get_engine(), taxonomy, item_id, axis, value, by)
+    else:
+        try:
+            write_classification(get_engine(), taxonomy, item_id, axis, value, by=by, confidence=1.0)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    return RedirectResponse(f"/item/{item_id}", status_code=303)
 
 
 @app.get("/alerts", response_class=HTMLResponse)
@@ -237,6 +324,40 @@ def api_item(item_id: str):
 @app.get("/api/regulators")
 def api_regulators():
     return {"regulators": list_regulators(get_engine())}
+
+
+@app.post("/api/items/{item_id}/classifications")
+def api_classify_item(item_id: str, body: dict = Body(...)):
+    """Human correction endpoint (architecture doc §4.5): writes through
+    the same write_classification() the collector and migrations use.
+
+    Body: {"axis": str, "value": str, "by": str, "confidence"?: float,
+    "classifier_id"?: str, "remove"?: bool}. `by` should be `human:<name>`
+    for a genuine human correction (any string is accepted - validation is
+    against the taxonomy axis/value, not the provenance string). `remove:
+    true` supersedes that exact live row instead of writing a new one (used
+    to retract one instrument from a multi-valued axis).
+    """
+    axis = body.get("axis")
+    value = body.get("value")
+    by = body.get("by")
+    if not axis or not value or not by:
+        raise HTTPException(status_code=400, detail="axis, value and by are all required")
+
+    taxonomy = get_taxonomy()
+    if body.get("remove"):
+        remove_classification(get_engine(), taxonomy, item_id, axis, value, by)
+    else:
+        try:
+            write_classification(
+                get_engine(), taxonomy, item_id, axis, value, by=by,
+                confidence=float(body.get("confidence", 1.0)), classifier_id=body.get("classifier_id"),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    item = get_item(get_engine(), item_id)
+    return {"item_id": item_id, "labels": _parse_labels(item.get("labels")) if item else {}}
 
 
 if __name__ == "__main__":
