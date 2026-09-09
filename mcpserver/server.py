@@ -440,7 +440,9 @@ def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence:
     self-reported - prefer leaving an axis unset over guessing below 0.5.
     Writing the same (item, axis, value, by) again is a no-op; writing a
     different value for the same (item, axis, by) on a single-valued axis
-    supersedes the prior one rather than accumulating.
+    supersedes the prior one rather than accumulating. An `item_id` that is
+    not in the database raises rather than recording an orphan row -
+    classify_items_tool reports the same condition per entry.
     """
     def _write():
         write_classification(get_write_engine(), get_taxonomy(), item_id, axis, value, by=by,
