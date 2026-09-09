@@ -44,6 +44,66 @@ def test_load_regulators_non_list():
         os.unlink(path)
 
 
+def _write_yaml(path, content):
+    with open(path, "w") as f:
+        f.write(content)
+
+
+def test_load_regulators_directory_concatenates_every_yaml_file(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- id: at-fma\n  jurisdiction: at\n  sources: [{label: news, type: rss}]\n")
+    _write_yaml(tmp_path / "eu.yaml", "- id: esma\n  jurisdiction: eu\n  sources: [{label: news, type: rss}]\n")
+    regulators = load_regulators(str(tmp_path))
+    assert {r["id"] for r in regulators} == {"at-fma", "esma"}
+
+
+def test_load_regulators_directory_no_yaml_files_exits(tmp_path):
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_duplicate_id_across_files_exits(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- id: dupe\n  jurisdiction: at\n  sources: [{label: a, type: rss}]\n")
+    _write_yaml(tmp_path / "be.yaml", "- id: dupe\n  jurisdiction: be\n  sources: [{label: b, type: rss}]\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_duplicate_source_label_within_regulator_exits(tmp_path):
+    _write_yaml(
+        tmp_path / "at.yaml",
+        "- id: at-fma\n  jurisdiction: at\n  sources:\n"
+        "  - {label: news, type: rss}\n  - {label: news, type: scrape}\n",
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_missing_regulator_id_exits(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- jurisdiction: at\n  sources: []\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_single_file_still_works(tmp_path):
+    path = tmp_path / "regulators.yaml"
+    _write_yaml(path, "- id: at-fma\n  jurisdiction: at\n  sources: [{label: news, type: rss}]\n")
+    regulators = load_regulators(str(path))
+    assert len(regulators) == 1
+    assert regulators[0]["id"] == "at-fma"
+
+
+def test_load_regulators_split_registry_loads_cleanly():
+    # The real, current config/regulators/ split - proves the migration
+    # produced a directory that loads without duplicate id/label errors.
+    regulators = load_regulators("config/regulators")
+    assert len(regulators) == 44
+    assert {r["id"] for r in regulators} >= {"esma", "amla", "eba", "eiopa", "mt-mfsa"}
+
+
 # ---------------------------------------------------------------------------
 # run_collection tests
 # ---------------------------------------------------------------------------

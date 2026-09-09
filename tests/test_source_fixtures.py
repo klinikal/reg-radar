@@ -12,7 +12,7 @@ import pytest
 
 from scripts.source_health import assert_contract, fixture_path, iter_enabled_sources, load_regulators, parse_fixture
 
-REGULATORS = load_regulators("config/regulators.yaml")
+REGULATORS = load_regulators("config/regulators")
 
 # Sources whose fixture could not be captured in this environment - each
 # entry names the reason (never a silent skip). All four regulators here are
