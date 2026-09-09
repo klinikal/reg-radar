@@ -1,7 +1,9 @@
 import tempfile
 
 from ruamel.yaml import YAML
+from sqlalchemy import text as sa_text
 
+from collector.storage import init_db
 from scripts.migrate_regulator_labels import decide_labels, migrate_regulators, run, _map_jurisdiction
 
 
@@ -165,3 +167,69 @@ def test_run_is_idempotent_a_second_run_changes_nothing_on_disk(tmp_path):
 
     assert second_pass_content == first_pass_content
     assert "document_type: warning" in second_pass_content
+
+
+def test_run_rewrites_db_jurisdictions_even_when_yaml_is_already_migrated(tmp_path):
+    """Regression: the repo ships already-migrated YAML (no `tags` keys), so
+    an operator upgrading from v1 who runs this script would previously hit
+    the early "already migrated, nothing to do" return before the DB step
+    ever ran - the `regulators` table's jurisdiction column (e.g. `UK`) was
+    then never rewritten to the migrated form (`gb`)."""
+    src = tmp_path / "regulators.yaml"
+    src.write_text("""\
+- id: uk-fca
+  name: FCA
+  jurisdiction: gb
+  sources:
+    - type: rss
+      url: https://example.com/warnings
+      label: warnings
+      labels: {document_type: warning}
+""")
+
+    db_path = str(tmp_path / "test.db")
+    engine = init_db(db_path)
+    with engine.connect() as conn:
+        conn.execute(
+            sa_text("INSERT INTO regulators (id, name, jurisdiction) VALUES ('uk-fca', 'FCA', 'UK')")
+        )
+        conn.execute(
+            sa_text("INSERT INTO regulators (id, name, jurisdiction) VALUES ('fr-amf', 'AMF', 'FR')")
+        )
+        conn.commit()
+
+    run(str(src), db_path, dry_run=False)
+
+    with engine.connect() as conn:
+        rows = dict(conn.execute(sa_text("SELECT id, jurisdiction FROM regulators")).fetchall())
+    assert rows == {"uk-fca": "gb", "fr-amf": "fr"}
+
+
+def test_run_dry_run_does_not_write_db_jurisdictions(tmp_path):
+    src = tmp_path / "regulators.yaml"
+    src.write_text("""\
+- id: uk-fca
+  name: FCA
+  jurisdiction: gb
+  sources:
+    - type: rss
+      url: https://example.com/warnings
+      label: warnings
+      labels: {document_type: warning}
+""")
+
+    db_path = str(tmp_path / "test.db")
+    engine = init_db(db_path)
+    with engine.connect() as conn:
+        conn.execute(
+            sa_text("INSERT INTO regulators (id, name, jurisdiction) VALUES ('uk-fca', 'FCA', 'UK')")
+        )
+        conn.commit()
+
+    run(str(src), db_path, dry_run=True)
+
+    with engine.connect() as conn:
+        jurisdiction = conn.execute(
+            sa_text("SELECT jurisdiction FROM regulators WHERE id='uk-fca'")
+        ).scalar()
+    assert jurisdiction == "UK"  # dry-run must not write

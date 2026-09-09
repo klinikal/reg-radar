@@ -195,21 +195,25 @@ def run(regulators_path: str, db_path: str, dry_run: bool) -> None:
     with open(regulators_path) as f:
         data = yaml.load(f)
 
-    if not _has_any_tags(data):
-        logger.info("%s has no `tags` keys left - already migrated, nothing to do", regulators_path)
-        return
+    # The YAML rewrite is a completed, idempotent migration - skip it once
+    # no `tags` keys remain. The DB jurisdiction rewrite is a separate,
+    # independent step (architecture doc §4.7) and must always run: the repo
+    # ships already-migrated YAML, so an operator upgrading from v1 would
+    # otherwise never be able to trigger it via this script.
+    if _has_any_tags(data):
+        table = migrate_regulators(data)
+        _print_table(table)
+        logger.info("%d source(s) processed%s", len(table), " [DRY RUN]" if dry_run else "")
 
-    table = migrate_regulators(data)
-    _print_table(table)
-    logger.info("%d source(s) processed%s", len(table), " [DRY RUN]" if dry_run else "")
+        if not dry_run:
+            with open(regulators_path, "w") as f:
+                yaml.dump(data, f)
+            logger.info("Wrote %s", regulators_path)
+    else:
+        logger.info("%s has no `tags` keys left - YAML already migrated, skipping YAML rewrite", regulators_path)
 
     db_changed = migrate_db_jurisdictions(db_path, dry_run)
     logger.info("%d regulators table row(s) need a jurisdiction rewrite%s", db_changed, " [DRY RUN]" if dry_run else "")
-
-    if not dry_run:
-        with open(regulators_path, "w") as f:
-            yaml.dump(data, f)
-        logger.info("Wrote %s", regulators_path)
 
 
 def main() -> None:

@@ -326,3 +326,192 @@ def test_by_rule_acceptance_mica_items_labelled_fca_consumer_duty_item_is_not(tm
     assert len(mica_item_ids) == 10
     assert all(confidence > 0.5 for _, confidence in mica_rows)
     assert fca_mica_count == 0
+
+
+def _item_state(engine, item_id):
+    import json
+    with engine.connect() as conn:
+        row = conn.execute(
+            sa_text("SELECT labels, updated_at FROM items WHERE id=:i"), {"i": item_id}
+        ).fetchone()
+        item_label_axes = [
+            r[0] for r in conn.execute(
+                sa_text("SELECT axis FROM item_labels WHERE item_id=:i"), {"i": item_id}
+            ).fetchall()
+        ]
+    labels = json.loads(row[0]) if row[0] else {}
+    return labels, row[1], item_label_axes
+
+
+def test_run_supersedes_stale_source_default_rows_when_config_default_removed(tmp_path):
+    """Real-data regression: hu-mnb/market_supervision had a document_type
+    source default that was later narrowed out of the config, leaving 245
+    stale live source_default rows that reclassify never revisited because
+    the item loop only walked items whose source *currently* has a default."""
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item(engine, "i1", regulator_id="esma", source_label="mica_hub_page")
+    regulators_with_default = [{
+        "id": "esma", "sources": [{"label": "mica_hub_page", "labels": {"instrument": ["mica"]}}],
+    }]
+    args = _args(db_path=db_path, regulators_path=_regulators_path(tmp_path, regulators_with_default))
+    run(args)
+
+    with engine.connect() as conn:
+        live_before = conn.execute(
+            sa_text("SELECT value FROM classifications WHERE item_id='i1' AND superseded_at IS NULL")
+        ).fetchall()
+    assert [r[0] for r in live_before] == ["mica"]
+    labels_before, updated_at_before, axes_before = _item_state(engine, "i1")
+    assert "instrument" in labels_before
+    assert axes_before == ["instrument"]
+
+    # The default is removed from config entirely (e.g. narrowed to
+    # single-purpose sources only).
+    regulators_no_default = [{"id": "esma", "sources": [{"label": "mica_hub_page", "labels": {}}]}]
+    args2 = _args(db_path=db_path, regulators_path=_regulators_path(tmp_path, regulators_no_default))
+    run(args2)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sa_text("SELECT value, superseded_at FROM classifications WHERE item_id='i1' AND by='source_default'")
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][1] is not None  # superseded
+
+    labels_after, updated_at_after, axes_after = _item_state(engine, "i1")
+    assert "instrument" not in (labels_after or "")
+    assert axes_after == []
+    assert updated_at_after > updated_at_before
+
+
+def test_run_dry_run_reports_stale_source_default_rows_without_writing(tmp_path):
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item(engine, "i1", regulator_id="esma", source_label="mica_hub_page")
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    write_classification(engine, taxonomy, "i1", "instrument", "mica", by="source_default", confidence=0.6)
+
+    regulators_no_default = [{"id": "esma", "sources": [{"label": "mica_hub_page", "labels": {}}]}]
+    args = _args(
+        db_path=db_path, regulators_path=_regulators_path(tmp_path, regulators_no_default), dry_run=True,
+    )
+    run(args)
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            sa_text("SELECT superseded_at FROM classifications WHERE item_id='i1' AND by='source_default'")
+        ).fetchone()
+    assert row[0] is None  # dry-run must not write
+
+
+def test_run_human_row_survives_stale_source_default_supersede(tmp_path):
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item(engine, "i1", regulator_id="esma", source_label="mica_hub_page")
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    write_classification(engine, taxonomy, "i1", "instrument", "mica", by="source_default", confidence=0.6)
+    write_classification(engine, taxonomy, "i1", "instrument", "dora", by="human:alice", confidence=1.0)
+
+    regulators_no_default = [{"id": "esma", "sources": [{"label": "mica_hub_page", "labels": {}}]}]
+    args = _args(db_path=db_path, regulators_path=_regulators_path(tmp_path, regulators_no_default))
+    run(args)
+
+    with engine.connect() as conn:
+        human_row = conn.execute(
+            sa_text("SELECT superseded_at FROM classifications WHERE item_id='i1' AND by='human:alice'")
+        ).fetchone()
+    assert human_row[0] is None  # untouched
+    labels, _updated_at, _axes = _item_state(engine, "i1")
+    assert labels["instrument"] == ["dora"]  # human value still wins effective_labels()
+
+
+def _no_alias_taxonomy_path(tmp_path):
+    """A minimal taxonomy with no `aliases` on its values, so RulesEngine
+    only ever matches via config/rules.yaml's own patterns - no implicit
+    alias rule (regradar/rules.py's ALIAS_RULE_WEIGHT) can keep an item
+    matching once its rules.yaml pattern is edited away."""
+    taxonomy_path = tmp_path / "taxonomy.yaml"
+    taxonomy_path.write_text("""\
+version: 1
+axes:
+  - id: topic
+    cardinality: many
+    source_default_confidence: 0.6
+    values:
+      - id: staking
+        name: Staking
+""")
+    jurisdictions_path = tmp_path / "jurisdictions.yaml"
+    jurisdictions_path.write_text("- id: eu\n  name: European Union\n")
+    return str(taxonomy_path), str(jurisdictions_path)
+
+
+def test_by_rule_supersedes_stale_rule_rows_when_rule_stops_matching(tmp_path):
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item_with_title(engine, "i1", "New staking guidance published")
+    taxonomy_path, jurisdictions_path = _no_alias_taxonomy_path(tmp_path)
+    matching_rules = _rules_path(tmp_path, (
+        "rules:\n  - axis: topic\n    value: staking\n    match: [{pattern: staking, weight: 0.9}]\n    fields: [title]\n"
+    ))
+    args = _args(
+        axis="topic", db_path=db_path, rules_path=matching_rules, by="rule",
+        taxonomy_path=taxonomy_path, jurisdictions_path=jurisdictions_path,
+    )
+    run(args)
+
+    labels_before, updated_at_before, axes_before = _item_state(engine, "i1")
+    assert "topic" in labels_before
+    assert axes_before == ["topic"]
+
+    # config/rules.yaml is edited so this rule no longer exists/matches.
+    no_longer_matching_rules = _rules_path(tmp_path, (
+        "rules:\n  - axis: topic\n    value: staking\n    match: [{pattern: NEVER_MATCHES_XYZ, weight: 0.9}]\n"
+        "    fields: [title]\n"
+    ))
+    args2 = _args(
+        axis="topic", db_path=db_path, rules_path=no_longer_matching_rules, by="rule",
+        taxonomy_path=taxonomy_path, jurisdictions_path=jurisdictions_path,
+    )
+    run(args2)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sa_text("SELECT value, superseded_at FROM classifications WHERE item_id='i1' AND by='rule'")
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][1] is not None  # superseded
+
+    labels_after, updated_at_after, axes_after = _item_state(engine, "i1")
+    assert "topic" not in (labels_after or "")
+    assert axes_after == []
+    assert updated_at_after > updated_at_before
+
+
+def test_by_rule_human_row_survives_stale_rule_supersede(tmp_path):
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item_with_title(engine, "i1", "New staking guidance published")
+    taxonomy_path, jurisdictions_path = _no_alias_taxonomy_path(tmp_path)
+    taxonomy = build_taxonomy(taxonomy_path, jurisdictions_path)
+    write_classification(engine, taxonomy, "i1", "topic", "staking", by="rule", confidence=0.9)
+    write_classification(engine, taxonomy, "i1", "topic", "staking", by="human:alice", confidence=1.0)
+
+    no_longer_matching_rules = _rules_path(tmp_path, (
+        "rules:\n  - axis: topic\n    value: staking\n    match: [{pattern: NEVER_MATCHES_XYZ, weight: 0.9}]\n"
+        "    fields: [title]\n"
+    ))
+    args = _args(
+        axis="topic", db_path=db_path, rules_path=no_longer_matching_rules, by="rule",
+        taxonomy_path=taxonomy_path, jurisdictions_path=jurisdictions_path,
+    )
+    run(args)
+
+    with engine.connect() as conn:
+        human_row = conn.execute(
+            sa_text("SELECT superseded_at FROM classifications WHERE item_id='i1' AND by='human:alice'")
+        ).fetchone()
+    assert human_row[0] is None  # untouched
+    labels, _updated_at, _axes = _item_state(engine, "i1")
+    assert "staking" in labels["topic"]

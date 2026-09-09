@@ -15,7 +15,7 @@ import sys
 
 from collector.main import load_regulators
 from collector.storage import init_db
-from regradar.classification import supersede_axis, write_classification
+from regradar.classification import materialize_labels, supersede_axis, write_classification
 from regradar.rules import RulesEngine
 from regradar.taxonomy import build_taxonomy
 from sqlalchemy import text
@@ -45,15 +45,40 @@ def _run_rule_reclassify(engine, taxonomy, args) -> int:
     rules_engine = RulesEngine.load(args.rules_path, taxonomy)
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, title, raw_content FROM items")).fetchall()
+        live_rule_item_ids = {
+            r[0] for r in conn.execute(
+                text(
+                    "SELECT DISTINCT item_id FROM classifications "
+                    "WHERE axis=:a AND by='rule' AND superseded_at IS NULL"
+                ),
+                {"a": args.axis},
+            ).fetchall()
+        }
 
-    changed = 0
+    to_write = 0
+    to_supersede_only = 0
     for item_id, title, raw_content in rows:
         scores = rules_engine.score(title or "", raw_content or "")
         axis_values = {value: confidence for (axis, value), confidence in scores.items() if axis == args.axis}
+
         if not axis_values:
+            # Rules no longer match this item, but a prior `by: rule` row may
+            # still be live - supersede it so a rule that stopped matching
+            # doesn't leave a stale classification winning forever (same
+            # supersede-then-rewrite property as the source_default path,
+            # architecture doc §4.4).
+            if item_id not in live_rule_item_ids:
+                continue
+            to_supersede_only += 1
+            if args.dry_run:
+                continue
+            superseded = supersede_axis(engine, item_id, args.axis, by="rule")
+            if superseded:
+                materialize_labels(engine, taxonomy, item_id)
             continue
+
+        to_write += 1
         if args.dry_run:
-            changed += 1
             continue
         supersede_axis(engine, item_id, args.axis, by="rule")
         for value, confidence in axis_values.items():
@@ -61,10 +86,13 @@ def _run_rule_reclassify(engine, taxonomy, args) -> int:
                 engine, taxonomy, item_id, args.axis, value,
                 by="rule", confidence=confidence, classifier_id=rules_engine.classifier_id,
             )
-        changed += 1
 
     verb = "[DRY RUN] Would reclassify" if args.dry_run else "Reclassified"
-    logger.info("%s %d item(s) on axis %r via rule scoring", verb, changed, args.axis)
+    logger.info(
+        "%s %d item(s) on axis %r via rule scoring; %d additional item(s) %s superseded "
+        "(no longer match any rule)",
+        verb, to_write, args.axis, to_supersede_only, "would be" if args.dry_run else "were",
+    )
     return 0
 
 
@@ -86,9 +114,19 @@ def run(args) -> int:
 
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, regulator_id, source_label FROM items")).fetchall()
+        live_item_ids = {
+            r[0] for r in conn.execute(
+                text(
+                    "SELECT DISTINCT item_id FROM classifications "
+                    "WHERE axis=:a AND by=:b AND superseded_at IS NULL"
+                ),
+                {"a": args.axis, "b": args.by},
+            ).fetchall()
+        }
 
     stale_version_count = 0
-    changed = 0
+    to_write = 0
+    to_supersede_only = 0
     for item_id, regulator_id, source_label in rows:
         with engine.connect() as conn:
             live_versions = conn.execute(
@@ -103,12 +141,26 @@ def run(args) -> int:
 
         source_labels = defaults.get((regulator_id, source_label), {})
         axis_value = source_labels.get(args.axis)
-        if axis_value is None:
-            continue
-        values = axis_value if isinstance(axis_value, list) else [axis_value]
 
+        if axis_value is None:
+            # No current config default for this item's source, but a prior
+            # source_default row may still be live (e.g. the default was
+            # narrowed/removed from regulators.yaml) - supersede it so it
+            # doesn't keep winning effective_labels() forever (architecture
+            # doc §4.4).
+            if item_id not in live_item_ids:
+                continue
+            to_supersede_only += 1
+            if args.dry_run:
+                continue
+            superseded = supersede_axis(engine, item_id, args.axis, by=args.by)
+            if superseded:
+                materialize_labels(engine, taxonomy, item_id)
+            continue
+
+        values = axis_value if isinstance(axis_value, list) else [axis_value]
+        to_write += 1
         if args.dry_run:
-            changed += 1
             continue
 
         supersede_axis(engine, item_id, args.axis, by=args.by)
@@ -118,16 +170,20 @@ def run(args) -> int:
                 by="source_default", confidence=taxonomy.source_default_confidence(args.axis),
                 classifier_id="reclassify",
             )
-        changed += 1
 
     if args.dry_run:
         logger.info(
-            "[DRY RUN] %d item(s) would be reclassified on axis %r; %d live row(s) on this "
-            "axis carry a taxonomy_version older than the current one (%d)",
-            changed, args.axis, stale_version_count, taxonomy.version(),
+            "[DRY RUN] %d item(s) would be reclassified on axis %r; %d additional item(s) would be "
+            "superseded (no longer match a source default); %d live row(s) on this axis carry a "
+            "taxonomy_version older than the current one (%d)",
+            to_write, args.axis, to_supersede_only, stale_version_count, taxonomy.version(),
         )
     else:
-        logger.info("Reclassified %d item(s) on axis %r", changed, args.axis)
+        logger.info(
+            "Reclassified %d item(s) on axis %r; superseded %d additional item(s) that no longer "
+            "match a source default",
+            to_write, args.axis, to_supersede_only,
+        )
     return 0
 
 
