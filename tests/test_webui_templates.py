@@ -287,3 +287,19 @@ def test_api_unclassified_returns_items_with_no_live_row(monkeypatch, tmp_path):
     assert resp.status_code == 200
     ids = [i["id"] for i in resp.json()["items"]]
     assert make_item_id("esma", "https://x/unclassified", now) in ids
+
+
+def test_rules_add_rejects_invalid_regex(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app)
+    resp = client.post("/rules", data={"axis": "instrument", "value": "mica", "pattern": "(unclosed"})
+    assert resp.status_code == 400

@@ -2,6 +2,7 @@ import calendar
 import json
 import logging
 import os
+import re
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
@@ -336,6 +337,10 @@ def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form
         raise HTTPException(status_code=400, detail="unknown axis/value - see config/taxonomy.yaml")
     if not pattern:
         raise HTTPException(status_code=400, detail="pattern is required")
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise HTTPException(status_code=400, detail=f"invalid regex pattern: {e}")
     match_entry = {"pattern": pattern, "weight": weight}
     if flags.strip():
         match_entry["flags"] = flags.strip()
