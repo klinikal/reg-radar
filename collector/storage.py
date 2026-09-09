@@ -451,3 +451,64 @@ def reset_source_empty_runs(engine, regulator_id: str, source_label: str) -> Non
             {"r": regulator_id, "s": source_label}
         )
         session.commit()
+
+
+class WebhookSubscriptionRow(Base):
+    """One row per configured webhook subscriber (config/webhooks.yaml),
+    keyed by regradar.webhooks' stable subscriber id (derived from
+    profile+url - the config has no explicit id field). `cursor` is that
+    subscriber's own head of the change stream (architecture doc section
+    6), advanced only after a successful delivery. A later digest feature
+    (issue #13) reuses this same table under its own subscriber id
+    convention, per the task ruling that both share this mechanism.
+    """
+    __tablename__ = "webhook_subscriptions"
+
+    subscriber_id = Column(String, primary_key=True)
+    cursor = Column(String, nullable=True)
+    updated_at = Column(DateTime)
+
+
+class WebhookDeliveryRow(Base):
+    """Append-only delivery log - one row per attempted batch delivery
+    (status "success" or "failed"), for operator visibility into retries
+    and failures."""
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subscriber_id = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    status = Column(String, nullable=False)  # "success" | "failed"
+    detail = Column(Text)
+    delivered_at = Column(DateTime, nullable=False)
+
+
+def get_webhook_cursor(engine, subscriber_id: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT cursor FROM webhook_subscriptions WHERE subscriber_id = :id"),
+            {"id": subscriber_id},
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_webhook_cursor(engine, subscriber_id: str, cursor: str) -> None:
+    with Session(engine) as session:
+        row = session.get(WebhookSubscriptionRow, subscriber_id)
+        if row:
+            row.cursor = cursor
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(WebhookSubscriptionRow(
+                subscriber_id=subscriber_id, cursor=cursor, updated_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def record_webhook_delivery(engine, subscriber_id: str, url: str, status: str, detail: str = "") -> None:
+    with Session(engine) as session:
+        session.add(WebhookDeliveryRow(
+            subscriber_id=subscriber_id, url=url, status=status, detail=detail,
+            delivered_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
