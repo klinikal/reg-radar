@@ -551,6 +551,30 @@ def get_digest_cursor(engine, name: str) -> str | None:
     return row[0] if row else None
 
 
+class SyncStateRow(Base):
+    """A small generic key/value store for one-off sync bookkeeping that
+    doesn't warrant its own table - currently just the collector's own
+    change-stream cursor, set by `regradar import-dataset` (regradar/
+    dataset.py) to the published dataset's `generated_at` so the next
+    collection run only picks up items newer than the snapshot it just
+    loaded. Distinct from `webhook_subscriptions`, which is keyed per
+    outbound subscriber rather than per inbound sync source.
+    """
+    __tablename__ = "sync_state"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime)
+
+
+def get_sync_state(engine, key: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT value FROM sync_state WHERE key = :key"), {"key": key},
+        ).fetchone()
+    return row[0] if row else None
+
+
 def set_digest_cursor(engine, name: str, cursor: str) -> None:
     with Session(engine) as session:
         row = session.get(DigestStateRow, name)
@@ -561,4 +585,15 @@ def set_digest_cursor(engine, name: str, cursor: str) -> None:
             session.add(DigestStateRow(
                 name=name, last_sent_cursor=cursor, last_sent_at=datetime.now(timezone.utc),
             ))
+        session.commit()
+
+
+def set_sync_state(engine, key: str, value: str) -> None:
+    with Session(engine) as session:
+        row = session.get(SyncStateRow, key)
+        if row:
+            row.value = value
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(SyncStateRow(key=key, value=value, updated_at=datetime.now(timezone.utc)))
         session.commit()
