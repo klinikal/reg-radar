@@ -42,6 +42,9 @@ def load_config():
         "rules_path": os.getenv("RULES_PATH", "/app/config/rules.yaml"),
         "taxonomy_path": os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
         "jurisdictions_path": os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
+        "webhooks_path": os.getenv("WEBHOOKS_PATH", "/app/config/webhooks.yaml"),
+        "activities_path": os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"),
+        "profiles_dir": os.getenv("PROFILES_DIR", "/app/config/profiles"),
     }
 
 
@@ -332,6 +335,7 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
         return
     try:
         run_collection(engine, regulators, cfg, taxonomy=taxonomy, rules_engine=rules_engine)
+        _dispatch_webhooks(engine, cfg, taxonomy)
     finally:
         _release_lock(lock_file)
 
@@ -389,6 +393,31 @@ def main():
         scheduler.start()
     except KeyboardInterrupt:
         scheduler.shutdown()
+
+
+def _dispatch_webhooks(engine, cfg: dict, taxonomy) -> None:
+    """Delivers to every configured config/webhooks.yaml subscriber after a
+    collection run completes (architecture doc section 6). A no-op if the
+    file at cfg["webhooks_path"] doesn't exist - webhooks are opt-in - or if
+    taxonomy failed to load (profiles can't be expanded without it).
+    """
+    webhooks_path = cfg.get("webhooks_path", "/app/config/webhooks.yaml")
+    if not os.path.exists(webhooks_path):
+        return
+    if taxonomy is None:
+        logger.warning("Webhook config found at %s but taxonomy failed to load - skipping dispatch", webhooks_path)
+        return
+
+    from regradar.profiles import load_activities
+    from regradar.webhooks import dispatch_all
+
+    activities_path = cfg.get("activities_path", "/app/config/activities.yaml")
+    try:
+        activities = load_activities(activities_path, taxonomy)
+    except Exception as e:
+        logger.error("Webhook dispatch: could not load activities from %s: %s - skipping", activities_path, e)
+        return
+    dispatch_all(engine, webhooks_path, taxonomy, activities, cfg.get("profiles_dir", "/app/config/profiles"))
 
 
 if __name__ == "__main__":

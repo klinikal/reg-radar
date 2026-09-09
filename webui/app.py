@@ -10,6 +10,9 @@ from fastapi import Body, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from datetime import datetime, timezone
+from xml.etree import ElementTree as ET
+from fastapi.responses import Response
 
 from collector.storage import init_db
 from mcpserver.queries import get_item, get_month_facets, get_unclassified, list_regulators, search_items_advanced
@@ -17,6 +20,8 @@ from regradar.classification import remove_classification, write_classification
 from regradar.profiles import ProfileError, get_expanded_profile, list_shipped_profiles, load_activities
 from regradar.rules import load_raw_rules, write_raw_rules
 from regradar.taxonomy import load_and_exit_on_error
+from mcpserver.queries import get_changes, get_latest_changes
+from regradar.changes import CursorError
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -31,6 +36,8 @@ templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
 PAGE_SIZE = 50
 RULES_PATH = os.getenv("RULES_PATH", "/app/config/rules.yaml")
+FEED_MAX_ITEMS = int(os.getenv("FEED_MAX_ITEMS", "50"))
+_ATOM_NS = "http://www.w3.org/2005/Atom"
 
 # Full country/entity names for jurisdiction codes used in config/regulators.yaml,
 # so the regulator filter can be searched by country name ("czech"), not just
@@ -438,6 +445,67 @@ def api_classify_item(item_id: str, body: dict = Body(...)):
 
     item = get_item(get_engine(), item_id)
     return {"item_id": item_id, "labels": _parse_labels(item.get("labels")) if item else {}}
+
+
+# Export and sync (architecture doc section 6) - the change-stream
+# primitive and its Atom feed adapter, same query layer as everything
+# else. /api/changes mirrors get_changes_tool; /feeds/<profile>.atom
+# reuses get_latest_changes(), which orders newest-first (get_changes()
+# itself is a forward cursor page, not a "latest N" query).
+@app.get("/api/changes")
+def api_changes(since: str = "", profile: str = "", limit: int = 100, include_body: bool = False):
+    try:
+        items, next_cursor = get_changes(
+            get_engine(), since=since or None, profile=_resolve_profile(profile),
+            limit=limit, include_body=include_body,
+        )
+    except CursorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"items": items, "next_cursor": next_cursor}
+
+
+def _now_z() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _atom_summary(doc: dict) -> str:
+    # Summary content only, linking to the item - never the full body
+    # (architecture doc section 6: outbound feeds are a discovery
+    # mechanism, not a bulk-export channel).
+    regulator = doc.get("regulator_name") or doc.get("regulator") or ""
+    published = doc.get("published_at") or ""
+    return f"{regulator} - {published}. See source_url for the full item."
+
+
+def _atom_feed_xml(profile_name: str, items: list[dict], feed_url: str) -> bytes:
+    ET.register_namespace("", _ATOM_NS)
+    feed = ET.Element(f"{{{_ATOM_NS}}}feed")
+    ET.SubElement(feed, f"{{{_ATOM_NS}}}title").text = f"regradar - {profile_name}"
+    ET.SubElement(feed, f"{{{_ATOM_NS}}}id").text = feed_url
+    link = ET.SubElement(feed, f"{{{_ATOM_NS}}}link")
+    link.set("href", feed_url)
+    ET.SubElement(feed, f"{{{_ATOM_NS}}}updated").text = items[0]["updated_at"] if items else _now_z()
+    author = ET.SubElement(feed, f"{{{_ATOM_NS}}}author")
+    ET.SubElement(author, f"{{{_ATOM_NS}}}name").text = "regradar"
+
+    for doc in items:
+        entry = ET.SubElement(feed, f"{{{_ATOM_NS}}}entry")
+        ET.SubElement(entry, f"{{{_ATOM_NS}}}title").text = doc.get("title") or "(untitled)"
+        ET.SubElement(entry, f"{{{_ATOM_NS}}}id").text = f"regradar:item:{doc['id']}"
+        entry_link = ET.SubElement(entry, f"{{{_ATOM_NS}}}link")
+        entry_link.set("href", doc.get("source_url") or "")
+        ET.SubElement(entry, f"{{{_ATOM_NS}}}updated").text = doc["updated_at"]
+        ET.SubElement(entry, f"{{{_ATOM_NS}}}summary").text = _atom_summary(doc)
+
+    return ET.tostring(feed, encoding="utf-8", xml_declaration=True)
+
+
+@app.get("/feeds/{profile_name}.atom")
+def feed_atom(request: Request, profile_name: str):
+    expanded = _resolve_profile(profile_name)
+    items = get_latest_changes(get_engine(), profile=expanded, limit=FEED_MAX_ITEMS)
+    xml_bytes = _atom_feed_xml(profile_name, items, str(request.url))
+    return Response(content=xml_bytes, media_type="application/atom+xml")
 
 
 if __name__ == "__main__":

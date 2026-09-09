@@ -26,6 +26,7 @@ from mcpserver.queries import (
 from regradar.classification import classify_batch, write_classification
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
+from mcpserver.queries import get_changes
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -329,7 +330,11 @@ def list_labels_tool() -> dict:
 
 @mcp.tool()
 def get_items_since_tool(since: str, limit: int = 100, profile: str | None = None) -> list[dict]:
-    """Returns items collected (fetched_at) strictly after `since`, oldest
+    """Deprecated: prefer get_changes_tool. This tool only sees fetched_at
+    (newly collected items) - a reclassification or human correction that
+    bumps updated_at without a new fetch is invisible to it.
+
+    Returns items collected (fetched_at) strictly after `since`, oldest
     first, up to `limit` (default 100, max 200). This is the polling
     primitive: save the fetched_at of the last item you saw and pass it
     back in as `since` on the next call to get everything new. Pair with
@@ -338,6 +343,7 @@ def get_items_since_tool(since: str, limit: int = 100, profile: str | None = Non
 
     `profile` narrows to a named filter profile - see search_items_tool.
     """
+    logger.warning("get_items_since_tool is deprecated - use get_changes_tool instead")
     return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit,
                  profile=_resolve_profile(profile))
 
@@ -467,6 +473,33 @@ def classify_items_tool(classifications: list[dict]) -> dict:
     instead of sending more than that in one call.
     """
     return _safe("classify_items_tool", classify_batch, get_write_engine(), get_taxonomy(), classifications)
+
+
+@mcp.tool()
+def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | None = None,
+                      include_body: bool = False) -> dict:
+    """Returns everything that changed since an opaque cursor (architecture
+    doc section 6) - the sync primitive for a downstream tool tracking
+    state across polls, and the replacement for get_items_since_tool: it
+    also catches a reclassification or human correction that bumps
+    updated_at without a new fetch, not just newly collected items.
+
+    Pass the previous call's `next_cursor` back in as `since` to resume;
+    omit `since` to start from the beginning of the stream. Returns
+    {"items": [...], "next_cursor": str | None} - items are
+    frontmatter-shaped (architecture doc section 3.2, the same shape
+    get_item_tool's `document` field has), oldest first. `next_cursor`
+    round-trips as the next call's `since`, and is None only when nothing
+    matched.
+
+    Set include_body=True to also include each item's body_md; omit it to
+    keep responses small when only checking what's new. `profile` narrows
+    to a named filter profile - see search_items_tool. limit defaults to
+    100, max 200.
+    """
+    items, next_cursor = _safe("get_changes_tool", get_changes, get_engine(), since=since, limit=limit,
+                                profile=_resolve_profile(profile), include_body=include_body)
+    return {"items": items, "next_cursor": next_cursor}
 
 
 if __name__ == "__main__":
