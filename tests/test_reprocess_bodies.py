@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item
-from scripts.reprocess_bodies import _current_extractor, reprocess
+from scripts.reprocess_bodies import _current_extractor, _RAW_CONTENT_EXTRACTOR, backfill_from_raw_content, reprocess
 
 
 def _make_engine(tmp_path):
@@ -66,6 +66,85 @@ def test_reprocess_skips_items_already_current(tmp_path, monkeypatch):
     processed = reprocess(engine, str(artefacts_dir), dry_run=False, limit=None)
 
     assert processed == 0
+
+
+def _make_pre_v2_item(item_id_suffix, raw_content="hello world", source_type="scrape", body_md=""):
+    now = datetime.now(timezone.utc)
+    url = f"https://example.com/pre-v2-{item_id_suffix}"
+    return Item(
+        id=make_item_id("fca", url, now),
+        regulator_id="fca", source_label="news", title="t",
+        url=url, published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="s",
+        source_type=source_type, raw_content=raw_content, body_md=body_md, extractor="",
+    )
+
+
+def test_backfill_from_raw_content_dry_run_reports_count_without_writing(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = _make_engine(tmp_path)
+    item = _make_pre_v2_item("1")
+    insert_item(engine, item)
+
+    count = backfill_from_raw_content(engine, dry_run=True, limit=None)
+
+    assert count == 1
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert body_md == ""  # unchanged - dry run wrote nothing
+
+
+def test_backfill_from_raw_content_derives_body_and_marks_extractor(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = _make_engine(tmp_path)
+    item = _make_pre_v2_item("1", raw_content="line one\nwrapped\n\nsecond para", source_type="scrape")
+    insert_item(engine, item)
+
+    processed = backfill_from_raw_content(engine, dry_run=False, limit=None)
+
+    assert processed == 1
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT body_md, extractor FROM items WHERE id=:id"), {"id": item.id}).fetchone()
+    assert row[0] == "line one wrapped\n\nsecond para"
+    assert row[1] == _RAW_CONTENT_EXTRACTOR
+
+
+def test_backfill_from_raw_content_skips_items_with_an_artefact(tmp_path, monkeypatch):
+    # Artefact-bearing items are reprocess()'s job, not this backfill's -
+    # skip them even if body_md happens to be empty.
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = _make_engine(tmp_path)
+    item = _make_item(b"<p>hello</p>", "text/html", "")
+    insert_item(engine, item)
+    with engine.connect() as conn:
+        conn.execute(text("UPDATE items SET body_md = '' WHERE id = :id"), {"id": item.id})
+        conn.commit()
+
+    processed = backfill_from_raw_content(engine, dry_run=False, limit=None)
+
+    assert processed == 0
+
+
+def test_backfill_from_raw_content_skips_items_that_already_have_a_body(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = _make_engine(tmp_path)
+    item = _make_pre_v2_item("1", body_md="already has one")
+    insert_item(engine, item)
+
+    processed = backfill_from_raw_content(engine, dry_run=False, limit=None)
+
+    assert processed == 0
+
+
+def test_backfill_from_raw_content_respects_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = _make_engine(tmp_path)
+    for i in range(3):
+        insert_item(engine, _make_pre_v2_item(str(i)))
+
+    processed = backfill_from_raw_content(engine, dry_run=False, limit=2)
+
+    assert processed == 2
 
 
 def test_reprocess_respects_limit(tmp_path, monkeypatch):

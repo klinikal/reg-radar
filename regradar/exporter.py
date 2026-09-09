@@ -139,7 +139,7 @@ def _copy_original(engine, item_id: str, out_dir: Path) -> None:
 
 
 def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = None,
-                    with_originals: bool = False, export_format: str = "markdown") -> dict:
+                    with_originals: bool = False, export_format: str = "markdown", taxonomy=None) -> dict:
     """Writes every item matching `profile` changed after `since` (an
     opaque cursor, or None for everything) to out_dir: the section 3.1
     layout for "markdown" (idempotent per render_item_to_dir - unchanged
@@ -157,13 +157,14 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
     snapshot = _read_jsonl_snapshot(out_dir) if export_format == "jsonl" else None
 
     while True:
-        items, next_cursor = get_changes(engine, since=cursor, profile=profile, limit=_PAGE_SIZE, include_body=True)
+        items, next_cursor = get_changes(engine, since=cursor, profile=profile, limit=_PAGE_SIZE,
+                                          include_body=True, taxonomy=taxonomy)
         if not items:
             break
         for doc in items:
             item_id = doc["id"]
             if export_format == "markdown":
-                if render_item_to_dir(engine, item_id, out_dir) is not None:
+                if render_item_to_dir(engine, item_id, out_dir, taxonomy=taxonomy) is not None:
                     written += 1
             else:
                 snapshot[item_id] = json.dumps(doc, sort_keys=False)
@@ -202,9 +203,9 @@ def run(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    taxonomy = load_and_exit_on_error(args.taxonomy_path, args.jurisdictions_path)
     expanded_profile = None
     if args.profile:
-        taxonomy = load_and_exit_on_error(args.taxonomy_path, args.jurisdictions_path)
         activities = load_activities(args.activities_path, taxonomy)
         try:
             expanded_profile = get_expanded_profile(
@@ -217,7 +218,7 @@ def run(args: argparse.Namespace) -> int:
     since = resolve_since(out_dir, args.since)
     result = export_profile(
         engine, out_dir, profile=expanded_profile, since=since,
-        with_originals=args.with_originals, export_format=args.format,
+        with_originals=args.with_originals, export_format=args.format, taxonomy=taxonomy,
     )
     if result["cursor"] and result["cursor"] != since:
         write_cursor(out_dir, result["cursor"])

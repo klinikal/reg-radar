@@ -109,7 +109,7 @@ def test_fetch_all_changes_includes_stuck_page_and_logs_error(monkeypatch, caplo
 
     calls = []
 
-    def fake_get_changes(engine, since=None, profile=None, limit=100, include_body=False):
+    def fake_get_changes(engine, since=None, profile=None, limit=100, include_body=False, taxonomy=None):
         # Always returns the same page with a cursor equal to `since` -
         # exactly the stuck-cursor scenario the guard must handle.
         calls.append(since)

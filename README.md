@@ -74,7 +74,7 @@ Two other one-off scripts under `scripts/` are for disaster recovery or after bu
 
 - `rebuild_fts_index.py` — rebuilds the SQLite FTS5 search index (`items_fts`) from the `items` table if it ever drifts or you're restoring from backup.
 - `rebuild_chunks.py` — rebuilds the `item_chunks` table (paragraph-aware text chunks derived from each item's full content). Chunks are prep infrastructure for future semantic search; the collector does not populate them automatically yet — run this after a large backfill if you want chunks in place.
-- `reprocess_bodies.py` — re-runs Markdown body conversion from stored artefacts for items whose `extractor` predates the currently installed library version (see [Canonical documents & artefacts](#canonical-documents--artefacts)).
+- `reprocess_bodies.py` — re-runs Markdown body conversion from stored artefacts for items whose `extractor` predates the currently installed library version; `--from-raw-content` instead backfills `body_md` from `raw_content` for pre-v2 items that never had an artefact (see [Canonical documents & artefacts](#canonical-documents--artefacts)).
 
 ### Source health
 
@@ -339,6 +339,8 @@ The collector also keeps the original fetched artefact (HTML or PDF) for every s
 `regradar render <item_id> --out <dir>` writes one item's document to disk; `regradar render --all --out <dir>` writes every item, skipping files whose content hasn't changed. Run it via `docker compose exec collector regradar render --all --out /app/data/export` (or any container that has the database mounted).
 
 If a body-conversion library is upgraded, `scripts/reprocess_bodies.py --dry-run` reports how many stored artefacts would be reconverted; drop `--dry-run` to actually rewrite `body_md` for those items.
+
+Every reader (`get_item_tool`, `get_changes_tool`, `regradar render`/`export`, ...) already falls back to deriving a body from `raw_content` on the fly for pre-v2 rows where `body_md` is empty, so upgrading from a database that predates `body_md` doesn't lose any content at read time. Run `scripts/reprocess_bodies.py --from-raw-content` once after upgrading such a database to persist that derived body into `body_md` itself (`--dry-run` first, as above) — this is what lets cursor-based consumers (`get_changes_tool`/webhooks/digests) see those items as a change, rather than only benefiting readers that re-fetch the item directly.
 
 ## Export and sync
 

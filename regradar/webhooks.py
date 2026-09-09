@@ -127,6 +127,7 @@ def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: st
     try:
         items, next_cursor = get_changes(
             engine, since=cursor, profile=expanded, limit=sub["batch_size"], include_body=True,
+            taxonomy=taxonomy,
         )
     except Exception as e:
         logger.error("Webhook subscriber %s: get_changes failed: %s", sid, e)

@@ -9,6 +9,19 @@ Run inside the collector container, which has both DB and artefact access:
     docker compose exec collector python -m scripts.reprocess_bodies --dry-run
     docker compose exec collector python -m scripts.reprocess_bodies
     docker compose exec collector python -m scripts.reprocess_bodies --limit 50
+
+`--from-raw-content` is a separate, one-off mode: pre-v2 installs have
+items.body_md NULL (it didn't exist yet) but items.raw_content populated -
+the exporter/get_item/etc already fall back to deriving a body from
+raw_content on the fly (regradar.document.effective_body_md()), but that's
+a per-read fallback; this backfills items.body_md itself (once) so the
+stored row matches what every reader already renders, and it's picked up
+by cursor-based consumers (get_changes()/webhooks/digests) as a real
+change. Only touches items with NO artefact (those are `reprocess()`'s
+job) and an empty body_md:
+
+    docker compose exec collector python -m scripts.reprocess_bodies --from-raw-content --dry-run
+    docker compose exec collector python -m scripts.reprocess_bodies --from-raw-content
 """
 import argparse
 import importlib.metadata
@@ -20,7 +33,7 @@ from sqlalchemy import text
 
 from collector.adapters.http import extract_pdf_text as _extract_pdf_text
 from collector.storage import init_db, update_item_body
-from regradar.document import convert_body
+from regradar.document import convert_body, effective_body_md
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -79,16 +92,62 @@ def reprocess(engine, artefacts_dir: str, dry_run: bool, limit: int | None) -> i
     return processed
 
 
+_RAW_CONTENT_EXTRACTOR = "raw_content-fallback/1"
+
+
+def backfill_from_raw_content(engine, dry_run: bool, limit: int | None) -> int:
+    """Backfills items.body_md (and extractor) for pre-v2 items that have
+    raw_content but no body_md and no stored artefact - see module
+    docstring. Uses the same derivation effective_body_md() applies at
+    read time, so the persisted body matches it exactly.
+    """
+    sql = """
+        SELECT i.id, i.raw_content, i.source_type, i.content_snippet, i.url
+        FROM items i
+        LEFT JOIN item_artefacts a ON a.item_id = i.id
+        WHERE a.item_id IS NULL
+          AND (i.body_md IS NULL OR i.body_md = '')
+          AND i.raw_content IS NOT NULL AND i.raw_content != ''
+        ORDER BY i.id
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql)).fetchall()
+    if limit is not None:
+        rows = rows[:limit]
+
+    if dry_run:
+        logger.info("Dry run: %d item(s) would be backfilled from raw_content", len(rows))
+        return len(rows)
+
+    processed = 0
+    for item_id, raw_content, source_type, snippet, url in rows:
+        body_md = effective_body_md({
+            "body_md": None, "raw_content": raw_content,
+            "source_type": source_type, "content_snippet": snippet, "url": url,
+        })
+        if not body_md:
+            continue
+        update_item_body(engine, item_id, body_md, _RAW_CONTENT_EXTRACTOR)
+        processed += 1
+    logger.info("Backfilled %d item(s) from raw_content", processed)
+    return processed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Report the count without writing")
     parser.add_argument("--limit", type=int, default=None, help="Reprocess at most this many items")
+    parser.add_argument("--from-raw-content", action="store_true",
+                         help="Backfill body_md from raw_content for artefact-less pre-v2 items instead")
     args = parser.parse_args()
 
     db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
     artefacts_dir = os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
     engine = init_db(db_path)
-    reprocess(engine, artefacts_dir, dry_run=args.dry_run, limit=args.limit)
+    if args.from_raw_content:
+        backfill_from_raw_content(engine, dry_run=args.dry_run, limit=args.limit)
+    else:
+        reprocess(engine, artefacts_dir, dry_run=args.dry_run, limit=args.limit)
 
 
 if __name__ == "__main__":

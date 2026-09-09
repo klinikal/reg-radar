@@ -11,6 +11,7 @@ import jsonschema
 
 from collector.schema import Item, make_item_id, make_page_watch_item_id
 from collector.storage import init_db, insert_item, upsert_regulator
+from mcpserver.queries import _document_fields
 from regradar import document as doc
 from regradar.render import _load_item
 
@@ -95,15 +96,15 @@ def test_twenty_items_round_trip_losslessly(tmp_path, monkeypatch):
 
     source_types_seen = set()
     for item in items:
-        loaded = _load_item(engine, item.id)
+        loaded, reg = _load_item(engine, item.id)
         assert loaded is not None
         source_types_seen.add(loaded["source_type"])
         from collector.storage import get_artefact
         artefact = get_artefact(engine, item.id)
-        labels = loaded.pop("_labels", None)
+        doc_item, labels, label_provenance = _document_fields(loaded, reg, None, [])
 
-        fm_expected = doc.build_frontmatter(loaded, artefact=artefact, labels=labels, label_provenance=None)
-        text = doc.render_item(loaded, artefact, labels, None)
+        fm_expected = doc.build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
+        text = doc.render_item(doc_item, artefact, labels, label_provenance)
         fm_actual, body = doc.parse(text)
 
         assert fm_actual == fm_expected, item.id

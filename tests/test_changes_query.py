@@ -130,12 +130,49 @@ def test_get_changes_frontmatter_shape_matches_get_item_document():
     item = get_item(engine, "i1")
     document = item["document"]
 
-    # get_changes() omits jurisdiction_ancestors/label_provenance (no
-    # taxonomy threaded through the hot polling path) - everything else
-    # matches get_item_tool's document shape field for field.
+    # Without a taxonomy, get_changes() omits jurisdiction_ancestors/
+    # label_provenance just like get_item() does (both build on the same
+    # _assemble_document() helper) - everything else matches
+    # get_item_tool's document shape field for field.
     for key in ("id", "regulator", "regulator_name", "jurisdiction", "title",
                 "published_at", "fetched_at", "updated_at", "source_url", "content_hash"):
         assert changes_doc[key] == document[key], key
+
+
+def test_get_changes_with_taxonomy_includes_ancestors_and_label_provenance():
+    """Defect regression: get_changes() (and, through it, the exporter,
+    /api/changes, feeds, webhooks and digests) used to always omit
+    jurisdiction_ancestors and hardcode label_provenance=None, even when a
+    taxonomy was available - unlike get_item(). Passing `taxonomy` must
+    populate both, identically to get_item(taxonomy=...)."""
+    from regradar.classification import write_classification
+    from regradar.taxonomy import build_taxonomy
+
+    engine = setup_engine()
+    upsert_regulator(engine, {
+        "id": "sk-nbs", "name": "NBS", "full_name": "Narodna banka Slovenska",
+        "jurisdiction": "sk", "jurisdiction_type": "member_state", "website": "https://nbs.sk",
+        "mica_competent_authority": True, "enabled": True,
+    })
+    insert_item(engine, make_item("i1", regulator_id="sk-nbs"))
+
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+
+    # Before classification: ancestors are already populated, provenance
+    # is empty (no live classifications yet).
+    items, _ = get_changes(engine, taxonomy=taxonomy)
+    assert items[0]["jurisdiction"] == "sk"
+    assert items[0]["jurisdiction_ancestors"] == ["eu"]
+    assert "label_provenance" not in items[0]
+
+    write_classification(engine, taxonomy, "i1", "document_type", "warning", by="source_default", confidence=1.0)
+
+    items, _ = get_changes(engine, taxonomy=taxonomy)
+    assert items[0]["jurisdiction_ancestors"] == ["eu"]
+    assert items[0]["label_provenance"] == [
+        {"axis": "document_type", "value": "warning", "by": "source_default",
+         "confidence": 1.0, "taxonomy_version": taxonomy.version()},
+    ]
 
 
 def test_get_latest_changes_orders_newest_first():

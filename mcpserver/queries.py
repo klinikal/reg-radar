@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from regradar.classification import winning_classification_rows
-from regradar.document import build_frontmatter, frontmatter_to_json_safe
+from regradar.document import build_frontmatter, effective_body_md, frontmatter_to_json_safe
 from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS
 from regradar.changes import decode_cursor, encode_cursor
 
@@ -509,11 +509,65 @@ def list_regulators(engine) -> list[dict]:
     return results
 
 
+def _document_fields(item: dict, reg: dict, taxonomy, classification_rows: list) -> tuple[dict, dict | None, list | None]:
+    """Derives the extra fields a document needs beyond the raw items-table
+    row: regulator_name/jurisdiction (joined from `reg`, the regulators-row
+    for item["regulator_id"]), jurisdiction_ancestors (via
+    taxonomy.ancestors()) and label_provenance (via
+    winning_classification_rows() over `classification_rows`).
+
+    Shared by get_item() and _documents_for_items() (both below) and
+    regradar.render's render_item_to_dir() (the exporter's markdown-format
+    writer), so all three document-assembly call sites compute
+    jurisdiction_ancestors/label_provenance identically and can't drift the
+    way get_item and get_changes() (and, through it, the exporter/feeds/
+    webhooks/digests) used to: get_changes() built its document with
+    label_provenance hardcoded to None and no jurisdiction_ancestors at all.
+
+    `taxonomy` (a regradar.taxonomy.Taxonomy) is optional; without it
+    jurisdiction_ancestors/label_provenance are omitted rather than
+    erroring, so callers that don't have a taxonomy handy keep working.
+
+    Returns (item_with_jurisdiction_fields, labels, label_provenance).
+    """
+    doc_item = dict(item)
+    doc_item["regulator_name"] = reg.get("full_name") or reg.get("name") or item.get("regulator_id")
+    jurisdiction = reg.get("jurisdiction")
+    doc_item["jurisdiction"] = jurisdiction
+
+    labels = json.loads(item["labels"]) if item.get("labels") else None
+    label_provenance = None
+    if taxonomy is not None:
+        if jurisdiction:
+            doc_item["jurisdiction_ancestors"] = taxonomy.ancestors(jurisdiction.lower())
+        winners = winning_classification_rows(classification_rows, taxonomy)
+        if winners:
+            label_provenance = [
+                {"axis": w["axis"], "value": w["value"], "by": w["by"],
+                 "confidence": w["confidence"], "taxonomy_version": w["taxonomy_version"]}
+                for w in winners
+            ]
+    return doc_item, labels, label_provenance
+
+
+def _assemble_document(item: dict, reg: dict, artefact: dict | None, taxonomy, classification_rows: list) -> dict:
+    """Builds one frontmatter-shaped document (architecture doc section
+    3.2), JSON-safe, from a raw items-table row plus its regulator/
+    artefact/live classification rows - see _document_fields() for the
+    assembly this is built on. Used by get_item() and _documents_for_items().
+    """
+    doc_item, labels, label_provenance = _document_fields(item, reg, taxonomy, classification_rows)
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
+    return frontmatter_to_json_safe(fm)
+
+
 def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
     """Returns the item, including `body_md` (the Markdown body alongside
-    the existing `raw_content`) and a `document` object holding the same
-    frontmatter fields a rendered file would have (section 3.2) - built
-    from whatever `labels`/artefact data exists for this item.
+    the existing `raw_content` - derived from raw_content via
+    regradar.document.effective_body_md() when body_md itself is empty,
+    e.g. a pre-v2 row) and a `document` object holding the same
+    frontmatter fields a rendered file would have (section 3.2), built by
+    the shared _assemble_document() helper.
 
     `taxonomy` (a regradar.taxonomy.Taxonomy) is optional but needed to
     populate `document.jurisdiction_ancestors` (via ancestors()) and
@@ -545,39 +599,18 @@ def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
             {"id": item_id},
         ).fetchone()
         classification_rows = (
-            conn.execute(
+            [dict(r._mapping) for r in conn.execute(
                 text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
                      "FROM classifications WHERE item_id = :id"),
                 {"id": item_id},
-            ).fetchall()
+            ).fetchall()]
             if taxonomy is not None else []
         )
 
-    doc_item = dict(item)
-    jurisdiction = None
-    if reg_row is not None:
-        reg = dict(reg_row._mapping)
-        doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
-        jurisdiction = reg.get("jurisdiction")
-        doc_item["jurisdiction"] = jurisdiction
+    reg = dict(reg_row._mapping) if reg_row is not None else {}
     artefact = dict(artefact_row._mapping) if artefact_row is not None else None
-
-    labels = None
-    label_provenance = None
-    if taxonomy is not None:
-        if jurisdiction:
-            doc_item["jurisdiction_ancestors"] = taxonomy.ancestors(jurisdiction.lower())
-        labels = json.loads(item["labels"]) if item.get("labels") else None
-        winners = winning_classification_rows([dict(r._mapping) for r in classification_rows], taxonomy)
-        if winners:
-            label_provenance = [
-                {"axis": w["axis"], "value": w["value"], "by": w["by"],
-                 "confidence": w["confidence"], "taxonomy_version": w["taxonomy_version"]}
-                for w in winners
-            ]
-
-    fm = build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
-    item["document"] = frontmatter_to_json_safe(fm)
+    item["body_md"] = effective_body_md(item)
+    item["document"] = _assemble_document(item, reg, artefact, taxonomy, classification_rows)
     return item
 
 
@@ -850,27 +883,33 @@ def get_item_labels(engine, item_id: str) -> dict:
 _CHANGES_COLUMNS = [
     "id", "regulator_id", "source_label", "title", "url", "published_at",
     "fetched_at", "updated_at", "date_inferred", "language", "source_type", "labels", "body_md",
+    "raw_content", "content_snippet",
 ]
 _CHANGES_SELECT = """
     SELECT id, regulator_id, source_label, title, url, published_at,
            fetched_at, COALESCE(updated_at, fetched_at) as updated_at,
-           date_inferred, language, source_type, labels, body_md
+           date_inferred, language, source_type, labels, body_md,
+           raw_content, content_snippet
     FROM items
 """
 
 
-def _documents_for_items(conn, items: list[dict], include_body: bool = False) -> list[dict]:
+def _documents_for_items(conn, items: list[dict], include_body: bool = False, taxonomy=None) -> list[dict]:
     """Shared by get_changes() and get_latest_changes(): turns raw
     _CHANGES_SELECT item dicts (as returned by _row_to_dict) into
-    frontmatter-shaped documents (architecture doc section 3.2), the same
-    build via regradar.document that get_item() uses - without a taxonomy,
-    so jurisdiction_ancestors/label_provenance are omitted (this is the hot
-    polling path; get_item_tool still has full provenance).
+    frontmatter-shaped documents (architecture doc section 3.2) via the
+    same _assemble_document() helper get_item() uses, so jurisdiction_
+    ancestors/label_provenance are assembled identically on both paths
+    instead of drifting. `taxonomy` is optional (None omits both, as
+    before) - callers on this hot polling path (get_changes/exporter/
+    feeds/webhooks/digests) should pass one the same way get_item_tool
+    does, for full provenance.
     """
     reg_rows = conn.execute(text("SELECT id, name, full_name, jurisdiction FROM regulators")).fetchall()
     regs = {r[0]: {"name": r[1], "full_name": r[2], "jurisdiction": r[3]} for r in reg_rows}
 
     artefacts = {}
+    classifications_by_item: dict = {}
     item_ids = [i["id"] for i in items]
     if item_ids:
         placeholders = ", ".join(f":aid_{i}" for i in range(len(item_ids)))
@@ -881,23 +920,31 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False) ->
         ).fetchall()
         artefacts = {r[0]: {"path": r[1], "mime": r[2], "sha256": r[3], "bytes": r[4]} for r in arows}
 
+        if taxonomy is not None:
+            crows = conn.execute(
+                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at "
+                     f"FROM classifications WHERE item_id IN ({placeholders})"),
+                aparams,
+            ).fetchall()
+            for r in crows:
+                classifications_by_item.setdefault(r[0], []).append({
+                    "axis": r[1], "value": r[2], "by": r[3],
+                    "confidence": r[4], "taxonomy_version": r[5], "superseded_at": r[6],
+                })
+
     documents = []
     for item in items:
         reg = regs.get(item["regulator_id"], {})
-        doc_item = dict(item)
-        doc_item["regulator_name"] = reg.get("full_name") or reg.get("name") or item["regulator_id"]
-        doc_item["jurisdiction"] = reg.get("jurisdiction")
-        labels = json.loads(item["labels"]) if item.get("labels") else None
-        fm = build_frontmatter(doc_item, artefact=artefacts.get(item["id"]), labels=labels, label_provenance=None)
-        doc = frontmatter_to_json_safe(fm)
+        classification_rows = classifications_by_item.get(item["id"], [])
+        doc = _assemble_document(item, reg, artefacts.get(item["id"]), taxonomy, classification_rows)
         if include_body:
-            doc["body_md"] = item.get("body_md") or ""
+            doc["body_md"] = effective_body_md(item)
         documents.append(doc)
     return documents
 
 
 def get_changes(engine, since: str | None = None, profile=None, limit: int = 100,
-                 include_body: bool = False) -> tuple[list[dict], str | None]:
+                 include_body: bool = False, taxonomy=None) -> tuple[list[dict], str | None]:
     """Everything that changed (architecture doc section 6): items with
     (updated_at, id) after the opaque cursor `since` (from
     regradar.changes.encode_cursor), oldest first, id as tiebreak on equal
@@ -917,6 +964,10 @@ def get_changes(engine, since: str | None = None, profile=None, limit: int = 100
     `document` field has), next_cursor is the cursor of the last document
     returned, or None if nothing matched (an empty result, or `since` is
     already at the head of the stream).
+
+    `taxonomy` (optional, as get_item()'s) populates jurisdiction_ancestors
+    and label_provenance on each returned document; without it both are
+    empty/omitted, matching get_item()'s own no-taxonomy behaviour.
     """
     try:
         limit = max(1, min(int(limit), 200))
@@ -948,7 +999,7 @@ def get_changes(engine, since: str | None = None, profile=None, limit: int = 100
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
         items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
-        documents = _documents_for_items(conn, items, include_body=include_body)
+        documents = _documents_for_items(conn, items, include_body=include_body, taxonomy=taxonomy)
 
     next_cursor = None
     if items:
@@ -957,11 +1008,13 @@ def get_changes(engine, since: str | None = None, profile=None, limit: int = 100
     return documents, next_cursor
 
 
-def get_latest_changes(engine, profile=None, limit: int = 50) -> list[dict]:
+def get_latest_changes(engine, profile=None, limit: int = 50, taxonomy=None) -> list[dict]:
     """Most recently changed items (updated_at DESC), newest first -
     frontmatter-shaped like get_changes(), but not cursor-paginated: this
     is what GET /feeds/<profile>.atom needs (the newest N entries), which
     get_changes()'s forward-from-a-cursor pagination isn't built for.
+
+    `taxonomy` is optional, same contract as get_changes().
     """
     try:
         limit = max(1, min(int(limit), 200))
@@ -984,4 +1037,4 @@ def get_latest_changes(engine, profile=None, limit: int = 50) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
         items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
-        return _documents_for_items(conn, items, include_body=False)
+        return _documents_for_items(conn, items, include_body=False, taxonomy=taxonomy)

@@ -144,6 +144,31 @@ def convert_body(
     return body, "raw/1"
 
 
+def effective_body_md(item: dict) -> str:
+    """The body actually rendered/hashed for `item`: item["body_md"] when
+    present, otherwise derived from item["raw_content"] - pre-v2 rows were
+    collected before items.body_md existed, so body_md is NULL/empty while
+    raw_content (used for search/rules) still holds the original text.
+
+    RSS/Atom raw_content is the feed's own unconverted HTML summary (see
+    collector.pipeline._extract) - reuses rss_body_markdown() so the
+    derived body gets the same "> Full text not collected." note a fresh
+    RSS item would. Everything else (scrape/page_watch) is already
+    plain extracted text, so only normalize_pdf_text()'s paragraph joining
+    applies. Returns "" if neither body_md nor raw_content is present.
+    """
+    body_md = item.get("body_md")
+    if body_md and body_md.strip():
+        return body_md
+    raw_content = item.get("raw_content")
+    if not raw_content or not raw_content.strip():
+        return ""
+    if item.get("source_type") == "rss":
+        body, _extractor = rss_body_markdown(raw_content, item.get("content_snippet") or "", item.get("url") or "")
+        return body
+    return normalize_pdf_text(raw_content)
+
+
 def _as_date(value) -> date | None:
     if value is None:
         return None
@@ -201,9 +226,10 @@ def build_frontmatter(
 
     `item` must carry: id, regulator_id, regulator_name, jurisdiction,
     title, url, published_at, fetched_at, updated_at, date_inferred,
-    language, source_label, source_type, body_md. `labels` is whatever
-    items.labels currently holds (populated by a parallel task) - an empty
-    or missing value is rendered as no `labels` key at all, never an error.
+    language, source_label, source_type, body_md (or raw_content, for
+    effective_body_md()'s fallback). `labels` is whatever items.labels
+    currently holds (populated by a parallel task) - an empty or missing
+    value is rendered as no `labels` key at all, never an error.
     """
     published_at = _as_date(item.get("published_at")) or _as_date(item["fetched_at"])
     fetched_at = _as_utc_datetime(item["fetched_at"])
@@ -230,7 +256,7 @@ def build_frontmatter(
         fm["labels"] = labels
     if label_provenance:
         fm["label_provenance"] = label_provenance
-    fm["content_hash"] = _content_hash(item.get("body_md") or "")
+    fm["content_hash"] = _content_hash(effective_body_md(item))
     if artefact:
         fm["original"] = {
             "path": artefact["path"],
@@ -250,7 +276,7 @@ def render_item(item: dict, artefact: dict | None, labels: dict | None, provenan
     for key in ("fetched_at", "updated_at"):
         fm_for_yaml[key] = _format_datetime_z(fm[key])
     yaml_text = yaml.safe_dump(fm_for_yaml, sort_keys=False, allow_unicode=True, default_flow_style=False).strip()
-    body = (item.get("body_md") or "").strip()
+    body = effective_body_md(item).strip()
     return f"---\n{yaml_text}\n---\n\n{body}\n"
 
 
