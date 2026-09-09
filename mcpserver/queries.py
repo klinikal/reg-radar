@@ -797,9 +797,10 @@ def get_health(engine) -> dict:
 
     `dataset_import` is {cursor, generated_at, imported_at} when this
     database was seeded by `regradar import-dataset`, else None. Nothing
-    consumes the cursor automatically - it is here so an operator or agent
-    can pass it to get_changes()/`regradar export --since` and see only what
-    arrived after the published snapshot.
+    consumes the cursor automatically - it is a bookmark, here so an
+    operator or agent can pass it as `since` to get_changes() (or
+    `/api/changes`, or a webhook subscriber, or `regradar export --since`)
+    and see only what arrived after the published snapshot.
     """
     sql = """
         SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok

@@ -558,11 +558,14 @@ class SyncStateRow(Base):
     published dataset's `generated_at`.
 
     It marks where the imported snapshot ends; it does NOT filter what the
-    collector fetches. A collection run reads whatever is on each source's
-    current feed pages either way. Readers: get_health()'s `dataset_import`,
-    `regradar export`'s fallback `--since`, and anyone passing it to
-    get_changes(). Distinct from `webhook_subscriptions`, which is keyed per
-    outbound subscriber rather than per inbound sync source.
+    collector fetches, and nothing consumes it automatically. A collection
+    run reads whatever is on each source's current feed pages either way,
+    and `regradar export` always starts full into a fresh --out. It is a
+    bookmark for change-stream consumers - get_changes()/`/api/changes`/a
+    webhook subscriber - that want only what arrived after the snapshot,
+    surfaced by get_health()'s `dataset_import`. Distinct from
+    `webhook_subscriptions`, which is keyed per outbound subscriber rather
+    than per inbound sync source.
     """
     __tablename__ = "sync_state"
 

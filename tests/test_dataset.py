@@ -1,6 +1,5 @@
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -296,44 +295,6 @@ def test_get_health_reports_dataset_import(tmp_path, monkeypatch):
     assert state["cursor"] == summary["cursor"]
     assert state["generated_at"] == manifest["generated_at"]
     assert state["imported_at"] is not None
-
-
-def test_export_with_no_out_dir_cursor_falls_back_to_dataset_import_cursor(tmp_path, monkeypatch, caplog):
-    """First export after an import must not re-export the snapshot it just
-    imported: with no .regradar-cursor in --out, the dataset import cursor
-    is the right starting point, and the format safety net must not undo it
-    just because --out is empty."""
-    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
-    db_path, engine, ids = _setup_db(tmp_path, n=1)
-    manifest, tarball_path, dist_dir = _export_and_publish(tmp_path, db_path)
-
-    empty_db_path = str(tmp_path / "empty.db")
-    engine2 = init_db(empty_db_path)
-    import_dataset(engine2, str(tarball_path), taxonomy=_taxonomy())
-
-    fresh_out = tmp_path / "post-import-export"
-    with caplog.at_level("INFO"):
-        rc = main(["export", "--format", "jsonl", "--out", str(fresh_out), "--db-path", empty_db_path])
-
-    assert rc == 0
-    assert "starting from the dataset import cursor" in caplog.text
-    # Nothing newer than the snapshot yet, so the export is empty rather
-    # than a re-run of the whole imported corpus.
-    assert (fresh_out / "export.jsonl").read_text() == ""
-
-    # A genuinely newer item does come through.
-    later = datetime.now(timezone.utc)
-    insert_item(engine2, Item(
-        id=make_item_id("fca", "https://example.com/after-import", later),
-        regulator_id="fca", source_label="news", title="Later notice",
-        url="https://example.com/after-import", published_at=later, fetched_at=later,
-        date_inferred=False, language="en", content_snippet="s", source_type="scrape",
-        raw_content="r", body_md="later body", extractor="raw/1",
-    ))
-    assert main(["export", "--format", "jsonl", "--out", str(fresh_out), "--db-path", empty_db_path]) == 0
-    lines = (fresh_out / "export.jsonl").read_text().strip().splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["title"] == "Later notice"
 
 
 class _FakeResponse:

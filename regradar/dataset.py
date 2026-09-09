@@ -234,11 +234,13 @@ def import_dataset(engine, source: str, *, taxonomy, force: bool = False,
 
     The cursor marks where the snapshot ends. It does NOT make later
     collection incremental - a collection run fetches each source's current
-    feed pages regardless. What importing actually saves is the historic
-    backfill scripts (README's "Historic backfills"), which are the slow
-    part. The cursor is for asking "what has arrived since the snapshot":
-    get_changes(since=...), `regradar export --since`, and get_health()'s
-    `dataset_import`.
+    feed pages regardless - and nothing applies it automatically. What
+    importing actually saves is the historic backfill scripts (README's
+    "Historic backfills"), which are the slow part. The cursor is a
+    bookmark for a change-stream consumer that wants only post-import
+    changes: pass it as `since` to get_changes()/`/api/changes`/a webhook
+    subscriber, or to `regradar export --since` for a one-off. It is
+    surfaced by get_health()'s `dataset_import`.
     """
     with tempfile.TemporaryDirectory(dir=work_dir) as tmp:
         tmp_path = Path(tmp)

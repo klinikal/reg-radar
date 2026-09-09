@@ -6,6 +6,7 @@ import jsonschema
 
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator
+from regradar.changes import encode_cursor
 from regradar.cli import main
 
 SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
@@ -294,3 +295,27 @@ def test_export_second_format_with_no_prior_output_falls_back_to_full_export(tmp
     assert "falling back to a full export" in caplog.text
     lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
     assert len(lines) == 1
+
+
+def test_explicit_since_into_an_empty_out_dir_is_not_second_guessed(tmp_path, monkeypatch, caplog):
+    """The no-prior-output safety net exists for a cursor persisted in THIS
+    --out that a different format advanced past. An explicit --since makes
+    no claim about the directory, so an empty --out is expected, not a
+    symptom - silently widening it to a full export would ignore what the
+    caller asked for."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    # A cursor far in the future: nothing is newer, so a respected --since
+    # exports nothing, while a discarded one would export the whole corpus.
+    future = encode_cursor(datetime(2999, 1, 1, tzinfo=timezone.utc), "z")
+    with caplog.at_level("WARNING"):
+        rc = main([
+            "export", "--format", "jsonl", "--out", str(out_dir),
+            "--db-path", db_path, "--since", future,
+        ])
+
+    assert rc == 0
+    assert "falling back to a full export" not in caplog.text
+    assert (out_dir / "export.jsonl").read_text() == ""

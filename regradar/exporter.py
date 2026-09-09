@@ -41,11 +41,10 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import OperationalError
 
-from collector.storage import get_artefact, get_sync_state
+from collector.storage import get_artefact
 from mcpserver.queries import get_changes
-from regradar.changes import DATASET_IMPORT_CURSOR_KEY, CursorError, decode_cursor
+from regradar.changes import CursorError, decode_cursor
 from regradar.dataset import load_exclusions
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.render import render_item_to_dir
@@ -77,22 +76,24 @@ def write_cursor(out_dir: Path, cursor: str) -> None:
     _cursor_path(out_dir).write_text(cursor, encoding="utf-8")
 
 
-def resolve_since(out_dir: Path, cli_since: str | None, engine=None) -> str | None:
+def resolve_since(out_dir: Path, cli_since: str | None) -> str | None:
     """`--since` on the command line wins outright. Otherwise, read the
-    persisted cursor; a missing one falls back to the database's
-    `regradar import-dataset` cursor if it has one (so the first export
-    after seeding from a published dataset is incremental rather than
-    re-exporting the whole imported snapshot), and otherwise means "first
-    export, do a full one". An unparseable cursor is treated the same way
-    (logged, not raised) - the issue's requirement that a stale/missing
-    cursor falls back to a full export rather than corrupting the target
-    directory.
+    persisted cursor; a missing one means "first export, do a full one".
+    An unparseable one is treated the same way (logged, not raised) - the
+    issue's requirement that a stale/missing cursor falls back to a full
+    export rather than corrupting the target directory.
+
+    Deliberately does NOT consult the `regradar import-dataset` sync
+    cursor: an export into a fresh --out must contain the whole corpus,
+    which is the point of having imported one. That cursor is for
+    change-stream consumers asking "what has arrived since the snapshot" -
+    pass it as `--since` explicitly if that is what you want here.
     """
     if cli_since:
         return cli_since
     persisted = read_cursor(out_dir)
     if persisted is None:
-        return _dataset_import_since(engine)
+        return None
     try:
         decode_cursor(persisted)
     except CursorError as e:
@@ -102,23 +103,6 @@ def resolve_since(out_dir: Path, cli_since: str | None, engine=None) -> str | No
         )
         return None
     return persisted
-
-
-def _dataset_import_since(engine) -> str | None:
-    if engine is None:
-        return None
-    try:
-        cursor = get_sync_state(engine, DATASET_IMPORT_CURSOR_KEY)
-    except OperationalError:
-        return None  # pre-sync_state database
-    if not cursor:
-        return None
-    logger.info(
-        "No %s in the output directory - starting from the dataset import cursor (%s); "
-        "pass --since explicitly, or delete the sync_state row, for a full export",
-        CURSOR_FILENAME, cursor,
-    )
-    return cursor
 
 
 def _jsonl_path(out_dir: Path) -> Path:
@@ -216,10 +200,9 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
     # format means some earlier run here only covered a *different* format -
     # trusting it would silently truncate this format's output to "whatever
     # changed since a run that never wrote it". Fall back to a full export
-    # instead. `since_from_out_dir=False` (a --since on the command line, or
-    # the dataset import cursor) means the cursor was never a claim about
-    # this directory's contents, so an empty --out is expected, not a
-    # symptom.
+    # instead. `since_from_out_dir=False` (a --since on the command line)
+    # means the cursor was never a claim about this directory's contents,
+    # so an empty --out is expected, not a symptom.
     if cursor is not None and since_from_out_dir:
         if ("jsonl" in formats and not _jsonl_path(out_dir).exists()) or \
                 ("markdown" in formats and _markdown_tree_empty(out_dir)):
@@ -313,7 +296,7 @@ def run(args: argparse.Namespace) -> int:
     export_formats = list(dict.fromkeys(args.formats or ["markdown"]))
 
     persisted = read_cursor(out_dir)
-    since = resolve_since(out_dir, args.since, engine=engine)
+    since = resolve_since(out_dir, args.since)
     result = export_profile(
         engine, out_dir, profile=expanded_profile, since=since,
         with_originals=args.with_originals, export_formats=export_formats,
