@@ -115,3 +115,25 @@ def test_update_item_body_on_missing_item_is_a_noop(tmp_path, monkeypatch):
     monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path))
     engine = _make_engine()
     update_item_body(engine, "does-not-exist", "body", "markdownify/1.2.3")  # must not raise
+
+
+def test_artefact_write_failure_still_inserts_the_item(tmp_path, monkeypatch):
+    # ARTEFACTS_DIR points at a plain file, not a directory - the write's
+    # mkdir(parents=True) then fails with NotADirectoryError. This must not
+    # take the whole item down with it (a later item in the same source's
+    # loop would otherwise be lost too - collector/main.py wraps the loop
+    # per source, not per item).
+    not_a_dir = tmp_path / "not_a_directory"
+    not_a_dir.write_text("i'm a file")
+    monkeypatch.setenv("ARTEFACTS_DIR", str(not_a_dir))
+    engine = _make_engine()
+    item = _make_item()
+
+    result = insert_item(engine, item)
+
+    assert result is True
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT id FROM items WHERE id=:id"), {"id": item.id}).fetchone()
+    assert row is not None
+    assert get_artefact(engine, item.id) is None

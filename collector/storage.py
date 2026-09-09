@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -18,6 +19,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from collector.schema import Item
+
+logger = logging.getLogger(__name__)
 
 # Original-artefact storage (docs/design/regradar-architecture.md section
 # 3.3). Read at call time (not import time) so tests can point a single
@@ -244,7 +247,11 @@ def insert_item(engine, item: Item) -> bool:
                 "raw_content": item.raw_content or "",
             },
         )
-        artefact = _write_artefact(item)
+        try:
+            artefact = _write_artefact(item)
+        except OSError as e:
+            logger.warning("Artefact write failed for item %s, storing item without one: %s", item.id, e)
+            artefact = None
         if artefact:
             session.execute(
                 text(
