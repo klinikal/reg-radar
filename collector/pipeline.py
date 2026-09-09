@@ -97,11 +97,15 @@ def _body_and_extractor(raw: RawDocument, snippet: str) -> tuple[str, str]:
     )
 
 
-def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_id: str, config: dict | None = None) -> list[Item]:
+def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_id: str) -> list[Item]:
     """The shared "extract, hash, ..." half of the pipeline (storage and the
     classify call-out happen in collector.main.run_collection, which already
-    owns insert_item()/_apply_source_label_defaults() per-item decisions)."""
-    config = config or {}
+    owns insert_item()/_apply_source_label_defaults() per-item decisions).
+
+    No `config` (user_agent/timeout/retries) param - those are fetch-time
+    concerns the adapter already consumed in fetch()/fetch_raw(); nothing
+    here needs them.
+    """
     now = datetime.now(timezone.utc)
     source_type = source.get("type", "rss")
     source_label = source["label"]

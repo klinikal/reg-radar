@@ -38,4 +38,4 @@ def fetch_source(
         flaresolverr_url=flaresolverr_url, regulator_id=regulator_id,
     )
     raw_docs = adapter.fetch(source, ctx)
-    return process_raw_documents(raw_docs, source, regulator_id, config)
+    return process_raw_documents(raw_docs, source, regulator_id)

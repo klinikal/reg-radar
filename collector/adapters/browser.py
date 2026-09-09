@@ -25,12 +25,29 @@ needs a browser at all, it just runs `scrape`'s parser against already-
 rendered HTML.
 """
 import logging
+from urllib.parse import urlparse
 
 from collector.adapters.base import FetchContext, RawDocument, SourceAdapter
-from collector.adapters.http import throttle_flaresolverr, validate_url_not_private
+from collector.adapters.http import _host_resolves_to_private, throttle_flaresolverr, validate_url_not_private
 from collector.adapters.scrape import ScrapeAdapter
 
 logger = logging.getLogger(__name__)
+
+
+def _ssrf_route_handler(route, request) -> None:
+    """Aborts any request (navigation, redirect, XHR/fetch, asset load - a
+    JS-rendered page can trigger all of these after the initial goto()) whose
+    URL is, or resolves to, a private/reserved address - the same check
+    make_ssrf_check() applies to the httpx path. validate_url_not_private()
+    alone only guards the top-level navigation URL, not a redirect chain or
+    same-page requests the rendered JS makes afterwards.
+    """
+    host = urlparse(request.url).hostname or ""
+    if host and _host_resolves_to_private(host):
+        logger.warning("Blocked request to private/reserved address: %s", request.url)
+        route.abort()
+    else:
+        route.continue_()
 
 
 class BrowserAdapter(SourceAdapter):
@@ -59,7 +76,6 @@ class BrowserAdapter(SourceAdapter):
         # Shares the FlareSolverr per-domain throttle (issue #8 ruling): a
         # real browser launch/navigation carries a similar per-request cost
         # against the target site as a FlareSolverr request does.
-        from urllib.parse import urlparse
         throttle_flaresolverr(urlparse(url).hostname or url)
 
         with sync_playwright() as p:
@@ -70,6 +86,9 @@ class BrowserAdapter(SourceAdapter):
             browser = p.chromium.launch(args=["--no-sandbox"])
             try:
                 page = browser.new_page(user_agent=ctx.user_agent)
+                # Every request this page makes (redirects, XHR/fetch, asset
+                # loads) is SSRF-checked, not just the initial goto() URL.
+                page.route("**/*", _ssrf_route_handler)
                 page.goto(url, timeout=ctx.timeout * 1000)
                 if wait_selector:
                     page.wait_for_selector(wait_selector, timeout=ctx.timeout * 1000)

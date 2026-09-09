@@ -98,7 +98,7 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
                 raise RuntimeError("fetch failed (see FlareSolverr warnings above)")
 
             raw_docs = ScrapeAdapter().parse(html, page_source, REGULATOR_ID, fetch_cfg)
-            items = process_raw_documents(raw_docs, page_source, REGULATOR_ID, fetch_cfg)
+            items = process_raw_documents(raw_docs, page_source, REGULATOR_ID)
             total_fetched += len(items)
 
             if dry_run:

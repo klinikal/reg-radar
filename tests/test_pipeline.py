@@ -154,6 +154,18 @@ def test_page_watch_body_md_is_flattened_text():
     assert items[0].extractor == "raw/1"
 
 
+def test_page_watch_stores_the_whole_page_as_the_artefact():
+    # Section 3.3: the artefact is the whole fetched page (raw_bytes/mime),
+    # distinct from body_md which comes from just the watch_selector
+    # fragment - proves that split survives end to end through the pipeline.
+    html = '<html><body><nav>ignore</nav><div class="content">Real page text here.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content", "type": "page_watch"}
+    raw_docs = PageWatchAdapter().parse(html, source, "esma")
+    items = process_raw_documents(raw_docs, source, "esma")
+    assert items[0].raw_bytes == html.encode("utf-8")
+    assert items[0].mime == "text/html"
+
+
 def test_page_watch_item_id_stable_across_runs_with_same_content():
     html = '<html><body><div class="content">Unchanged text.</div></body></html>'
     source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content", "type": "page_watch"}
