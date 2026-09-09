@@ -4,6 +4,8 @@ All notable changes to casp-radar are documented here, grouped by day. Entries a
 
 ## 2026-07-04
 
+**Historic backfill migrated to the new source/content tag split** — ran the migration script (built and dry-run tested yesterday) against the live database: 12,963 legacy items had their `source_tags` re-derived from the old `tags` column (blanket `casp`/`mica`/`aml`/`art`/`emt`/`dora` labels stripped) and `content_tags` freshly computed by re-running the keyword matcher against each item's real text — 600 items picked up a genuine, evidence-based content tag as a result. The final review of this migration script (before today's run) caught a Critical bug that would have silently wiped `source_tags` on every row the new collector had already tagged correctly — fixed and re-verified before the real run.
+
 **MCP server security/correctness audit** — a full external review of `mcpserver/` produced 9 security/correctness findings and 7 improvement opportunities, all implemented:
 - Fixed a timestamp-format bug in `get_warnings` that silently dropped items published on the cutoff day itself.
 - Floored `limit` clamps across `search_items`, `get_recent`, and `get_run_log` — a negative limit could previously disable SQLite's `LIMIT` entirely, returning the whole table.
