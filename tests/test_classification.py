@@ -321,3 +321,42 @@ def test_classify_batch_over_max_size_raises():
     entries = [{"item_id": "i", "axis": "document_type", "value": "warning", "by": "rule"}] * (MAX_BATCH_SIZE + 1)
     with pytest.raises(ValueError):
         classify_batch(engine, taxonomy, entries)
+
+
+def test_classify_batch_rolls_back_all_writes_on_mid_batch_failure(monkeypatch):
+    """A DB-level failure on the second entry's write must roll back the
+    first entry's write too - classify_batch's transactional guarantee
+    (architecture doc §4.5) is "all valid entries written, or none are",
+    not "whatever happened to complete before the failure"."""
+    import regradar.classification as classification_module
+
+    engine = _engine()
+    _insert_item(engine, "i1")
+    _insert_item(engine, "i2")
+    taxonomy = _make_taxonomy()
+
+    real_write = classification_module._write_classification_row_conn
+    calls = {"n": 0}
+
+    def failing_write(conn, taxonomy_arg, item_id, axis, value, by, confidence, classifier_id):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated DB failure on the second write")
+        return real_write(conn, taxonomy_arg, item_id, axis, value, by, confidence, classifier_id)
+
+    monkeypatch.setattr(classification_module, "_write_classification_row_conn", failing_write)
+
+    with pytest.raises(RuntimeError):
+        classification_module.classify_batch(engine, taxonomy, [
+            {"item_id": "i1", "axis": "document_type", "value": "warning", "by": "human:alice"},
+            {"item_id": "i2", "axis": "document_type", "value": "press_release", "by": "human:alice"},
+        ])
+
+    from sqlalchemy import text as sa_text
+    with engine.connect() as conn:
+        count = conn.execute(sa_text("SELECT COUNT(*) FROM classifications")).scalar()
+        i1_labels = conn.execute(sa_text("SELECT labels FROM items WHERE id='i1'")).scalar()
+        i2_labels = conn.execute(sa_text("SELECT labels FROM items WHERE id='i2'")).scalar()
+    assert count == 0  # the first (successful) write was rolled back too
+    assert i1_labels in (None, "{}")
+    assert i2_labels in (None, "{}")
