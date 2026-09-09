@@ -95,6 +95,41 @@ def test_render_digest_groups_by_jurisdiction_then_regulator_with_required_field
     assert result["next_cursor"] is not None
 
 
+def test_fetch_all_changes_includes_stuck_page_and_logs_error(monkeypatch, caplog):
+    """A page whose next_cursor doesn't advance past its own since-cursor
+    (the classification updated_at formatting mismatch, fixed separately)
+    must not silently drop that page's items from the digest - they're
+    still real, undelivered items. _fetch_all_changes should include them
+    and log an ERROR naming the stuck cursor and the item ids, then stop.
+    """
+    import regradar.digest as digest_module
+
+    stuck_items = [{"id": "item-1", "updated_at": "2026-01-01T00:00:00.000000Z"},
+                   {"id": "item-2", "updated_at": "2026-01-01T00:00:00.000000Z"}]
+
+    calls = []
+
+    def fake_get_changes(engine, since=None, profile=None, limit=100, include_body=False):
+        # Always returns the same page with a cursor equal to `since` -
+        # exactly the stuck-cursor scenario the guard must handle.
+        calls.append(since)
+        return stuck_items, "STUCK-CURSOR"
+
+    monkeypatch.setattr(digest_module, "get_changes", fake_get_changes)
+    caplog.set_level("ERROR")
+
+    items, cursor = digest_module._fetch_all_changes(engine=object(), expanded_profile=object(), since=None)
+
+    # First call (since=None) is a genuine new page and gets included; the
+    # second call (since="STUCK-CURSOR") reports the identical items again
+    # (the stuck page) - deduplicated by id, not appended a second time.
+    assert len(calls) == 2
+    assert items == stuck_items
+    assert cursor == "STUCK-CURSOR"
+    error_lines = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert any("did not advance" in msg and "STUCK-CURSOR" in msg and "item-1" in msg and "item-2" in msg for msg in error_lines)
+
+
 def test_render_markdown_empty_state():
     md = render_markdown("gb-all", [])
     assert "No new items" in md
@@ -443,6 +478,49 @@ def test_load_digests_rejects_missing_channels(tmp_path):
     }])
     with pytest.raises(DigestConfigError):
         load_digests(path)
+
+
+def test_load_digests_rejects_email_channel_without_to(tmp_path):
+    path = _write_digests(tmp_path, [{
+        "name": "uk-daily", "profile": "uk-equities-dealer", "schedule": "0 7 * * *",
+        "channels": [{"type": "email"}],
+    }])
+    with pytest.raises(DigestConfigError):
+        load_digests(path)
+
+
+def test_load_digests_accepts_valid_email_channel(tmp_path):
+    path = _write_digests(tmp_path, [{
+        "name": "uk-daily", "profile": "uk-equities-dealer", "schedule": "0 7 * * *",
+        "channels": [{"type": "email", "to": "ops@example.org"}],
+    }])
+    digests = load_digests(path)
+    assert digests[0]["channels"][0]["to"] == "ops@example.org"
+
+
+def test_load_digests_rejects_webhook_channel_without_url_or_secret_env(tmp_path):
+    path = _write_digests(tmp_path, [{
+        "name": "uk-daily", "profile": "uk-equities-dealer", "schedule": "0 7 * * *",
+        "channels": [{"type": "webhook", "url": "https://example.org/hook"}],  # missing secret_env
+    }])
+    with pytest.raises(DigestConfigError):
+        load_digests(path)
+
+    path2 = _write_digests(tmp_path, [{
+        "name": "uk-daily-2", "profile": "uk-equities-dealer", "schedule": "0 7 * * *",
+        "channels": [{"type": "webhook", "secret_env": "WEBHOOK_SECRET"}],  # missing url
+    }])
+    with pytest.raises(DigestConfigError):
+        load_digests(path2)
+
+
+def test_load_digests_accepts_valid_webhook_channel(tmp_path):
+    path = _write_digests(tmp_path, [{
+        "name": "uk-daily", "profile": "uk-equities-dealer", "schedule": "0 7 * * *",
+        "channels": [{"type": "webhook", "url": "https://example.org/hook", "secret_env": "WEBHOOK_SECRET"}],
+    }])
+    digests = load_digests(path)
+    assert digests[0]["channels"][0]["url"] == "https://example.org/hook"
 
 
 def test_scheduler_registers_one_cron_job_per_digest(tmp_path):
