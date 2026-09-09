@@ -143,13 +143,13 @@ include_unclassified: true       # default true - unclassified items are visible
 
 **Four shipped templates** live in `config/profiles/`: `uk-equities-dealer`, `eu-casp`, `eu-emi`, `eu-bank`. Pass one by its name, or write your own YAML file anywhere and pass it by path — `config/profiles/<name>.yaml` is checked first, then the argument is treated as a literal path. Loading a profile that references an unknown jurisdiction, activity or instrument id fails loudly rather than silently matching nothing.
 
-Every MCP query tool that filters items (`search_items_tool`, `get_recent_tool`, `get_warnings_tool`, `count_items_tool`, `get_month_facets_tool`, `get_items_since_tool`) takes an optional `profile` parameter — a shipped template name or a path — that combines (AND) with every other filter. The same `profile` parameter works on `/api/items` and `/api/months`, and the web UI has a profile picker in the search filters that round-trips through page/pagination links like the other filters.
+Every MCP query tool that filters items (`search_items_tool`, `get_recent_tool`, `get_warnings_tool`, `count_items_tool`, `get_month_facets_tool`, `get_items_since_tool`, `get_changes_tool`) takes an optional `profile` parameter — a shipped template name or a path — that combines (AND) with every other filter. The same `profile` parameter works on `/api/items`, `/api/months`, `/api/changes`, and `/feeds/<profile>.atom` (where it's part of the path, not a query param), and the web UI has a profile picker in the search filters that round-trips through page/pagination links like the other filters.
 
 Profiles are parsed and expanded once per process and cached — editing a profile file requires a restart to take effect, same as `taxonomy.yaml`.
 
 ## MCP server
 
-The MCP server exposes twelve tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
+The MCP server exposes thirteen tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
 
 | Tool | Description |
 |---|---|
@@ -163,8 +163,9 @@ The MCP server exposes twelve tools over streamable HTTP, returning structured c
 | `get_month_facets_tool` | Item counts grouped by publish month for a search, for a month-picker style view; also takes `profile` |
 | `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts. Deprecated for one release: prefer `list_labels_tool` |
 | `list_labels_tool` | Every taxonomy axis (config-driven) with its distinct classified values and item counts — discover valid `labels` values for `search_items_tool` before guessing |
-| `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — the polling primitive for "everything new since my last check"; also takes `profile` |
+| `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — also takes `profile`. Deprecated: only sees newly collected items, not a reclassification or human correction — prefer `get_changes_tool` |
 | `get_health_tool` | Most recent collector run's status, freshness, database integrity (see [Backups & recovery](#backups--recovery)), and `stalled_sources` (see [Source health](#source-health)) — check this before trusting search results after a long gap |
+| `get_changes_tool` | Everything that changed since an opaque cursor — the sync primitive (see [Export and sync](#export-and-sync)); replaces `get_items_since_tool` |
 
 **On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list. `labels={"document_type": ["warning"]}` reads the classification store instead — a superset that also catches warnings a rule or a human classified on a broad feed, not just items from a feed tagged `warnings` wholesale.
 
@@ -188,7 +189,7 @@ A minimal, functional list/search/reader view — no build step, server-rendered
 - **List view** shows collected items, most recent first, 50 per page with pagination. Filters: keyword search (auto-submits as you type), an exact-match toggle, a multi-select regulator panel (searchable by country, abbreviation, or full name, with per-regulator item counts, last-fetch date, and consecutive-failure warnings), a jurisdiction panel (expanded through ancestors, same semantics as `search_items_tool`'s `jurisdictions` — see [Classification](#classification)), a date range filter, and a **profile picker** (shipped templates from `config/profiles/*.yaml` — see [Profiles](#profiles)). A **By month** sidebar shows publication-month facets for the current query/filter set.
 - **Search syntax:** unquoted words are AND-ed (`bafin fines` matches items containing both, in either order); `+` behaves the same as a space (`bafin+fines`); wrap a phrase in quotes for adjacency (`"administrative fines"` only matches that exact phrase, not the two words scattered separately); check "exact match" to treat the entire query box as one literal phrase. Search uses the same FTS5 index as the MCP server (title, snippet, and full scraped text).
 - **Reader view** (click any title) strips the item down to title, regulator, date, source and content tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source. A minimal classification form lets you set `document_type` and add/remove `instrument` values by hand — it writes through the same `write_classification()` path as everything else, as a `human:*` correction that always wins over anything automated for that axis.
-- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, `/api/months` (both `/api/items` and `/api/months` accept `profile`), and `POST /api/items/{id}/classifications` (body: `{"axis", "value", "by", "confidence"?, "classifier_id"?, "remove"?}` — the same write path the reader view's form uses; `by` should be `human:<name>` for a genuine human correction) — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
+- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, `/api/months` (both `/api/items` and `/api/months` accept `profile`), `/api/changes` (see [Export and sync](#export-and-sync)), and `POST /api/items/{id}/classifications` (body: `{"axis", "value", "by", "confidence"?, "classifier_id"?, "remove"?}` — the same write path the reader view's form uses; `by` should be `human:<name>` for a genuine human correction) — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
 
 This is intentionally plain — a functional first pass, not a finished design. The query/data layer (`mcpserver/queries.py`) is decoupled from presentation, so upgrading the look (or swapping in a JS frontend against the JSON API) later doesn't require touching how data is fetched or filtered.
 
@@ -259,6 +260,8 @@ Copy `.env.example` to `.env` and adjust:
 | `ARTEFACTS_DIR` | `/app/data/originals` | Where fetched originals (HTML/PDF) are stored — see [Canonical documents & artefacts](#canonical-documents--artefacts) |
 | `MAX_ARTEFACT_BYTES` | `26214400` (25 MB) | Artefacts larger than this are not stored (the item itself is still collected) |
 | `STORE_ARTEFACTS` | `true` | Set to `false` to skip writing artefacts entirely (a constrained install) |
+| `FEED_MAX_ITEMS` | `50` | Entries returned by `/feeds/<profile>.atom` — see [Export and sync](#export-and-sync) |
+| `WEBHOOKS_PATH` | `/app/config/webhooks.yaml` | Webhook subscriber config — see [Export and sync](#export-and-sync); a missing file disables webhook delivery entirely |
 
 ## Canonical documents & artefacts
 
@@ -269,6 +272,26 @@ The collector also keeps the original fetched artefact (HTML or PDF) for every s
 `regradar render <item_id> --out <dir>` writes one item's document to disk; `regradar render --all --out <dir>` writes every item, skipping files whose content hasn't changed. Run it via `docker compose exec collector regradar render --all --out /app/data/export` (or any container that has the database mounted).
 
 If a body-conversion library is upgraded, `scripts/reprocess_bodies.py --dry-run` reports how many stored artefacts would be reconverted; drop `--dry-run` to actually rewrite `body_md` for those items.
+
+## Export and sync
+
+The primitive every downstream adapter builds on is "everything that changed since cursor X" (architecture doc [§6](docs/design/regradar-architecture.md#6-export-and-sync-contract)). A cursor is an opaque string (`<updated_at>|<item_id>`, don't parse it) returned by every call below — pass it back in as `since` to resume exactly where you left off. `updated_at` bumps on any content or label change, not just a new fetch, so this catches a reclassification or human correction that `get_items_since_tool`/`get_recent_tool` (which key off `fetched_at`) would miss.
+
+- **`get_changes_tool`** (MCP) and **`GET /api/changes?since=&profile=&limit=&include_body=`** (HTTP) both return `{"items": [...], "next_cursor"}`, items oldest-first, frontmatter-shaped like `get_item_tool`'s `document`. `include_body=true` also includes `body_md`; omit it to keep responses small when only checking what's new.
+- **`regradar export --format markdown|jsonl --out <dir> [--profile <p>] [--since <cursor>] [--with-originals]`** writes the section 3.1 layout (`markdown`) or one JSON object per line to `<out>/export.jsonl` (`jsonl`). It's idempotent for markdown — an unchanged item's file is never rewritten — and persists its own cursor at `<out>/.regradar-cursor`, so a scheduled export without `--since` always picks up only what's new since the last run. A missing or unparseable persisted cursor falls back to a full export (logged, not an error) rather than risk corrupting the target directory. `--since` on the command line always overrides the persisted cursor for that one run. `--with-originals` also copies each item's artefact into `<out>/originals/`, mirroring the artefact's own path (see [Canonical documents & artefacts](#canonical-documents--artefacts)); omit it and the export is Markdown/JSONL only. Run it the same way as `regradar render`: `docker compose exec collector regradar export --format markdown --out /app/data/export`.
+- **`GET /feeds/<profile>.atom`** — a standard Atom feed for any RSS/Atom reader, newest first, capped at `FEED_MAX_ITEMS` entries (default 50), summary only (never the full body) with a link back to the item.
+- **Webhooks**: `config/webhooks.yaml` (a list, unset by default — a missing file means webhook delivery is entirely skipped) defines subscribers pulling from the same change stream after every collection run:
+
+  ```yaml
+  - profile: uk-equities-dealer
+    url: https://example.org/hooks/regradar
+    secret_env: WEBHOOK_SECRET_UK_EQUITIES   # the secret itself lives in the env, never in this file
+    batch_size: 25       # default 25
+    max_retries: 5        # default 5
+    backoff_seconds: 30   # default 30, doubles per retry
+  ```
+
+  Each subscriber gets its own cursor (stored in SQLite, not a file) advanced only after a successful (2xx) delivery, so a failed batch is retried — with doubling backoff — on the *same* items next time rather than skipped. The POST body is `{"cursor", "next_cursor", "items"}` (same item shape as `/api/changes`), signed with `X-RegRadar-Signature: sha256=<hex hmac-sha256 of the raw body>` using the subscriber's own secret — verify it before trusting a delivery. One subscriber's failure (bad URL, receiver down, wrong secret) never blocks another's delivery. Delivery outcomes are logged to a `webhook_deliveries` table for operator visibility.
 
 ## Backups & recovery
 
@@ -310,7 +333,7 @@ Manage rules from the browser at **`http://localhost:8080/alerts`** — view, ad
 
 The file is optional — delete it, point `ALERTS_PATH` elsewhere, or leave it empty and keyword tagging is simply disabled; collection is unaffected. Example rules ship by default (`MiCA` → `mica`, `travel rule` → `travel-rule`, etc.). Edit freely for your entity's watchlist.
 
-Push notifications (webhook, email, Telegram, etc.) are **not** implemented yet — tagging only, for now.
+Keyword tags feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery. Email and Telegram digests are not implemented yet.
 
 ## Contributing
 
