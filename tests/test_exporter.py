@@ -251,3 +251,46 @@ def test_export_profile_narrows_items(tmp_path, monkeypatch):
     lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0])["regulator"] == "esma"
+
+
+def test_export_repeatable_format_writes_both_from_one_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc = main([
+        "export", "--format", "markdown", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path,
+    ])
+
+    assert rc == 0
+    md_files = list((out_dir / "export").rglob("*.md"))
+    assert len(md_files) == 1
+    lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+    # One shared cursor for both formats, not one each.
+    assert (out_dir / ".regradar-cursor").exists()
+
+
+def test_export_second_format_with_no_prior_output_falls_back_to_full_export(tmp_path, monkeypatch, caplog):
+    """Running --format markdown, then a later --format jsonl call into the
+    SAME --out, must not silently produce an empty export.jsonl just
+    because markdown's earlier run already advanced the persisted cursor
+    past everything. (regradar/exporter.py's module docstring recommends
+    --format markdown --format jsonl in one call instead - this is the
+    safety net for when that isn't followed.)
+    """
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc1 = main(["export", "--format", "markdown", "--out", str(out_dir), "--db-path", db_path])
+    assert rc1 == 0
+    assert not (out_dir / "export.jsonl").exists()
+
+    with caplog.at_level("WARNING"):
+        rc2 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+
+    assert rc2 == 0
+    assert "falling back to a full export" in caplog.text
+    lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
