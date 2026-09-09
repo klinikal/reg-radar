@@ -1,0 +1,63 @@
+- id: es-cnmv
+  name: CNMV
+  full_name: Comisión Nacional del Mercado de Valores
+  jurisdiction: es
+  jurisdiction_type: member_state
+  website: https://www.cnmv.es
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en
+  notes: "No RSS for the unregistered-firm warnings page (tipoNP=5, confirmed 2026-07-02 - the earlier note claiming warnings appear in the press releases feed was wrong, they don't). Scraped instead; item titles are generic batch labels ('Warnings from CNMV on unregistered institutions') - individual firm names only exist inside each linked PDF, so this source uses extract_pdf_text to pull that text into raw_content. Search must check raw_content, not just content_snippet, since some batch PDFs list several firms and a 500-char snippet can miss later ones."
+  sources:
+  - type: rss
+    url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=1
+    label: press_releases
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=4
+    label: sector_information
+    preferred_language: en
+    labels: {}
+  - type: scrape
+    url: "https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en"
+    label: warnings_unregistered
+    preferred_language: en
+    labels:
+      document_type: warning
+    scrape:
+      item_selector: "li.blocks-single"
+      title_selector: "li.resumen a"
+      link_selector: "li.resumen a"
+      date_selector: "li.fecha-con-hora"
+      date_attribute:
+      content_selector:
+      extract_pdf_text: true
+
+- id: es-bde
+  name: Banco de España
+  full_name: Banco de España
+  jurisdiction: es
+  jurisdiction_type: member_state
+  website: https://www.bde.es/en/
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "BdE does not maintain a warnings/blacklist - unauthorised firm warnings for Spain are CNMV's remit."
+  sources:
+  - type: rss
+    url: https://www.bde.es/wbe/en/inicio/rss/rss-noticias/
+    label: news_and_events
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.bde.es/wbe/en/inicio/rss/rss-normativa/
+    label: financial_regulation
+    preferred_language: en
+    labels: {}
+
+# ─── Sweden ───────────────────────────────────────────────────────────────────
+

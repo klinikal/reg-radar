@@ -1,0 +1,101 @@
+# Jurisdiction hierarchy (architecture doc §4.2). `parents` is a list so the
+# graph can be a DAG; ancestors are the transitive closure. Every regulator's
+# `jurisdiction` in config/regulators/*.yaml must be an id in this file - the
+# collector fails loudly at startup if it is not (regradar/taxonomy.py).
+#
+# The EEA is deliberately not its own jurisdiction id: EEA-EFTA states (is,
+# no) list `eu` directly as parent, per the open question in the issue.
+- id: eu
+  name: European Union
+  type: supranational
+- id: at
+  name: Austria
+  parents: [eu]
+- id: be
+  name: Belgium
+  parents: [eu]
+- id: bg
+  name: Bulgaria
+  parents: [eu]
+- id: cy
+  name: Cyprus
+  parents: [eu]
+- id: cz
+  name: Czech Republic
+  parents: [eu]
+- id: de
+  name: Germany
+  parents: [eu]
+- id: dk
+  name: Denmark
+  parents: [eu]
+- id: ee
+  name: Estonia
+  parents: [eu]
+- id: es
+  name: Spain
+  parents: [eu]
+- id: fi
+  name: Finland
+  parents: [eu]
+- id: fr
+  name: France
+  parents: [eu]
+- id: gr
+  name: Greece
+  parents: [eu]
+- id: hr
+  name: Croatia
+  parents: [eu]
+- id: hu
+  name: Hungary
+  parents: [eu]
+- id: ie
+  name: Ireland
+  parents: [eu]
+- id: is
+  name: Iceland
+  parents: [eu]
+  note: EEA-EFTA state; EU financial services acquis applies once incorporated into the EEA Agreement.
+- id: it
+  name: Italy
+  parents: [eu]
+- id: lt
+  name: Lithuania
+  parents: [eu]
+- id: lu
+  name: Luxembourg
+  parents: [eu]
+- id: lv
+  name: Latvia
+  parents: [eu]
+- id: mt
+  name: Malta
+  parents: [eu]
+- id: nl
+  name: Netherlands
+  parents: [eu]
+- id: "no"
+  name: Norway
+  parents: [eu]
+  note: EEA-EFTA state; EU financial services acquis applies once incorporated into the EEA Agreement.
+- id: pl
+  name: Poland
+  parents: [eu]
+- id: pt
+  name: Portugal
+  parents: [eu]
+- id: ro
+  name: Romania
+  parents: [eu]
+- id: se
+  name: Sweden
+  parents: [eu]
+- id: si
+  name: Slovenia
+  parents: [eu]
+- id: sk
+  name: Slovakia
+  parents: [eu]
+- id: gb
+  name: United Kingdom

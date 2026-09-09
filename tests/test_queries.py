@@ -4,7 +4,9 @@ import tempfile
 import pytest
 from datetime import datetime, timezone, timedelta
 from collector.schema import Item, make_item_id
-from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
+from collector.storage import (
+    init_db, insert_item, upsert_regulator, record_run_start, record_run_complete, record_source_empty_run,
+)
 from mcpserver.queries import (
     search_items,
     search_items_advanced,
@@ -297,6 +299,123 @@ def test_get_item_missing_returns_none():
     try:
         result = get_item(engine, "nonexistent-id")
         assert result is None
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_includes_body_md_and_document_frontmatter():
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational", "website": "https://esma.europa.eu",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="esma", raw_content="")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+
+        assert result["body_md"] == ""  # no body_md and no raw_content to derive one from
+        assert "document" in result
+        document = result["document"]
+        assert document["id"] == item.id
+        assert document["regulator"] == "esma"
+        assert document["regulator_name"] == "European Securities and Markets Authority"
+        assert document["jurisdiction"] == "eu"
+        assert document["regradar_schema"] == 1
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_document_frontmatter_includes_labels_provenance_and_jurisdiction_ancestors():
+    """A classified item's frontmatter carries effective labels, one
+    label_provenance entry per effective value, and jurisdiction_ancestors
+    from the real jurisdiction hierarchy (architecture doc §3.2/§4.4) -
+    e.g. a French regulator's ancestors are [eu]."""
+    from regradar.classification import write_classification
+    from regradar.taxonomy import build_taxonomy
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+            "jurisdiction": "fr", "jurisdiction_type": "member_state", "website": "https://www.amf-france.org",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="fr-amf")
+        insert_item(engine, item)
+
+        taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+        write_classification(engine, taxonomy, item.id, "document_type", "warning",
+                              by="source_default", confidence=1.0)
+        write_classification(engine, taxonomy, item.id, "instrument", "mica",
+                              by="rule", confidence=0.9)
+
+        result = get_item(engine, item.id, taxonomy=taxonomy)
+        document = result["document"]
+
+        assert document["jurisdiction"] == "fr"
+        assert document["jurisdiction_ancestors"] == ["eu"]
+        assert document["labels"] == {"document_type": "warning", "instrument": ["mica"]}
+        provenance_by_axis = {p["axis"]: p for p in document["label_provenance"]}
+        assert provenance_by_axis["document_type"] == {
+            "axis": "document_type", "value": "warning", "by": "source_default",
+            "confidence": 1.0, "taxonomy_version": taxonomy.version(),
+        }
+        assert provenance_by_axis["instrument"] == {
+            "axis": "instrument", "value": "mica", "by": "rule",
+            "confidence": 0.9, "taxonomy_version": taxonomy.version(),
+        }
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_without_taxonomy_omits_provenance_and_ancestors():
+    """Backward compatibility: a caller with no taxonomy handy still gets a
+    valid document, just without the taxonomy-derived fields."""
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+            "jurisdiction": "fr", "jurisdiction_type": "member_state", "website": "https://www.amf-france.org",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="fr-amf")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+        document = result["document"]
+        assert document["jurisdiction_ancestors"] == []
+        assert "labels" not in document
+        assert "label_provenance" not in document
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_derives_body_md_from_raw_content_for_pre_v2_items():
+    """A pre-v2 row (items.body_md NULL/empty, raw_content populated) gets
+    a real body_md back from get_item(), and document.content_hash covers
+    that derived text, not the empty string - see
+    regradar.document.effective_body_md()."""
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu",
+            "jurisdiction_type": "supranational", "website": "https://esma.europa.eu",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="esma", raw_content="<p>Some notice text.</p>")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+
+        assert result["body_md"] != ""
+        assert "Some notice text." in result["body_md"]
+        document = result["document"]
+        from regradar.document import _content_hash
+        assert document["content_hash"] == _content_hash(result["body_md"])
+        assert document["content_hash"] != _content_hash("")
     finally:
         os.unlink(db_path)
 
@@ -870,5 +989,125 @@ def test_get_health_reports_db_integrity_unknown_when_never_checked():
         record_run_complete(engine, run_id, 10, 5, 0, [])
         result = get_health(engine)
         assert result["db_integrity"] == "unknown"
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_flags_stalled_source_at_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        for _ in range(3):
+            record_source_empty_run(engine, "esma", "all_news")
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is True
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_not_stalled_below_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "esma", "all_news")
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is False
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_healthy_regulator_not_stalled():
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is False
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_lists_stalled_sources_at_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 2)
+    engine, db_path = setup_engine()
+    try:
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "fr-amf", "warnings")  # below threshold
+        result = get_health(engine)
+        stalled_keys = {(s["regulator_id"], s["source_label"]) for s in result["stalled_sources"]}
+        assert ("esma", "all_news") in stalled_keys
+        assert ("fr-amf", "warnings") not in stalled_keys
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_stalled_sources_empty_when_none_stalled():
+    engine, db_path = setup_engine()
+    try:
+        result = get_health(engine)
+        assert result["stalled_sources"] == []
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_jurisdictions_without_taxonomy_raises():
+    """A jurisdictions filter cannot be expanded without a taxonomy.
+    Dropping it silently used to widen the query to the whole corpus - the
+    opposite of what the caller asked for."""
+    from mcpserver.queries import _jurisdiction_filter_conditions
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        insert_item(engine, make_item(regulator_id="esma"))
+
+        with pytest.raises(ValueError, match="jurisdictions filter requires a taxonomy"):
+            search_items(engine, "", jurisdictions=["fr"], taxonomy=None)
+        with pytest.raises(ValueError, match="jurisdictions filter requires a taxonomy"):
+            _jurisdiction_filter_conditions(["fr"], None)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_unclassified_derives_body_md_from_raw_content_for_pre_v2_items():
+    """A v1-upgraded row has items.body_md NULL but raw_content populated.
+    Returning the raw column left the classifier skill and `reg-radar
+    classify` with an empty body to classify."""
+    from mcpserver.queries import get_unclassified
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        item = make_item(regulator_id="esma", raw_content="<p>Some notice text.</p>")
+        insert_item(engine, item)
+
+        results = get_unclassified(engine, axis="document_type")
+
+        assert [r["id"] for r in results] == [item.id]
+        assert "Some notice text." in results[0]["body_md"]
+        # Shape unchanged: the extra columns are only read to derive the body.
+        assert "raw_content" not in results[0]
+        assert "content_snippet" not in results[0]
     finally:
         os.unlink(db_path)

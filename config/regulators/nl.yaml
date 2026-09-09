@@ -1,0 +1,46 @@
+- id: nl-afm
+  name: AFM
+  full_name: Autoriteit Financiële Markten
+  jurisdiction: nl
+  jurisdiction_type: member_state
+  website: https://www.afm.nl/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "No warnings-specific RSS feed. Warnings list is Dutch-language only."
+  sources:
+  - type: rss
+    url: https://www.afm.nl/en/rss-feed/nieuws-professionals
+    label: news_professionals_en
+    preferred_language: en
+    labels: {}
+
+- id: nl-dnb
+  name: DNB
+  full_name: De Nederlandsche Bank
+  jurisdiction: nl
+  jurisdiction_type: member_state
+  website: https://www.dnb.nl/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "DNB has crypto-specific filtered RSS feeds. Crypto service providers feed is directly relevant to Strike's business."
+  sources:
+  - type: rss
+    url: https://www.dnb.nl/en/rss/16451/6882/117
+    label: crypto_service_providers
+    preferred_language: en
+    labels:
+      instrument:
+      - mica
+  - type: rss
+    url: https://www.dnb.nl/en/rss/16451/6882/Enforcement%20measures
+    label: enforcement_measures
+    preferred_language: en
+    labels:
+      document_type: enforcement
+
+# ─── Norway ───────────────────────────────────────────────────────────────────
+

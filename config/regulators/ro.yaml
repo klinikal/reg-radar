@@ -1,0 +1,30 @@
+- id: ro-asf
+  name: ASF Romania
+  full_name: Autoritatea de Supraveghere Financiară
+  jurisdiction: ro
+  jurisdiction_type: member_state
+  website: https://www.asfromania.ro/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.asfromania.ro/en/a/19/investor-alerts---information
+  notes: "English RSS path is accessible; Romanian feed is WAF-blocked."
+  sources:
+  - type: rss
+    url: https://www.asfromania.ro/en/rss/rss.xml
+    label: all_news_en
+    preferred_language: en
+    labels: {}
+
+- id: ro-bnr
+  name: BNR
+  full_name: Banca Națională a României
+  jurisdiction: ro
+  jurisdiction_type: member_state
+  website: https://www.bnr.ro/en/
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "No RSS - all /rss/* paths return skeletal exchange rate shell with no items. Email subscription only."
+  sources: []

@@ -1,0 +1,36 @@
+- id: hu-mnb
+  name: MNB
+  full_name: Magyar Nemzeti Bank
+  jurisdiction: hu
+  jurisdiction_type: member_state
+  website: https://www.mnb.hu/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.mnb.hu/en/supervision/market-supervision/vi-1-investor-warnings
+  notes: "Non-standard RSS path pattern (/enrss/{id}). Standard paths all 404."
+  sources:
+  - type: rss
+    url: https://www.mnb.hu/enrss/14
+    label: supervision_news
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.mnb.hu/enrss/23
+    label: market_supervision
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.mnb.hu/enrss/16
+    label: press_room
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.mnb.hu/enrss/6
+    label: latest_releases
+    preferred_language: en
+    labels: {}
+
+# ─── Iceland ──────────────────────────────────────────────────────────────────
+

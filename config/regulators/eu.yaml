@@ -1,0 +1,122 @@
+- id: esma
+  name: ESMA
+  full_name: European Securities and Markets Authority
+  jurisdiction: eu
+  jurisdiction_type: supranational
+  website: https://www.esma.europa.eu
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.esma.europa.eu/investor-corner/frauds-and-scams
+  notes: "Primary pan-EU CASP supervisor under MiCA. CASP register at registers.esma.europa.eu/publication/searchCASP."
+  sources:
+  - type: scrape
+    url: "https://www.esma.europa.eu/press-news/esma-news"
+    label: all_news
+    preferred_language: en
+    labels: {}
+    notes: "Switched from RSS to scrape 2026-07-03 - the RSS feed has no pubDate field (date is embedded in the item's HTML description, which feedparser never extracts), so every all_news item had published_at=NULL. This page behind the same feed has clean, scrapeable date markup instead. Each news card has two <a> tags (a real title link marked rel=\"bookmark\", wrapping .search-title/.search-date, plus an empty decorative one elsewhere in the card) - link_selector must key off a[rel=\"bookmark\"], not a bare 'a' or '.search-title a', to avoid matching the wrong one."
+    scrape:
+      item_selector: "article.node--type-news"
+      title_selector: ".search-title"
+      link_selector: 'a[rel="bookmark"]'
+      date_selector: ".search-date"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: https://www.esma.europa.eu/databases-library/esma-library
+    label: library
+    preferred_language: en
+    labels: {}
+    notes: "Document library (guidelines, technical standards, Q&As, final reports, press releases). Default sort is newest-first, so scraping the base URL each run catches new publications. Historic backfill (~7,260 docs across ~363 pages) handled separately - see scripts/backfill_esma_library.py."
+    scrape:
+      item_selector: "table.views-table tbody tr"
+      title_selector: "td.views-field-title a"
+      link_selector: "td.views-field-title a"
+      date_selector: "td.views-field-created time"
+      date_attribute: "datetime"
+      content_selector: "td.views-field-field-document-type"
+  - type: page_watch
+    url: "https://www.esma.europa.eu/esmas-activities/digital-finance-and-innovation/markets-crypto-assets-regulation-mica"
+    label: mica_hub_page
+    preferred_language: en
+    labels:
+      document_type: page_change
+      instrument:
+      - mica
+    watch_selector: ".node__content"
+
+- id: amla
+  name: AMLA
+  full_name: Authority for Anti-Money Laundering and Countering the Financing of Terrorism
+  jurisdiction: eu
+  jurisdiction_type: supranational
+  website: https://www.amla.europa.eu
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "New EU AML/CFT supervisory authority (operational 2026) - directly relevant since CASPs are AML-obliged entities, distinct from ESMA/EBA's MiCA-specific roles. Document library (resources/document-library_en) is JS-rendered (facets/listing populate via client-side AJAX, confirmed empty even through FlareSolverr's real browser) and not reliably scrapeable with current tooling - known gap, not attempted. RSS news feed and the public-consultations page (server-rendered, clean markup) are both tracked instead."
+  sources:
+  - type: rss
+    url: https://www.amla.europa.eu/node/19/rss_en
+    label: all_news
+    preferred_language: en
+    labels: {}
+  - type: scrape
+    url: "https://www.amla.europa.eu/policy/public-consultations_en"
+    label: public_consultations
+    preferred_language: en
+    labels: {}
+    notes: "Each item has two <time datetime=...> elements (Opening date, then Deadline) - date_selector resolves to the first one via select_one()'s document-order match."
+    scrape:
+      item_selector: "article.ecl-content-item"
+      title_selector: ".ecl-content-block__title a"
+      link_selector: ".ecl-content-block__title a"
+      date_selector: ".ecl-description-list__definition time"
+      date_attribute: "datetime"
+      content_selector:
+
+- id: eba
+  name: EBA
+  full_name: European Banking Authority
+  jurisdiction: eu
+  jurisdiction_type: supranational
+  website: https://www.eba.europa.eu
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "Supervises significant ART/EMT issuers under MiCA."
+  sources:
+  - type: rss
+    url: https://www.eba.europa.eu/news-press/news/rss.xml
+    label: all_news
+    preferred_language: en
+    labels: {}
+
+- id: eiopa
+  name: EIOPA
+  full_name: European Insurance and Occupational Pensions Authority
+  jurisdiction: eu
+  jurisdiction_type: supranational
+  website: https://www.eiopa.europa.eu
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "Secondary relevance - joint ESA work on MiCA and DORA."
+  sources:
+  - type: rss
+    url: https://www.eiopa.europa.eu/node/3/rss_en
+    label: publications
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.eiopa.europa.eu/node/4816/rss_en
+    label: news
+    preferred_language: en
+    labels: {}
+
+# ─── Austria ──────────────────────────────────────────────────────────────────
+

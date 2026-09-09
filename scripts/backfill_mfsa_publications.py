@@ -2,21 +2,27 @@
 
 The regular collector only scrapes page 1 of each *enabled* category
 (newest-first) on every run - enough to catch new publications going
-forward for the categories currently enabled in config/regulators.yaml.
+forward for the categories currently enabled in config/regulators/mt.yaml.
 This script walks a category's full paginated history, and - unlike the
 ESMA/FCA backfills - can also target categories that aren't enabled for
-daily collection at all, since config/regulators.yaml defines MFSA's full
+daily collection at all, since config/regulators/mt.yaml defines MFSA's full
 ~65-category taxonomy with only the CASP-relevant subset enabled.
 
 MFSA is Cloudflare-protected and requires FlareSolverr for every request
 (confirmed - plain HTTP is blocked regardless of User-Agent). The shared
-throttle/backoff logic in collector/fetcher.py paces every FlareSolverr
-call automatically (default: minimum 8s between requests, longer backoff
-on ban-like errors) - this script does not need its own pacing logic, but
-inherits FlareSolverr's real per-request cost (~10-15s), so a full run
-across many categories and pages is slow by design, not a bug. Always
---dry-run first, and prefer running overnight / off-hours given the
-cumulative time.
+throttle/backoff logic in collector/adapters/http.py paces every
+FlareSolverr call automatically (default: minimum 8s between requests,
+longer backoff on ban-like errors) - this script does not need its own
+pacing logic, but inherits FlareSolverr's real per-request cost (~10-15s),
+so a full run across many categories and pages is slow by design, not a
+bug. Always --dry-run first, and prefer running overnight / off-hours given
+the cumulative time.
+
+Parses each page via the registered `scrape` adapter's own parser
+(collector/adapters/scrape.py: ScrapeAdapter().parse()) instead of
+duplicating its selector logic - the only thing this script adds on top is
+walking the pagination and fetching each page's raw HTML (via the same
+shared collector.adapters.http.fetch_html() the adapter itself uses).
 
 Run inside the collector container:
 
@@ -32,9 +38,10 @@ import re
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
-import yaml
-
-from collector.fetcher import _fetch_html, _parse_scrape
+from collector.adapters.http import fetch_html
+from collector.adapters.scrape import ScrapeAdapter
+from collector.main import load_regulators
+from collector.pipeline import process_raw_documents
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -47,9 +54,8 @@ REGULATOR_ID = "mt-mfsa"
 
 
 def _load_scrape_sources() -> list[dict]:
-    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
-    with open(regulators_path) as f:
-        regulators = yaml.safe_load(f)
+    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+    regulators = load_regulators(regulators_path)
     reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
     return [s for s in reg["sources"] if s.get("type") == "scrape"]
 
@@ -87,11 +93,12 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
             # maintenance/captcha page that lacks the real listing markup
             # parses to 0 items with no error raised).
             expected_selector = source.get("scrape", {}).get("item_selector")
-            html = _fetch_html(page_url, fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url, expected_selector)
+            html = fetch_html(page_url, fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url, expected_selector)
             if html is None:
                 raise RuntimeError("fetch failed (see FlareSolverr warnings above)")
 
-            items = _parse_scrape(html, page_source, REGULATOR_ID, fetch_cfg)
+            raw_docs = ScrapeAdapter().parse(html, page_source, REGULATOR_ID, fetch_cfg)
+            items = process_raw_documents(raw_docs, page_source, REGULATOR_ID)
             total_fetched += len(items)
 
             if dry_run:
@@ -130,11 +137,11 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
 
 
 def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | None) -> None:
-    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
-    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     if not flaresolverr_url:
@@ -182,7 +189,7 @@ def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | Non
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--category", help="Single source label to backfill (see config/regulators.yaml mt-mfsa sources)")
+    group.add_argument("--category", help="Single source label to backfill (see config/regulators/mt.yaml mt-mfsa sources)")
     group.add_argument("--all", action="store_true", help="Backfill every MFSA category, enabled or not")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and parse every page but write nothing")
     parser.add_argument("--max-pages", type=int, default=None, help="Cap pages fetched per category (useful for testing)")

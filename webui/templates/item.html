@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ item.title or "casp-radar" }}{% endblock %}
+{% block title %}{{ item.title or "reg-radar" }}{% endblock %}
 {% block html_lang %}{{ item.language or "en" }}{% endblock %}
 {% block content %}
 
@@ -15,6 +15,53 @@
     {% if item.content_tag_list %}<span class="tag-group tag-content">{{ item.content_tag_list | join(", ") }}</span>{% endif %}
   </div>
   <p class="source-link"><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">View original at source &rarr;</a></p>
+
+  <section class="classify">
+    <h3>Classification</h3>
+
+    <form method="post" action="/item/{{ item.id }}/classify" class="classify-form">
+      <input type="hidden" name="axis" value="document_type">
+      <input type="hidden" name="action" value="set">
+      <label>Document type
+        <select name="value" onchange="this.form.submit()">
+          <option value="" disabled {% if not current_document_type %}selected{% endif %}>(unset)</option>
+          {% for v in document_type_values %}
+          <option value="{{ v }}" {% if v == current_document_type %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit">Set</button></noscript>
+    </form>
+
+    <div class="instruments">
+      <span>Instruments:</span>
+      {% for v in current_instruments %}
+      <form method="post" action="/item/{{ item.id }}/classify" class="instrument-tag">
+        <input type="hidden" name="axis" value="instrument">
+        <input type="hidden" name="value" value="{{ v }}">
+        <input type="hidden" name="action" value="remove">
+        <span class="tag-group tag-content">{{ v }}</span>
+        <button type="submit" title="Remove">&times;</button>
+      </form>
+      {% else %}
+      <span class="note">none</span>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="/item/{{ item.id }}/classify" class="classify-form">
+      <input type="hidden" name="axis" value="instrument">
+      <input type="hidden" name="action" value="set">
+      <label>Add instrument
+        <select name="value" onchange="this.form.submit()">
+          <option value="" disabled selected>(choose)</option>
+          {% for v in instrument_values %}
+          <option value="{{ v }}">{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit">Add</button></noscript>
+    </form>
+  </section>
 
   {% if not item.has_full_text %}
   <p class="note">Only an RSS snippet was collected for this item — no full text was scraped. Showing what's available; see the source link above for the full article.</p>

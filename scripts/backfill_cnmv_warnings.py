@@ -6,8 +6,8 @@ archive behind it (~5 pages / ~77 documents as of 2026-07-02 - much smaller
 than the ESMA/FCA backfills, safe to just run directly rather than treating
 it as a big separate decision).
 
-Reads the source URL/selectors from config/regulators.yaml (the es-cnmv
-entry, warnings_unregistered source) rather than duplicating them here.
+Reads the source URL/selectors from config/regulators/ (the es-cnmv entry,
+warnings_unregistered source) rather than duplicating them here.
 
 Run inside the collector container:
 
@@ -23,9 +23,9 @@ import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
-import yaml
 
 from collector.fetcher import fetch_source
+from collector.main import load_regulators
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -39,9 +39,8 @@ SOURCE_LABEL = "warnings_unregistered"
 
 
 def _load_source() -> dict:
-    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
-    with open(regulators_path) as f:
-        regulators = yaml.safe_load(f)
+    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+    regulators = load_regulators(regulators_path)
     reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
     return next(s for s in reg["sources"] if s["label"] == SOURCE_LABEL)
 
@@ -60,10 +59,10 @@ def _page_url(base_url: str, page: int) -> str:
 
 def run(delay: float, dry_run: bool) -> None:
     source = _load_source()
-    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
-    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     resp = httpx.get(source["url"], headers={"User-Agent": user_agent}, timeout=timeout, follow_redirects=True)

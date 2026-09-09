@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -7,7 +8,18 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from regradar.classification import winning_classification_rows
+from regradar.document import build_frontmatter, effective_body_md, frontmatter_to_json_safe
+from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS
+from regradar.changes import DATASET_IMPORT_CURSOR_KEY, CursorError, decode_cursor, encode_cursor
+
 logger = logging.getLogger(__name__)
+
+# Consecutive zero-item runs (despite a successful fetch) before a source is
+# considered stalled rather than just having a quiet day - see
+# collector.storage.record_source_empty_run. Env-configurable to match the
+# FLARESOLVERR_* convention.
+STALL_THRESHOLD_RUNS = int(os.getenv("STALL_THRESHOLD_RUNS", "7"))
 
 
 def _row_to_dict(row, keys):
@@ -34,6 +46,12 @@ def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") ->
     shared by search_items() and get_recent(): `tags` searches source_tags OR
     content_tags combined (backward-compatible default), `source_tags` and
     `content_tags` each filter their own column specifically."""
+    if tags or source_tags or content_tags:
+        logger.warning(
+            "Query used deprecated tags/source_tags/content_tags filter - these read the old "
+            "flat columns; prefer jurisdictions/labels, which read the classification store "
+            "with provenance (architecture doc §4.4)."
+        )
     conditions = []
     params = {}
     if tags:
@@ -86,7 +104,8 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
 
 
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
-                  content_tags=None, date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
+                  content_tags=None, jurisdictions=None, labels=None, taxonomy=None, profile=None,
+                  date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
@@ -126,6 +145,18 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
         conditions.extend(tag_conditions)
         params.update(tag_params)
+        if jurisdictions:
+            jur_conditions, jur_params = _jurisdiction_filter_conditions(jurisdictions, taxonomy)
+            conditions.extend(jur_conditions)
+            params.update(jur_params)
+        if labels:
+            label_conditions, label_params = _labels_filter_conditions(labels)
+            conditions.extend(label_conditions)
+            params.update(label_params)
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         if date_from:
             conditions.append("published_at >= :date_from")
             params["date_from"] = date_from
@@ -183,6 +214,140 @@ def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = T
     return conditions, params
 
 
+def _jurisdiction_filter_conditions(jurisdictions, taxonomy, prefix: str = "") -> tuple[list[str], dict]:
+    """Expands each requested jurisdiction through taxonomy.ancestors() (a
+    profile selecting "fr" also matches "eu" - architecture doc §4.2) and
+    builds a condition matching any item whose regulator's jurisdiction (or
+    an ancestor of it) is in that expanded set.
+
+    A jurisdictions filter without a taxonomy cannot be expanded, and
+    silently returning no conditions would widen the query to the whole
+    corpus - the opposite of what the caller asked for - so it raises."""
+    if not jurisdictions:
+        return [], {}
+    if taxonomy is None:
+        raise ValueError("jurisdictions filter requires a taxonomy")
+    expanded = set()
+    for j in jurisdictions:
+        j = j.lower()
+        expanded.add(j)
+        expanded.update(taxonomy.ancestors(j))
+    params = {}
+    placeholders = []
+    for i, j in enumerate(sorted(expanded)):
+        key = f"{prefix}jur_{i}"
+        placeholders.append(f":{key}")
+        params[key] = j
+    condition = (
+        "regulator_id IN (SELECT id FROM regulators WHERE LOWER(jurisdiction) IN "
+        f"({', '.join(placeholders)}))"
+    )
+    return [condition], params
+
+
+def _labels_filter_conditions(labels, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds one `id IN (SELECT item_id FROM item_labels WHERE axis=... AND
+    value IN (...))` condition per axis in `labels` (ANDed across axes, ORed
+    within an axis's values) - see regradar/classification.py's item_labels
+    side table."""
+    conditions = []
+    params = {}
+    for axis_i, (axis, values) in enumerate(sorted((labels or {}).items())):
+        if not values:
+            continue
+        placeholders = []
+        for i, value in enumerate(values):
+            key = f"{prefix}lbl_{axis_i}_{i}"
+            placeholders.append(f":{key}")
+            params[key] = value
+        axis_key = f"{prefix}lbl_axis_{axis_i}"
+        params[axis_key] = axis
+        conditions.append(
+            f"id IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key} AND value IN ({', '.join(placeholders)}))"
+        )
+    return conditions, params
+
+
+def _profile_filter_conditions(expanded, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds the WHERE conditions for one expanded profile (architecture
+    doc §5.3 step 3), shared by every query function that accepts a
+    `profile` parameter. `expanded` is a regradar.profiles.ExpandedProfile -
+    the union/intersection/exclusion is already computed once by
+    expand_profile(); this only turns those sets into SQL.
+
+    Instrument matching is "intersects instrument_ids OR has no live
+    instrument label and include_unclassified is true" - the "no live
+    label" branch is its own `NOT IN (SELECT item_id FROM item_labels
+    WHERE axis=...)` condition, never a non-matching LIKE, so it can never
+    be conflated with a genuine mismatch (docs/issues/05-*.md design
+    notes). If neither branch applies (no instruments selected in the
+    profile and include_unclassified is false), nothing can match.
+    """
+    conditions = []
+    params: dict = {}
+
+    # Deliberately not calling _jurisdiction_filter_conditions() here: that
+    # helper expands ancestors from a raw jurisdiction list itself, but
+    # expanded.jurisdiction_ids is already the fully-expanded (ancestors +
+    # descendants) set from expand_profile() - re-running ancestor
+    # expansion over an already-closed set would be harmless but pointless,
+    # and would need a taxonomy object this function doesn't otherwise
+    # take. Same "regulator_id IN (SELECT ... WHERE LOWER(jurisdiction)
+    # IN (...))" shape, just against a pre-computed set.
+    if expanded.jurisdiction_ids:
+        placeholders = []
+        for i, j in enumerate(sorted(expanded.jurisdiction_ids)):
+            key = f"{prefix}pjur_{i}"
+            placeholders.append(f":{key}")
+            params[key] = j
+        conditions.append(
+            "regulator_id IN (SELECT id FROM regulators WHERE LOWER(jurisdiction) IN "
+            f"({', '.join(placeholders)}))"
+        )
+
+    instrument_branches = []
+    if expanded.instrument_ids or expanded.include_unclassified:
+        axis_key = f"{prefix}pinst_axis"
+        params[axis_key] = INSTRUMENT_AXIS
+        if expanded.instrument_ids:
+            placeholders = []
+            for i, inst in enumerate(sorted(expanded.instrument_ids)):
+                key = f"{prefix}pinst_{i}"
+                placeholders.append(f":{key}")
+                params[key] = inst
+            instrument_branches.append(
+                f"id IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key} AND value IN ({', '.join(placeholders)}))"
+            )
+        if expanded.include_unclassified:
+            instrument_branches.append(f"id NOT IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key})")
+    conditions.append("(" + " OR ".join(instrument_branches) + ")" if instrument_branches else "1=0")
+
+    if expanded.document_types:
+        dt_conditions, dt_params = _labels_filter_conditions(
+            {DOCUMENT_TYPE_AXIS: sorted(expanded.document_types)}, prefix=f"{prefix}pdt_"
+        )
+        conditions.extend(dt_conditions)
+        params.update(dt_params)
+
+    if expanded.regulators:
+        placeholders = []
+        for i, r in enumerate(sorted(expanded.regulators)):
+            key = f"{prefix}preg_{i}"
+            placeholders.append(f":{key}")
+            params[key] = r
+        conditions.append(f"regulator_id IN ({', '.join(placeholders)})")
+
+    if expanded.languages:
+        placeholders = []
+        for i, lang in enumerate(sorted(expanded.languages)):
+            key = f"{prefix}plang_{i}"
+            placeholders.append(f":{key}")
+            params[key] = lang
+        conditions.append(f"language IN ({', '.join(placeholders)})")
+
+    return conditions, params
+
+
 def _extend_date_to(date_to: str) -> str:
     # A plain "YYYY-MM-DD" is a lexicographic prefix of that day's
     # timestamped rows, so a naive <= comparison would exclude them
@@ -192,7 +357,8 @@ def _extend_date_to(date_to: str) -> str:
 
 
 def search_items_advanced(engine, query: str = "", exact: bool = False, regulator_ids=None,
-                           date_from=None, date_to=None, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+                           date_from=None, date_to=None, profile=None,
+                           limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     """List-view search: multi-term AND with quoted-phrase/exact-match support,
     multi-regulator OR, paginated.
 
@@ -220,6 +386,10 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
         if date_to:
             conditions.append("published_at <= :date_to")
             params["date_to"] = _extend_date_to(date_to)
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with engine.connect() as conn:
             total = conn.execute(text(f"SELECT COUNT(*) FROM items {where}"), params).scalar()
@@ -242,16 +412,20 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
         return _run(use_fts=False)
 
 
-def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids=None) -> list[dict]:
+def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids=None, profile=None) -> list[dict]:
     """Item counts grouped by publish month (YYYY-MM), for a month-picker sidebar.
 
-    Applies the same search/regulator filters as search_items_advanced but
-    deliberately ignores any date filter, so every month remains clickable
+    Applies the same search/regulator/profile filters as search_items_advanced
+    but deliberately ignores any date filter, so every month remains clickable
     regardless of the currently selected date range.
     """
     def _run(use_fts: bool):
         conditions, params = _search_conditions(query, exact, regulator_ids, use_fts=use_fts)
         conditions.append("published_at IS NOT NULL")
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         where = "WHERE " + " AND ".join(conditions)
         sql = f"""
             SELECT strftime('%Y-%m', published_at) as month, COUNT(*) as count
@@ -270,7 +444,8 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
         return _run(use_fts=False)
 
 
-def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None, language=None) -> list[dict]:
+def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None,
+                language=None, profile=None) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
@@ -286,6 +461,10 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tag
     tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
     conditions.extend(tag_conditions)
     params.update(tag_params)
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
@@ -308,11 +487,13 @@ def list_regulators(engine) -> list[dict]:
                r.website, r.mica_competent_authority, r.enabled,
                COUNT(i.id) as total_items,
                MAX(i.fetched_at) as last_fetched_at,
-               COALESCE(se.consecutive_failures, 0) as consecutive_failures
+               COALESCE(se.consecutive_failures, 0) as consecutive_failures,
+               COALESCE(se.consecutive_empty_runs, 0) as consecutive_empty_runs
         FROM regulators r
         LEFT JOIN items i ON i.regulator_id = r.id
         LEFT JOIN (
-            SELECT regulator_id, MAX(consecutive_failures) as consecutive_failures
+            SELECT regulator_id, MAX(consecutive_failures) as consecutive_failures,
+                   MAX(consecutive_empty_runs) as consecutive_empty_runs
             FROM source_errors
             GROUP BY regulator_id
         ) se ON se.regulator_id = r.id
@@ -321,25 +502,122 @@ def list_regulators(engine) -> list[dict]:
     """
     keys = ["id", "name", "full_name", "jurisdiction", "jurisdiction_type",
             "website", "mica_competent_authority", "enabled",
-            "total_items", "last_fetched_at", "consecutive_failures"]
+            "total_items", "last_fetched_at", "consecutive_failures", "consecutive_empty_runs"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql)).fetchall()
-    return [_row_to_dict(r, keys) for r in rows]
+    results = [_row_to_dict(r, keys) for r in rows]
+    for r in results:
+        # True if any source under this regulator has hit the stall
+        # threshold (STALL_THRESHOLD_RUNS consecutive successful-but-empty
+        # runs) - distinct from consecutive_failures, which only tracks
+        # outright fetch errors.
+        r["stalled"] = r.pop("consecutive_empty_runs") >= STALL_THRESHOLD_RUNS
+    return results
 
 
-def get_item(engine, item_id: str) -> dict | None:
+def _document_fields(item: dict, reg: dict, taxonomy, classification_rows: list) -> tuple[dict, dict | None, list | None]:
+    """Derives the extra fields a document needs beyond the raw items-table
+    row: regulator_name/jurisdiction (joined from `reg`, the regulators-row
+    for item["regulator_id"]), jurisdiction_ancestors (via
+    taxonomy.ancestors()) and label_provenance (via
+    winning_classification_rows() over `classification_rows`).
+
+    Shared by get_item() and _documents_for_items() (both below) and
+    regradar.render's render_item_to_dir() (the exporter's markdown-format
+    writer), so all three document-assembly call sites compute
+    jurisdiction_ancestors/label_provenance identically and can't drift the
+    way get_item and get_changes() (and, through it, the exporter/feeds/
+    webhooks/digests) used to: get_changes() built its document with
+    label_provenance hardcoded to None and no jurisdiction_ancestors at all.
+
+    `taxonomy` (a regradar.taxonomy.Taxonomy) is optional; without it
+    jurisdiction_ancestors/label_provenance are omitted rather than
+    erroring, so callers that don't have a taxonomy handy keep working.
+
+    Returns (item_with_jurisdiction_fields, labels, label_provenance).
+    """
+    doc_item = dict(item)
+    doc_item["regulator_name"] = reg.get("full_name") or reg.get("name") or item.get("regulator_id")
+    jurisdiction = reg.get("jurisdiction")
+    doc_item["jurisdiction"] = jurisdiction
+
+    labels = json.loads(item["labels"]) if item.get("labels") else None
+    label_provenance = None
+    if taxonomy is not None:
+        if jurisdiction:
+            doc_item["jurisdiction_ancestors"] = taxonomy.ancestors(jurisdiction.lower())
+        winners = winning_classification_rows(classification_rows, taxonomy)
+        if winners:
+            label_provenance = [
+                {"axis": w["axis"], "value": w["value"], "by": w["by"],
+                 "confidence": w["confidence"], "taxonomy_version": w["taxonomy_version"]}
+                for w in winners
+            ]
+    return doc_item, labels, label_provenance
+
+
+def _assemble_document(item: dict, reg: dict, artefact: dict | None, taxonomy, classification_rows: list) -> dict:
+    """Builds one frontmatter-shaped document (architecture doc section
+    3.2), JSON-safe, from a raw items-table row plus its regulator/
+    artefact/live classification rows - see _document_fields() for the
+    assembly this is built on. Used by get_item() and _documents_for_items().
+    """
+    doc_item, labels, label_provenance = _document_fields(item, reg, taxonomy, classification_rows)
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
+    return frontmatter_to_json_safe(fm)
+
+
+def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
+    """Returns the item, including `body_md` (the Markdown body alongside
+    the existing `raw_content` - derived from raw_content via
+    regradar.document.effective_body_md() when body_md itself is empty,
+    e.g. a pre-v2 row) and a `document` object holding the same
+    frontmatter fields a rendered file would have (section 3.2), built by
+    the shared _assemble_document() helper.
+
+    `taxonomy` (a regradar.taxonomy.Taxonomy) is optional but needed to
+    populate `document.jurisdiction_ancestors` (via ancestors()) and
+    `document.label_provenance` (via winning_classification_rows() over
+    this item's live classifications); without it those come back empty/
+    omitted rather than erroring, so existing callers that don't have a
+    taxonomy handy keep working.
+    """
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags, raw_content
+               fetched_at, updated_at, date_inferred, language, content_snippet, source_type,
+               source_tags, content_tags, labels, raw_content, body_md, extractor
         FROM items WHERE id = :id
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags", "raw_content"]
+            "fetched_at", "updated_at", "date_inferred", "language", "content_snippet", "source_type",
+            "source_tags", "content_tags", "labels", "raw_content", "body_md", "extractor"]
     with engine.connect() as conn:
         row = conn.execute(text(sql), {"id": item_id}).fetchone()
-    if row is None:
-        return None
-    return _row_to_dict(row, keys)
+        if row is None:
+            return None
+        item = _row_to_dict(row, keys)
+        reg_row = conn.execute(
+            text("SELECT name, full_name, jurisdiction FROM regulators WHERE id = :id"),
+            {"id": item["regulator_id"]},
+        ).fetchone()
+        artefact_row = conn.execute(
+            text("SELECT path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id = :id"),
+            {"id": item_id},
+        ).fetchone()
+        classification_rows = (
+            [dict(r._mapping) for r in conn.execute(
+                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
+                     "FROM classifications WHERE item_id = :id"),
+                {"id": item_id},
+            ).fetchall()]
+            if taxonomy is not None else []
+        )
+
+    reg = dict(reg_row._mapping) if reg_row is not None else {}
+    artefact = dict(artefact_row._mapping) if artefact_row is not None else None
+    item["body_md"] = effective_body_md(item)
+    item["document"] = _assemble_document(item, reg, artefact, taxonomy, classification_rows)
+    return item
 
 
 def get_run_log(engine, limit: int = 10) -> list[dict]:
@@ -361,7 +639,7 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
     return [_row_to_dict(r, keys) for r in rows]
 
 
-def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> list[dict]:
+def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50, profile=None) -> list[dict]:
     try:
         days = max(0, min(int(days), 365))
     except (TypeError, ValueError):
@@ -370,6 +648,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
         limit = max(1, min(int(limit), 200))
     except (TypeError, ValueError):
         limit = 50
+    logger.warning(
+        "get_warnings() read the deprecated source_tags column - prefer filtering on "
+        "labels={'document_type': ['warning']}, which reads the classification store."
+    )
     conditions = ['source_tags LIKE \'%"warnings"%\'']
     params: dict = {"limit": limit}
     if days > 0:
@@ -379,6 +661,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
     if regulator_id:
         conditions.append("regulator_id = :regulator_id")
         params["regulator_id"] = regulator_id
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
 
     where = " AND ".join(conditions)
     sql = f"""
@@ -398,6 +684,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
 def list_tags(engine) -> dict:
     """Returns distinct source_tags and content_tags values with item
     counts, each bucket sorted most-common first."""
+    logger.warning(
+        "list_tags() read the deprecated source_tags/content_tags columns - prefer "
+        "list_labels(), which reads the classification store with provenance."
+    )
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT source_tags, content_tags FROM items")).fetchall()
     source_counts = Counter()
@@ -413,7 +703,24 @@ def list_tags(engine) -> dict:
     }
 
 
-def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
+def list_labels(engine, taxonomy) -> dict:
+    """Returns every axis known to the current taxonomy (config-driven -
+    adding an axis to taxonomy.yaml makes it appear here with no code
+    change) with its distinct values and item counts, most-common first.
+    An axis with no live rows yet still appears, with an empty list."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT axis, value, COUNT(*) as c FROM item_labels GROUP BY axis, value")).fetchall()
+    counts: dict = {}
+    for axis, value, count in rows:
+        counts.setdefault(axis, []).append((value, count))
+    result = {}
+    for axis in taxonomy.axes():
+        values = sorted(counts.get(axis, []), key=lambda t: -t[1])
+        result[axis] = [{"value": v, "count": c} for v, c in values]
+    return result
+
+
+def get_items_since(engine, since: str, limit: int = 100, profile=None) -> list[dict]:
     """Returns items with fetched_at strictly after `since`, oldest first -
     the natural polling primitive ("everything new since my last check").
     `since` should be a fetched_at value as returned by this or other tools
@@ -432,18 +739,52 @@ def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
     except ValueError:
         raise ValueError(f"could not parse 'since' timestamp: {since!r}")
     cutoff = _format_dt(since_dt)
-    sql = """
+    conditions = ["fetched_at > :cutoff"]
+    params = {"cutoff": cutoff, "limit": limit}
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+    where = " AND ".join(conditions)
+    sql = f"""
         SELECT id, regulator_id, source_label, title, url, published_at,
                fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
-        FROM items WHERE fetched_at > :cutoff
+        FROM items WHERE {where}
         ORDER BY fetched_at ASC
         LIMIT :limit
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
     with engine.connect() as conn:
-        rows = conn.execute(text(sql), {"cutoff": cutoff, "limit": limit}).fetchall()
+        rows = conn.execute(text(sql), params).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
+
+
+def _dataset_import_state(conn) -> dict | None:
+    """The `reg-radar import-dataset` sync cursor, or None if this database
+    was never seeded from a published dataset. `generated_at` is decoded
+    from the cursor itself (it IS the manifest's generated_at - see
+    regradar.dataset) rather than stored twice; `imported_at` is the
+    sync_state row's own updated_at.
+    """
+    try:
+        row = conn.execute(
+            text("SELECT value, updated_at FROM sync_state WHERE key = :key"),
+            {"key": DATASET_IMPORT_CURSOR_KEY},
+        ).fetchone()
+    except OperationalError:
+        return None  # pre-sync_state database
+    if row is None or not row[0]:
+        return None
+    try:
+        generated_at, _ = decode_cursor(row[0])
+    except CursorError:
+        return None
+    return {
+        "cursor": row[0],
+        "generated_at": generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "imported_at": str(row[1]) if row[1] else None,
+    }
 
 
 def get_health(engine) -> dict:
@@ -454,16 +795,39 @@ def get_health(engine) -> dict:
     PRAGMA integrity_check once per collection cycle specifically so
     corruption is caught here loudly, not discovered later as a failed
     search.
+
+    `stalled_sources` lists every regulator_id/source_label that has hit
+    STALL_THRESHOLD_RUNS (default 7, env-configurable) consecutive
+    successful-but-empty fetches - the "200 OK, selectors matching nothing"
+    case a single run's zero-items check can't distinguish from a quiet day.
+
+    `dataset_import` is {cursor, generated_at, imported_at} when this
+    database was seeded by `reg-radar import-dataset`, else None. Nothing
+    consumes the cursor automatically - it is a bookmark, here so an
+    operator or agent can pass it as `since` to get_changes() (or
+    `/api/changes`, or a webhook subscriber, or `reg-radar export --since`)
+    and see only what arrived after the published snapshot.
     """
     sql = """
         SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok
         FROM runs ORDER BY started_at DESC LIMIT 1
     """
     keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors", "db_integrity_ok"]
+    stalled_sql = """
+        SELECT regulator_id, source_label, consecutive_empty_runs
+        FROM source_errors WHERE consecutive_empty_runs >= :threshold
+    """
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
+        stalled_rows = conn.execute(text(stalled_sql), {"threshold": STALL_THRESHOLD_RUNS}).fetchall()
+        dataset_import = _dataset_import_state(conn)
+    stalled_sources = [
+        {"regulator_id": r[0], "source_label": r[1], "consecutive_empty_runs": r[2]}
+        for r in stalled_rows
+    ]
     if row is None:
-        return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown"}
+        return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown",
+                "stalled_sources": stalled_sources, "dataset_import": dataset_import}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
@@ -475,4 +839,251 @@ def get_health(engine) -> dict:
         db_integrity = "unknown"
     else:
         db_integrity = "ok" if integrity_flag else "corrupted"
-    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity}
+    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
+            "stalled_sources": stalled_sources, "dataset_import": dataset_import}
+
+
+def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regulator_id=None, since=None,
+                      include_low_confidence: bool = False, max_content_chars: int = 6000) -> list[dict]:
+    """Returns items with no live classification row on `axis` (architecture
+    doc §4.5), oldest published first, for a classifier - human or agent -
+    to work through the backlog. `body_md` is truncated to
+    `max_content_chars` (default 6000) to protect a caller's context window.
+
+    `include_low_confidence=True` (docs/issues/04-rules-engine-write
+    -interface-llm-classifier-skill.md "Open questions") additionally
+    returns items that DO have a live row on `axis` but whose confidence
+    never reached the axis's effective-label threshold (taxonomy.yaml
+    min_confidence) - those are "effectively unclassified" (no entry in
+    item_labels, the materialized-label side table) even though a
+    classifier has touched them. The default (False) is stricter: only
+    items with zero live rows on the axis at all.
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        offset = 0
+
+    if include_low_confidence:
+        exclude_sql = "SELECT item_id FROM item_labels WHERE axis = :axis"
+    else:
+        exclude_sql = "SELECT DISTINCT item_id FROM classifications WHERE axis = :axis AND superseded_at IS NULL"
+
+    conditions = [f"id NOT IN ({exclude_sql})"]
+    params: dict = {"axis": axis, "limit": limit, "offset": offset}
+    if regulator_id:
+        conditions.append("regulator_id = :regulator_id")
+        params["regulator_id"] = regulator_id
+    if since:
+        conditions.append("fetched_at > :since")
+        params["since"] = since
+
+    where = " AND ".join(conditions)
+    sql = f"""
+        SELECT id, regulator_id, source_label, title, body_md, raw_content, content_snippet, source_type, url,
+               published_at, fetched_at, language, labels
+        FROM items WHERE {where}
+        ORDER BY COALESCE(published_at, fetched_at) ASC
+        LIMIT :limit OFFSET :offset
+    """
+    keys = ["id", "regulator_id", "source_label", "title", "body_md", "raw_content", "content_snippet",
+            "source_type", "url", "published_at", "fetched_at", "language", "labels"]
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        reg_rows = conn.execute(text("SELECT id, name, jurisdiction FROM regulators")).fetchall()
+    regulators = {r[0]: {"name": r[1], "jurisdiction": r[2]} for r in reg_rows}
+
+    results = []
+    for r in rows:
+        item = _row_to_dict(r, keys)
+        # effective_body_md() derives a body from raw_content when body_md
+        # is empty (a v1-upgraded row) - without it a classifier reading
+        # this backlog sees nothing to classify. raw_content/content_snippet/
+        # source_type/url are selected only to feed that derivation and are
+        # dropped again, so the returned shape is unchanged.
+        item["body_md"] = effective_body_md(item)[:max_content_chars]
+        for helper_key in ("raw_content", "content_snippet", "source_type", "url"):
+            item.pop(helper_key, None)
+        other_labels = json.loads(item.pop("labels") or "{}")
+        other_labels.pop(axis, None)
+        item["labels"] = other_labels
+        reg = regulators.get(item["regulator_id"], {})
+        item["regulator"] = reg.get("name")
+        item["jurisdiction"] = reg.get("jurisdiction")
+        results.append(item)
+    return results
+
+
+def get_item_labels(engine, item_id: str) -> dict:
+    """Returns one item's current effective labels (items.labels, JSON) -
+    used by the write interface (classify_item/classify_items) to report
+    what an item's labels are immediately after a write."""
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT labels FROM items WHERE id = :id"), {"id": item_id}).fetchone()
+    if row is None:
+        return {}
+    return json.loads(row[0] or "{}")
+
+
+_CHANGES_COLUMNS = [
+    "id", "regulator_id", "source_label", "title", "url", "published_at",
+    "fetched_at", "updated_at", "date_inferred", "language", "source_type", "labels", "body_md",
+    "raw_content", "content_snippet",
+]
+_CHANGES_SELECT = """
+    SELECT id, regulator_id, source_label, title, url, published_at,
+           fetched_at, COALESCE(updated_at, fetched_at) as updated_at,
+           date_inferred, language, source_type, labels, body_md,
+           raw_content, content_snippet
+    FROM items
+"""
+
+
+def _documents_for_items(conn, items: list[dict], include_body: bool = False, taxonomy=None) -> list[dict]:
+    """Shared by get_changes() and get_latest_changes(): turns raw
+    _CHANGES_SELECT item dicts (as returned by _row_to_dict) into
+    frontmatter-shaped documents (architecture doc section 3.2) via the
+    same _assemble_document() helper get_item() uses, so jurisdiction_
+    ancestors/label_provenance are assembled identically on both paths
+    instead of drifting. `taxonomy` is optional (None omits both, as
+    before) - callers on this hot polling path (get_changes/exporter/
+    feeds/webhooks/digests) should pass one the same way get_item_tool
+    does, for full provenance.
+    """
+    reg_rows = conn.execute(text("SELECT id, name, full_name, jurisdiction FROM regulators")).fetchall()
+    regs = {r[0]: {"name": r[1], "full_name": r[2], "jurisdiction": r[3]} for r in reg_rows}
+
+    artefacts = {}
+    classifications_by_item: dict = {}
+    item_ids = [i["id"] for i in items]
+    if item_ids:
+        placeholders = ", ".join(f":aid_{i}" for i in range(len(item_ids)))
+        aparams = {f"aid_{i}": v for i, v in enumerate(item_ids)}
+        arows = conn.execute(
+            text(f"SELECT item_id, path, mime, sha256, bytes FROM item_artefacts WHERE item_id IN ({placeholders})"),
+            aparams,
+        ).fetchall()
+        artefacts = {r[0]: {"path": r[1], "mime": r[2], "sha256": r[3], "bytes": r[4]} for r in arows}
+
+        if taxonomy is not None:
+            crows = conn.execute(
+                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at "
+                     f"FROM classifications WHERE item_id IN ({placeholders})"),
+                aparams,
+            ).fetchall()
+            for r in crows:
+                classifications_by_item.setdefault(r[0], []).append({
+                    "axis": r[1], "value": r[2], "by": r[3],
+                    "confidence": r[4], "taxonomy_version": r[5], "superseded_at": r[6],
+                })
+
+    documents = []
+    for item in items:
+        reg = regs.get(item["regulator_id"], {})
+        classification_rows = classifications_by_item.get(item["id"], [])
+        doc = _assemble_document(item, reg, artefacts.get(item["id"]), taxonomy, classification_rows)
+        if include_body:
+            doc["body_md"] = effective_body_md(item)
+        documents.append(doc)
+    return documents
+
+
+def get_changes(engine, since: str | None = None, profile=None, limit: int = 100,
+                 include_body: bool = False, taxonomy=None) -> tuple[list[dict], str | None]:
+    """Everything that changed (architecture doc section 6): items with
+    (updated_at, id) after the opaque cursor `since` (from
+    regradar.changes.encode_cursor), oldest first, id as tiebreak on equal
+    timestamps. Unlike get_items_since(), which only sees fetched_at, this
+    also catches a reclassification or human correction that bumps
+    updated_at without a new fetch.
+
+    The cursor carries the database's own microsecond precision (not the
+    whole-second precision the rendered document's `updated_at` field
+    shows) - item ids are content hashes, not monotonic, so two items
+    updated in the same whole second (routine within one collection run)
+    would otherwise collide on the id tiebreak and one could be silently
+    skipped forever.
+
+    Returns (documents, next_cursor) - documents are frontmatter-shaped
+    (architecture doc section 3.2, the same shape get_item_tool's
+    `document` field has), next_cursor is the cursor of the last document
+    returned, or None if nothing matched (an empty result, or `since` is
+    already at the head of the stream).
+
+    `taxonomy` (optional, as get_item()'s) populates jurisdiction_ancestors
+    and label_provenance on each returned document; without it both are
+    empty/omitted, matching get_item()'s own no-taxonomy behaviour.
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 100
+
+    conditions = []
+    params: dict = {"limit": limit}
+    if since:
+        since_dt, since_id = decode_cursor(since)
+        since_ts = _format_dt(since_dt)
+        conditions.append(
+            "(COALESCE(updated_at, fetched_at) > :since_ts OR "
+            "(COALESCE(updated_at, fetched_at) = :since_ts AND id > :since_id))"
+        )
+        params["since_ts"] = since_ts
+        params["since_id"] = since_id
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    sql = f"""
+        {_CHANGES_SELECT} {where}
+        ORDER BY COALESCE(updated_at, fetched_at) ASC, id ASC
+        LIMIT :limit
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
+        documents = _documents_for_items(conn, items, include_body=include_body, taxonomy=taxonomy)
+
+    next_cursor = None
+    if items:
+        last = items[-1]
+        next_cursor = encode_cursor(last["updated_at"], last["id"])
+    return documents, next_cursor
+
+
+def get_latest_changes(engine, profile=None, limit: int = 50, taxonomy=None) -> list[dict]:
+    """Most recently changed items (updated_at DESC), newest first -
+    frontmatter-shaped like get_changes(), but not cursor-paginated: this
+    is what GET /feeds/<profile>.atom needs (the newest N entries), which
+    get_changes()'s forward-from-a-cursor pagination isn't built for.
+
+    `taxonomy` is optional, same contract as get_changes().
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+
+    conditions = []
+    params: dict = {"limit": limit}
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    sql = f"""
+        {_CHANGES_SELECT} {where}
+        ORDER BY COALESCE(updated_at, fetched_at) DESC, id DESC
+        LIMIT :limit
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
+        return _documents_for_items(conn, items, include_body=False, taxonomy=taxonomy)

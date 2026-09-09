@@ -1,0 +1,12 @@
+# Regulator ids dropped from the published dataset (reg-radar export
+# --exclude-regulator-file, .github/workflows/publish-dataset.yml) - never
+# affects the live collector or a local `reg-radar export` run without this
+# flag.
+#
+# Starts empty: nothing found while compiling NOTICE (repository root)
+# states terms that explicitly forbid reuse. Most rows in NOTICE are
+# "unclear" rather than "known permitted" - those are shipped anyway
+# pending a real legal read (see NOTICE and README's Published dataset
+# section), rather than defaulting a useful corpus down to nothing. Add a
+# regulator id here the moment its terms are found to forbid redistribution.
+[]

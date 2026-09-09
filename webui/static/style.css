@@ -161,6 +161,11 @@ main {
   font-weight: 600;
 }
 
+.reg-stalled {
+  color: #b26a00;
+  font-weight: 600;
+}
+
 label.reg.reg-unhealthy {
   background: #fff5f5;
 }

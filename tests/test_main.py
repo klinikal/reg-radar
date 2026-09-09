@@ -44,6 +44,66 @@ def test_load_regulators_non_list():
         os.unlink(path)
 
 
+def _write_yaml(path, content):
+    with open(path, "w") as f:
+        f.write(content)
+
+
+def test_load_regulators_directory_concatenates_every_yaml_file(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- id: at-fma\n  jurisdiction: at\n  sources: [{label: news, type: rss}]\n")
+    _write_yaml(tmp_path / "eu.yaml", "- id: esma\n  jurisdiction: eu\n  sources: [{label: news, type: rss}]\n")
+    regulators = load_regulators(str(tmp_path))
+    assert {r["id"] for r in regulators} == {"at-fma", "esma"}
+
+
+def test_load_regulators_directory_no_yaml_files_exits(tmp_path):
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_duplicate_id_across_files_exits(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- id: dupe\n  jurisdiction: at\n  sources: [{label: a, type: rss}]\n")
+    _write_yaml(tmp_path / "be.yaml", "- id: dupe\n  jurisdiction: be\n  sources: [{label: b, type: rss}]\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_duplicate_source_label_within_regulator_exits(tmp_path):
+    _write_yaml(
+        tmp_path / "at.yaml",
+        "- id: at-fma\n  jurisdiction: at\n  sources:\n"
+        "  - {label: news, type: rss}\n  - {label: news, type: scrape}\n",
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_missing_regulator_id_exits(tmp_path):
+    _write_yaml(tmp_path / "at.yaml", "- jurisdiction: at\n  sources: []\n")
+    with pytest.raises(SystemExit) as exc_info:
+        load_regulators(str(tmp_path))
+    assert exc_info.value.code == 1
+
+
+def test_load_regulators_single_file_still_works(tmp_path):
+    path = tmp_path / "regulators.yaml"
+    _write_yaml(path, "- id: at-fma\n  jurisdiction: at\n  sources: [{label: news, type: rss}]\n")
+    regulators = load_regulators(str(path))
+    assert len(regulators) == 1
+    assert regulators[0]["id"] == "at-fma"
+
+
+def test_load_regulators_split_registry_loads_cleanly():
+    # The real, current config/regulators/ split - proves the migration
+    # produced a directory that loads without duplicate id/label errors.
+    regulators = load_regulators("config/regulators")
+    assert len(regulators) == 44
+    assert {r["id"] for r in regulators} >= {"esma", "amla", "eba", "eiopa", "mt-mfsa"}
+
+
 # ---------------------------------------------------------------------------
 # run_collection tests
 # ---------------------------------------------------------------------------
@@ -70,7 +130,7 @@ def test_run_collection_bad_regulator_skipped():
     try:
         good_reg_processed = []
 
-        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg, **kwargs):
             good_reg_processed.append(reg_id)
             return []
 
@@ -96,7 +156,7 @@ def test_run_collection_skips_disabled_source():
     try:
         fetched_labels = []
 
-        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg, **kwargs):
             fetched_labels.append(source["label"])
             return []
 
@@ -272,7 +332,12 @@ def test_run_collection_rss_source_zero_items_not_treated_as_error():
 
         with Session(engine) as session:
             rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="quiet_feed").all()
-            assert len(rows) == 0
+            # Not an error (consecutive_failures stays 0) - but the stall
+            # detector still counts the empty run, independent of the
+            # scrape-only error check above.
+            assert len(rows) == 1
+            assert rows[0].consecutive_failures == 0
+            assert rows[0].consecutive_empty_runs == 1
     finally:
         os.unlink(db_path)
 
@@ -295,7 +360,12 @@ def test_run_collection_page_watch_zero_items_not_treated_as_error():
 
         with Session(engine) as session:
             rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="watched_page").all()
-            assert len(rows) == 0
+            # Not an error (consecutive_failures stays 0) - but the stall
+            # detector still counts the empty run, independent of the
+            # scrape-only error check above.
+            assert len(rows) == 1
+            assert rows[0].consecutive_failures == 0
+            assert rows[0].consecutive_empty_runs == 1
     finally:
         os.unlink(db_path)
 
@@ -391,37 +461,51 @@ def test_run_collection_locked_runs_and_releases_when_lock_is_free():
             os.unlink(db_path)
 
 
-def test_run_collection_applies_keyword_tags_to_matching_items(tmp_path, monkeypatch):
+def test_run_collection_writes_rule_labels_for_matching_items(tmp_path, monkeypatch):
     from datetime import datetime, timezone
     from collector.storage import init_db
     from collector.main import run_collection
     from collector.schema import Item
+    from regradar.rules import RulesEngine
+    from regradar.taxonomy import build_taxonomy
 
     engine = init_db(str(tmp_path / "test.db"))
-    now = datetime.now(timezone.utc)
-    fake_item = Item(
-        id="fixed-test-id", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
-        url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
-        content_snippet="details on MiCA reporting", source_type="rss", source_tags=["casp"], content_tags=[],
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text(
+        "rules:\n  - axis: instrument\n    value: mica\n    match: [{pattern: MiCA, weight: 0.9}]\n    fields: [title]\n"
     )
-    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
+    rules_engine = RulesEngine.load(str(rules_path), taxonomy)
+
+    now = datetime.now(timezone.utc)
+
+    def fake_fetch_source(source, regulator_id, flaresolverr_url, config, rules_engine=None):
+        item = Item(
+            id="fixed-test-id", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
+            url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
+            content_snippet="details on MiCA reporting", source_type="rss",
+        )
+        if rules_engine is not None:
+            item.rule_labels = rules_engine.score(item.title, item.raw_content)
+        return [item]
+
+    monkeypatch.setattr("collector.main.fetch_source", fake_fetch_source)
 
     regulators = [{"id": "esma", "name": "ESMA", "enabled": True,
                    "sources": [{"type": "rss", "url": "https://x", "label": "all_news", "enabled": True}]}]
-    alert_rules = [{"keyword": "MiCA", "tag": "mica"}]
     cfg = {"user_agent": "t/1.0", "timeout": 5, "retries": 1, "flaresolverr_url": None}
 
-    run_collection(engine, regulators, cfg, alert_rules=alert_rules)
+    run_collection(engine, regulators, cfg, taxonomy=taxonomy, rules_engine=rules_engine)
 
-    import json
     from sqlalchemy import text as sa_text
     with engine.connect() as conn:
-        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id'")).fetchone()
-    assert json.loads(row[0]) == ["casp"]
-    assert json.loads(row[1]) == ["mica"]
+        row = conn.execute(sa_text(
+            "SELECT axis, value, by, confidence FROM classifications WHERE item_id='fixed-test-id' AND by='rule'"
+        )).fetchone()
+    assert row == ("instrument", "mica", "rule", 1.0)  # explicit rule (0.9) + alias rule (0.7) sum, capped
 
 
-def test_run_collection_without_alert_rules_leaves_tags_unchanged(tmp_path, monkeypatch):
+def test_run_collection_without_rules_engine_writes_no_rule_labels(tmp_path, monkeypatch):
     from datetime import datetime, timezone
     from collector.storage import init_db
     from collector.main import run_collection
@@ -432,49 +516,18 @@ def test_run_collection_without_alert_rules_leaves_tags_unchanged(tmp_path, monk
     fake_item = Item(
         id="fixed-test-id-2", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
         url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
-        content_snippet="details on MiCA reporting", source_type="rss", source_tags=["casp"], content_tags=[],
-    )
-    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
-    regulators = [{"id": "esma", "name": "ESMA", "enabled": True,
-                   "sources": [{"type": "rss", "url": "https://x", "label": "all_news", "enabled": True}]}]
-    cfg = {"user_agent": "t/1.0", "timeout": 5, "retries": 1, "flaresolverr_url": None}
-
-    run_collection(engine, regulators, cfg)  # alert_rules defaults to None
-
-    import json
-    from sqlalchemy import text as sa_text
-    with engine.connect() as conn:
-        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id-2'")).fetchone()
-    assert json.loads(row[0]) == ["casp"]
-    assert json.loads(row[1]) == []
-
-
-def test_run_collection_applies_keyword_tags_to_content_tags_not_source_tags(tmp_path, monkeypatch):
-    from datetime import datetime, timezone
-    from collector.storage import init_db
-    from collector.main import run_collection
-    from collector.schema import Item
-
-    engine = init_db(str(tmp_path / "test.db"))
-    now = datetime.now(timezone.utc)
-    fake_item = Item(
-        id="fixed-test-id-3", regulator_id="esma", source_label="all_news", title="New MiCA guidance",
-        url="https://x", published_at=now, fetched_at=now, date_inferred=False, language="en",
         content_snippet="details on MiCA reporting", source_type="rss",
-        source_tags=["news"], content_tags=[],
     )
     monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [fake_item])
-
     regulators = [{"id": "esma", "name": "ESMA", "enabled": True,
                    "sources": [{"type": "rss", "url": "https://x", "label": "all_news", "enabled": True}]}]
-    alert_rules = [{"keyword": "MiCA", "tag": "mica"}]
     cfg = {"user_agent": "t/1.0", "timeout": 5, "retries": 1, "flaresolverr_url": None}
 
-    run_collection(engine, regulators, cfg, alert_rules=alert_rules)
+    run_collection(engine, regulators, cfg)  # rules_engine defaults to None
 
-    import json
     from sqlalchemy import text as sa_text
     with engine.connect() as conn:
-        row = conn.execute(sa_text("SELECT source_tags, content_tags FROM items WHERE id='fixed-test-id-3'")).fetchone()
-    assert json.loads(row[0]) == ["news"]  # source_tags untouched by keyword matching
-    assert json.loads(row[1]) == ["mica"]  # content_tags gets the keyword match
+        count = conn.execute(sa_text(
+            "SELECT COUNT(*) FROM classifications WHERE item_id='fixed-test-id-2' AND by='rule'"
+        )).scalar()
+    assert count == 0

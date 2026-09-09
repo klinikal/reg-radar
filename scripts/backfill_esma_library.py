@@ -15,6 +15,11 @@ mounted data volume:
 Always try --dry-run first - it fetches and parses every page exactly as the
 real run would, but does not write to the database, so you can sanity-check
 counts before committing to the full crawl.
+
+Fetches via fetch_source() (collector/fetcher.py), which looks up the
+registered `scrape` adapter (collector/adapters/scrape.py) and runs its
+output through the shared pipeline - this script never duplicates selector
+or parsing logic itself.
 """
 import argparse
 import logging
@@ -25,7 +30,8 @@ import time
 
 import httpx
 
-from collector.fetcher import _backoff_with_jitter, fetch_source
+from collector.adapters.http import _backoff_with_jitter
+from collector.fetcher import fetch_source
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -64,10 +70,10 @@ def _detect_last_page(user_agent: str, timeout: int) -> int:
 
 
 def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> None:
-    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
-    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     if end_page is None:

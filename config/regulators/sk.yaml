@@ -1,0 +1,20 @@
+- id: sk-nbs
+  name: NBS
+  full_name: Národná banka Slovenska
+  jurisdiction: sk
+  jurisdiction_type: member_state
+  website: https://nbs.sk/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://nbs.sk/en/financial-market-supervision-practical-info/warnings/warning-list-of-non-authorized-business-activities-of-entities/
+  notes: "Use nbs.sk (no www prefix) - www redirects 301 to non-www."
+  sources:
+  - type: rss
+    url: https://nbs.sk/en/feed
+    label: all_news_en
+    preferred_language: en
+    labels: {}
+
+# ─── Slovenia ─────────────────────────────────────────────────────────────────
+

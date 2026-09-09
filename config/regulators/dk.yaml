@@ -1,0 +1,28 @@
+- id: dk-dfsa
+  name: DFSA Denmark
+  full_name: Danish Financial Supervisory Authority
+  jurisdiction: dk
+  jurisdiction_type: member_state
+  website: https://www.dfsa.dk
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.dfsa.dk/supervision/warnings-against-companies
+  notes: "No RSS - CMS has RSS deliberately disabled. English content on dfsa.dk (not finanstilsynet.dk). The news page's item list is Blazor-rendered (blazor.web.js, SignalR circuit) - confirmed 2026-07-02 that neither plain HTTP nor FlareSolverr's standard request.get renders it (the list stays an empty widget shell with only its JSON config, not actual items). This is a genuine architectural block, not a broken selector - the old selectors here were guesses that happened to match 0 items for the same underlying reason. Disabled rather than left silently broken. Re-enabling would need either the underlying search API DFSA's widget calls (not yet found) or a FlareSolverr command that waits for the SignalR circuit/JS to finish populating content, not just page load."
+  sources:
+  - type: scrape
+    url: https://www.dfsa.dk/news
+    label: news
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: "article, .news-item, .list__item"
+      title_selector: "h2 a, h3 a, .news-item__title a"
+      link_selector: "h2 a, h3 a, .news-item__title a"
+      date_selector: "time, .date"
+      date_attribute: "datetime"
+      content_selector:
+
+# ─── Estonia ──────────────────────────────────────────────────────────────────
+

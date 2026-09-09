@@ -10,16 +10,23 @@ from sqlalchemy.pool import NullPool
 from mcpserver.queries import (
     get_health,
     get_item,
+    get_item_labels,
     get_items_since,
     get_month_facets,
     get_recent,
     get_run_log,
+    get_unclassified,
     get_warnings,
+    list_labels,
     list_regulators,
     list_tags,
     search_items,
     search_items_advanced,
 )
+from regradar.classification import classify_batch, write_classification
+from regradar.profiles import get_expanded_profile, load_activities
+from regradar.taxonomy import load_and_exit_on_error
+from mcpserver.queries import get_changes
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -30,7 +37,7 @@ logger = logging.getLogger(__name__)
 # The Host header a client sends reflects the EXTERNAL port it connected to
 # (e.g. "127.0.0.1:8001"), not this container's internal port (always 8000)
 # - so an operator who remaps the published port via docker-compose.override.yml
-# (documented in skills/casp-radar-operator/SKILL.md for port conflicts) needs
+# (documented in skills/reg-radar-operator/SKILL.md for port conflicts) needs
 # their remapped host:port added here too, via MCP_EXTRA_ALLOWED_HOSTS
 # (comma-separated, e.g. "127.0.0.1:8001,localhost:8001").
 _extra_allowed_hosts = [
@@ -38,7 +45,7 @@ _extra_allowed_hosts = [
 ]
 
 mcp = FastMCP(
-    "casp-radar",
+    "reg-radar",
     host="0.0.0.0",
     port=8000,
     transport_security=TransportSecuritySettings(
@@ -51,12 +58,14 @@ mcp = FastMCP(
 )
 
 _engine = None
+_taxonomy = None
+_activities = None
 
 
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+        db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
         if not os.path.exists(db_path):
             logger.error(
                 "Database file not found at %s - has the collector run yet? "
@@ -70,6 +79,36 @@ def get_engine():
             poolclass=NullPool,
         )
     return _engine
+
+
+def get_taxonomy():
+    global _taxonomy
+    if _taxonomy is None:
+        _taxonomy = load_and_exit_on_error(
+            os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
+            os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
+        )
+    return _taxonomy
+
+
+def get_activities():
+    global _activities
+    if _activities is None:
+        _activities = load_activities(os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"), get_taxonomy())
+    return _activities
+
+
+def _resolve_profile(profile: str | None):
+    """Turns a `profile` tool parameter (a shipped template name or a path)
+    into a regradar.profiles.ExpandedProfile, or None if omitted. Cached
+    per process (see regradar.profiles.get_expanded_profile) - restart to
+    pick up an edited profile file."""
+    if profile is None:
+        return None
+    return get_expanded_profile(
+        profile, get_taxonomy(), get_activities(),
+        profiles_dir=os.getenv("PROFILES_DIR", "/app/config/profiles"),
+    )
 
 
 def _safe(label: str, fn, *args, **kwargs):
@@ -92,7 +131,9 @@ def _safe(label: str, fn, *args, **kwargs):
 @mcp.tool()
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
-                       content_tags: list[str] | None = None, date_from: str | None = None,
+                       content_tags: list[str] | None = None, jurisdictions: list[str] | None = None,
+                       labels: dict[str, list[str]] | None = None, profile: str | None = None,
+                       date_from: str | None = None,
                        date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
 
@@ -100,12 +141,31 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     buckets combined. Use `source_tags` to filter by notice kind only (e.g.
     "warnings", "press_releases") or `content_tags` to filter by topic only
     (e.g. "mica", "travel-rule") when you need one bucket specifically.
+    These three are the deprecated v1 tag columns - prefer `jurisdictions`
+    and `labels` below, which read the classification store with
+    provenance (see list_labels_tool).
+
+    `jurisdictions` filters to items from a regulator in one of these
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any of their
+    descendants (e.g. "eu" also matches "fr", "de", ...). `labels` filters
+    by classification axis, e.g. {"document_type": ["warning"]} or
+    {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
+    values within one axis OR together. Call list_labels_tool to see valid
+    axes/values with their counts.
+
     limit defaults to 20, max 100. Use `offset` to page past the first
     `limit` results (e.g. offset=20 for page 2 of a limit=20 search), or use
     count_items_tool first to check the total before paging through it.
+
+    `profile` narrows to items matching a named filter profile (architecture
+    doc §5): a shipped template id (e.g. "eu-casp", "uk-equities-dealer")
+    or a path to your own profile YAML file. Combines with every other
+    filter above (AND).
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
+                     jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
+                     profile=_resolve_profile(profile),
                      date_from=date_from, date_to=date_to, limit=limit, offset=offset)
     return results
 
@@ -113,7 +173,7 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
 @mcp.tool()
 def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
-                     language: str | None = None) -> list[dict]:
+                     language: str | None = None, profile: str | None = None) -> list[dict]:
     """Returns the most recent regulatory items (ordered by fetched_at,
     newest first), with optional filters.
 
@@ -122,9 +182,12 @@ def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list
     `tags` searches both notice-type (source_tags) and topic (content_tags)
     buckets combined; use `source_tags`/`content_tags` to filter one bucket
     only. Call list_tags_tool to see valid tag values with their counts.
+
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
     results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
-                     source_tags=source_tags, content_tags=content_tags, language=language)
+                     source_tags=source_tags, content_tags=content_tags, language=language,
+                     profile=_resolve_profile(profile))
     return results
 
 
@@ -134,8 +197,11 @@ def list_regulators_tool() -> list[dict]:
 
     Each entry's `id` is the value to pass as `regulator_id` to every other
     tool in this server. `last_fetched_at` and `consecutive_failures`
-    reflect the collector's health for that regulator specifically - see
-    get_health_tool for overall collector freshness.
+    reflect the collector's health for that regulator specifically -
+    `stalled` is True if any of its sources has hit the consecutive
+    zero-item-run threshold (selectors likely matching nothing despite a
+    successful fetch) - see get_health_tool for overall collector freshness
+    and per-source stall detail.
     """
     results = _safe("list_regulators_tool", list_regulators, get_engine())
     return results
@@ -144,13 +210,16 @@ def list_regulators_tool() -> list[dict]:
 @mcp.tool()
 def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | None:
     """Returns a single item by its id (as returned by search_items_tool,
-    get_recent_tool, get_warnings_tool, etc.), including its full raw_content.
+    get_recent_tool, get_warnings_tool, etc.), including its full
+    raw_content and body_md (the same text as Markdown), plus a `document`
+    object holding the canonical document frontmatter fields (section 3.2
+    of the architecture doc) for this item.
 
     raw_content can be large (a full regulator notice/PDF text) - pass
     max_content_chars to truncate it and protect your context window; omit
     for the full text. Returns None if the id doesn't exist.
     """
-    result = _safe("get_item_tool", get_item, get_engine(), item_id)
+    result = _safe("get_item_tool", get_item, get_engine(), item_id, taxonomy=get_taxonomy())
     if result and max_content_chars is not None and result.get("raw_content"):
         result["raw_content"] = result["raw_content"][:max_content_chars]
     return result
@@ -171,7 +240,8 @@ def get_run_log_tool(limit: int = 10) -> list[dict]:
 
 
 @mcp.tool()
-def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50) -> list[dict]:
+def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50,
+                       profile: str | None = None) -> list[dict]:
     """Returns items tagged 'warnings' at the feed/source level, newest first.
 
     days=0 returns all (no date filter), max 365. limit defaults to 50, max
@@ -185,42 +255,54 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     precise; broad "all_news"-style feeds are not. Treat results from a
     broad feed as "may contain warnings," not a filtered warnings list -
     read the item to judge.
+
+    `profile` narrows to a named filter profile - see search_items_tool.
+
+    Deprecated: kept as an alias, reading the old source_tags column, for
+    one release. Prefer search_items_tool(labels={"document_type":
+    ["warning"]}), which reads the classification store and is not limited
+    to feed-level tagging.
     """
-    results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
+    results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id,
+                     limit=limit, profile=_resolve_profile(profile))
     return results
 
 
 @mcp.tool()
 def count_items_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
-                      date_from: str | None = None, date_to: str | None = None) -> dict:
+                      date_from: str | None = None, date_to: str | None = None,
+                      profile: str | None = None) -> dict:
     """Returns the total count of items matching a search, without fetching rows.
 
     Cheaper than search_items_tool when an agent only needs "how many", not
     the items themselves. `query` uses the same AND/quoted-phrase semantics
     as search_items_tool; `exact=True` treats the whole query as one literal
     phrase. date_from/date_to are YYYY-MM-DD. regulator_id must be a valid
-    id from list_regulators_tool.
+    id from list_regulators_tool. `profile` narrows to a named filter
+    profile - see search_items_tool.
     """
     def _count():
         _, total = search_items_advanced(
             get_engine(), query=query, exact=exact,
             regulator_ids=[regulator_id] if regulator_id else None,
-            date_from=date_from, date_to=date_to, limit=1,
+            date_from=date_from, date_to=date_to, profile=_resolve_profile(profile), limit=1,
         )
         return {"total": total}
     return _safe("count_items_tool", _count)
 
 
 @mcp.tool()
-def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None) -> list[dict]:
+def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
+                           profile: str | None = None) -> list[dict]:
     """Returns item counts grouped by publish month (YYYY-MM), newest first.
 
     Ignores date filters deliberately, so every month stays visible for a
     month-picker regardless of any date range applied separately via
     search_items_tool. query/exact/regulator_id semantics match count_items_tool.
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
     return _safe("get_month_facets_tool", get_month_facets, get_engine(), query=query, exact=exact,
-                 regulator_ids=[regulator_id] if regulator_id else None)
+                 regulator_ids=[regulator_id] if regulator_id else None, profile=_resolve_profile(profile))
 
 
 @mcp.tool()
@@ -234,15 +316,36 @@ def list_tags_tool() -> dict:
 
 
 @mcp.tool()
-def get_items_since_tool(since: str, limit: int = 100) -> list[dict]:
-    """Returns items collected (fetched_at) strictly after `since`, oldest
+def list_labels_tool() -> dict:
+    """Returns every taxonomy axis (config-driven - see config/taxonomy.yaml)
+    with its distinct classified values and item counts, most-common first.
+
+    Sibling of list_tags_tool for the new classification store: use this to
+    discover valid `labels` values for search_items_tool (e.g. axis
+    "document_type" has value "warning", axis "instrument" has values like
+    "mica", "dora") before guessing.
+    """
+    return _safe("list_labels_tool", list_labels, get_engine(), get_taxonomy())
+
+
+@mcp.tool()
+def get_items_since_tool(since: str, limit: int = 100, profile: str | None = None) -> list[dict]:
+    """Deprecated: prefer get_changes_tool. This tool only sees fetched_at
+    (newly collected items) - a reclassification or human correction that
+    bumps updated_at without a new fetch is invisible to it.
+
+    Returns items collected (fetched_at) strictly after `since`, oldest
     first, up to `limit` (default 100, max 200). This is the polling
     primitive: save the fetched_at of the last item you saw and pass it
     back in as `since` on the next call to get everything new. Pair with
     get_run_log_tool's run_ids if you need to correlate results with a
     specific collector run.
+
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
-    return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit)
+    logger.warning("get_items_since_tool is deprecated - use get_changes_tool instead")
+    return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit,
+                 profile=_resolve_profile(profile))
 
 
 @mcp.tool()
@@ -257,11 +360,149 @@ def get_health_tool() -> dict:
     collection cycle specifically so corruption is caught here - if this
     ever reads "corrupted", search results and other reads may already be
     unreliable; see "Backups & recovery" in
-    skills/casp-radar-operator/SKILL.md to restore from the Litestream
+    skills/reg-radar-operator/SKILL.md to restore from the Litestream
     backup rather than trusting query results.
+
+    `stalled_sources` lists every regulator_id/source_label that has hit the
+    consecutive zero-item-run threshold (default 7, STALL_THRESHOLD_RUNS
+    env-configurable): fetches are succeeding but the parser keeps finding
+    nothing, which usually means the source's page changed and its
+    selectors need updating.
+
+    `dataset_import` is {cursor, generated_at, imported_at} if this database
+    was seeded from a published dataset (`reg-radar import-dataset`), else
+    null. It is a bookmark, not a filter: pass its `cursor` to
+    get_changes_tool's `since` to see only what has arrived since that
+    snapshot was built. Nothing applies it for you.
     """
     return _safe("get_health_tool", get_health, get_engine())
 
 
+_write_engine = None
+
+
+def get_write_engine():
+    """A separate, read-write engine for the classification write interface
+    (architecture doc §4.5) - get_engine() above opens the database
+    read-only (mode=ro) deliberately, so writes need their own connection,
+    same as collector.storage.init_db (which also ensures the schema exists
+    - matching webui/app.py's get_engine())."""
+    global _write_engine
+    if _write_engine is None:
+        from collector.storage import init_db
+        _write_engine = init_db(os.getenv("DB_PATH", "/app/data/reg_radar.db"))
+    return _write_engine
+
+
+@mcp.tool()
+def get_taxonomy_tool() -> dict:
+    """Returns the current taxonomy (config/taxonomy.yaml, architecture doc
+    §4.1): every axis with its cardinality, and every value with its id,
+    name, and aliases, plus the taxonomy version recorded on every
+    classification row. Call this before classify_item_tool/
+    classify_items_tool so an agent never needs filesystem access to the
+    config to know what axes/values are valid.
+    """
+    return get_taxonomy().to_dict()
+
+
+@mcp.tool()
+def get_unclassified_tool(axis: str, limit: int = 50, offset: int = 0, regulator_id: str | None = None,
+                           since: str | None = None, include_low_confidence: bool = False) -> list[dict]:
+    """Returns items with no live classification row on `axis`, oldest
+    published first, so an agent (see skills/reg-radar-classifier/SKILL.md)
+    can page through the backlog for one axis at a time. Each item includes
+    `title`, `body_md` (truncated to 6000 characters), `regulator`,
+    `jurisdiction`, and `labels` (this item's current classifications on
+    every OTHER axis, for context).
+
+    limit defaults to 50, max 200. `regulator_id` and `since` (a fetched_at
+    value) narrow the backlog. `include_low_confidence=True` also returns
+    items that have a live row on this axis but whose confidence never
+    reached the axis's effective-label threshold - these show no label to a
+    user even though something has already scored them, so they are
+    effectively still unclassified too.
+    """
+    return _safe("get_unclassified_tool", get_unclassified, get_engine(), axis=axis, limit=limit, offset=offset,
+                 regulator_id=regulator_id, since=since, include_low_confidence=include_low_confidence)
+
+
+@mcp.tool()
+def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence: float = 1.0,
+                        classifier_id: str | None = None) -> dict:
+    """Writes one classification (architecture doc §4.5) and returns the
+    item's new effective labels.
+
+    `axis`/`value` must be valid per get_taxonomy_tool. `by` records
+    provenance - use `llm:<provider>/<model>` for an agent-driven
+    classification (see skills/reg-radar-classifier/SKILL.md), e.g.
+    "llm:anthropic/claude-sonnet-5". `confidence` is 0.0-1.0 and
+    self-reported - prefer leaving an axis unset over guessing below 0.5.
+    Writing the same (item, axis, value, by) again is a no-op; writing a
+    different value for the same (item, axis, by) on a single-valued axis
+    supersedes the prior one rather than accumulating. An `item_id` that is
+    not in the database raises rather than recording an orphan row -
+    classify_items_tool reports the same condition per entry.
+    """
+    def _write():
+        write_classification(get_write_engine(), get_taxonomy(), item_id, axis, value, by=by,
+                              confidence=confidence, classifier_id=classifier_id)
+        return {"item_id": item_id, "labels": get_item_labels(get_write_engine(), item_id)}
+    return _safe("classify_item_tool", _write)
+
+
+@mcp.tool()
+def classify_items_tool(classifications: list[dict]) -> dict:
+    """Writes up to 100 classifications in one call (architecture doc §4.5).
+    Every entry is validated against the current taxonomy before anything is
+    written, so one bad entry never costs the rest of the batch - see
+    classify_item_tool for the fields each entry takes (item_id/axis/value/
+    by required, confidence/classifier_id optional).
+
+    Returns {"written": [...item ids...], "errors": [{"index", "item_id",
+    "error"}, ...]} - `errors` names exactly which input entries failed and
+    why, by their position in the `classifications` list you passed in.
+    Raises if the batch has more than 100 entries; page get_unclassified_tool
+    instead of sending more than that in one call.
+    """
+    return _safe("classify_items_tool", classify_batch, get_write_engine(), get_taxonomy(), classifications)
+
+
+@mcp.tool()
+def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | None = None,
+                      include_body: bool = False) -> dict:
+    """Returns everything that changed since an opaque cursor (architecture
+    doc section 6) - the sync primitive for a downstream tool tracking
+    state across polls, and the replacement for get_items_since_tool: it
+    also catches a reclassification or human correction that bumps
+    updated_at without a new fetch, not just newly collected items.
+
+    Pass the previous call's `next_cursor` back in as `since` to resume;
+    omit `since` to start from the beginning of the stream. Returns
+    {"items": [...], "next_cursor": str | None} - items are
+    frontmatter-shaped (architecture doc section 3.2, the same shape
+    get_item_tool's `document` field has), oldest first. `next_cursor`
+    round-trips as the next call's `since`, and is None only when nothing
+    matched.
+
+    Set include_body=True to also include each item's body_md; omit it to
+    keep responses small when only checking what's new. `profile` narrows
+    to a named filter profile - see search_items_tool. limit defaults to
+    100, max 200.
+    """
+    items, next_cursor = _safe("get_changes_tool", get_changes, get_engine(), since=since, limit=limit,
+                                profile=_resolve_profile(profile), include_body=include_body,
+                                taxonomy=get_taxonomy())
+    return {"items": items, "next_cursor": next_cursor}
+
+
 if __name__ == "__main__":
+    # Load taxonomy and activities before serving anything: both go through
+    # load_and_exit_on_error()/ProfileError, and doing that lazily inside a
+    # tool call meant a broken config raised SystemExit per request (which
+    # _safe() does not catch) instead of failing this process at boot.
+    # Module import stays side-effect free so the tests can import this
+    # module and point get_taxonomy() at their own config paths.
+    get_taxonomy()
+    get_activities()
     mcp.run(transport="streamable-http")

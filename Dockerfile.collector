@@ -5,9 +5,20 @@ WORKDIR /app
 COPY collector/requirements.txt ./collector/requirements.txt
 RUN pip install --no-cache-dir -r collector/requirements.txt
 
+# Playwright's browser binary (collector/adapters/browser.py) - collector
+# image only, not mcp/webui (issue #8: "install it in the collector image
+# only"). --with-deps pulls the system libraries Chromium needs; run as
+# root, before the appuser switch below, since apt needs root.
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
+RUN playwright install --with-deps chromium
+
 COPY collector/ ./collector/
+COPY mcpserver/ ./mcpserver/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
+COPY regradar/ ./regradar/
+COPY pyproject.toml ./pyproject.toml
+RUN pip install --no-cache-dir --no-deps .
 
 RUN mkdir -p /app/data && \
     addgroup --system appgroup && \
@@ -16,12 +27,13 @@ RUN mkdir -p /app/data && \
 
 USER appuser
 
-ENV DB_PATH=/app/data/casp_radar.db \
+ENV PYTHONPATH=/app \
+    DB_PATH=/app/data/reg_radar.db \
     SCHEDULE="0 6 * * *" \
     LOG_LEVEL=INFO \
-    USER_AGENT="casp-radar/1.0 (+https://github.com/klinikal/casp-radar)" \
+    USER_AGENT="reg-radar/2.0 (+https://github.com/klinikal/reg-radar)" \
     REQUEST_TIMEOUT_SECONDS=30 \
     REQUEST_RETRIES=3 \
-    REGULATORS_PATH=/app/config/regulators.yaml
+    REGULATORS_PATH=/app/config/regulators
 
 CMD ["python", "-m", "collector.main"]

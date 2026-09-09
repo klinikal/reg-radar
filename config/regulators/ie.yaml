@@ -1,0 +1,20 @@
+- id: ie-cbi
+  name: CBI
+  full_name: Central Bank of Ireland
+  jurisdiction: ie
+  jurisdiction_type: member_state
+  website: https://www.centralbank.ie/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.centralbank.ie/news-media/warning-notices
+  notes: "Single feed covering all content types - warning notices, press releases, speeches, blog. Best-in-class Ireland feed."
+  sources:
+  - type: rss
+    url: https://www.centralbank.ie/feeds/news-media-feed
+    label: all_news
+    preferred_language: en
+    labels: {}
+
+# ─── Italy ────────────────────────────────────────────────────────────────────
+

@@ -1,0 +1,266 @@
+import hashlib
+import hmac
+import json
+import tempfile
+from datetime import datetime, timezone
+
+import httpx
+import pytest
+
+from collector.schema import Item, make_item_id
+from collector.storage import (
+    get_webhook_cursor,
+    init_db,
+    insert_item,
+    upsert_regulator,
+)
+from regradar.taxonomy import build_taxonomy
+from regradar.profiles import load_activities
+from regradar.webhooks import (
+    WebhookConfigError,
+    _deliver_with_retry,
+    dispatch_all,
+    load_subscribers,
+    sign_payload,
+    subscriber_id,
+)
+
+
+def _engine():
+    f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    f.close()
+    return init_db(f.name)
+
+
+def _item(item_id, regulator_id="esma"):
+    now = datetime.now(timezone.utc)
+    return Item(
+        id=item_id, regulator_id=regulator_id, source_label="all_news", title="Notice",
+        url=f"https://example.com/{item_id}", published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="...", source_type="rss",
+        raw_content="raw", body_md="Body.", extractor="raw/1",
+    )
+
+
+def _taxonomy_and_activities():
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    activities = load_activities("config/activities.yaml", taxonomy)
+    return taxonomy, activities
+
+
+def _write_config(tmp_path, entries):
+    import yaml
+    path = tmp_path / "webhooks.yaml"
+    path.write_text(yaml.safe_dump(entries))
+    return str(path)
+
+
+def test_load_subscribers_missing_file_is_noop(tmp_path):
+    assert load_subscribers(str(tmp_path / "does-not-exist.yaml")) == []
+
+
+def test_load_subscribers_rejects_missing_required_fields(tmp_path):
+    path = _write_config(tmp_path, [{"profile": "eu-casp", "url": "https://x"}])
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(path)
+
+
+def test_load_subscribers_applies_defaults(tmp_path):
+    path = _write_config(tmp_path, [{"profile": "eu-casp", "url": "https://x", "secret_env": "S"}])
+    subs = load_subscribers(path)
+    assert subs[0]["batch_size"] == 25
+    assert subs[0]["max_retries"] == 5
+    assert subs[0]["backoff_seconds"] == 30
+
+
+def test_sign_payload_matches_hmac_sha256():
+    body = b'{"a": 1}'
+    sig = sign_payload(body, "supersecret")
+    expected = "sha256=" + hmac.new(b"supersecret", body, hashlib.sha256).hexdigest()
+    assert sig == expected
+
+
+def test_dispatch_delivers_signed_payload_and_advances_cursor(tmp_path, monkeypatch):
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET", "supersecret")
+
+    config_path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://hooks.example/regradar", "secret_env": "WEBHOOK_SECRET"},
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    received = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received["body"] = request.content
+        received["signature"] = request.headers["X-Reg-Radar-Signature"]
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+
+    assert received["body"] is not None
+    payload = json.loads(received["body"])
+    assert [i["id"] for i in payload["items"]] == ["i1"]
+    expected_sig = sign_payload(received["body"], "supersecret")
+    assert received["signature"] == expected_sig
+
+    sid = subscriber_id({"profile": "eu-casp", "url": "https://hooks.example/regradar"})
+    assert get_webhook_cursor(engine, sid) is not None
+
+
+def test_dispatch_missing_secret_env_skips_without_raising(tmp_path):
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+
+    config_path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://hooks.example/regradar", "secret_env": "UNSET_ENV_VAR_XYZ"},
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+    assert calls == []
+
+
+def test_dispatch_rejects_receiver_that_rejects_signature(tmp_path, monkeypatch):
+    # A receiver validating the signature and rejecting bad ones should
+    # never receive one from us in the first place - this confirms our
+    # signature is checkable by a real HMAC verification, not garbage.
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET", "supersecret")
+
+    config_path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://hooks.example/regradar", "secret_env": "WEBHOOK_SECRET"},
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content
+        expected = sign_payload(body, "supersecret")
+        if request.headers["X-Reg-Radar-Signature"] != expected:
+            return httpx.Response(401)
+        return httpx.Response(200)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+
+    sid = subscriber_id({"profile": "eu-casp", "url": "https://hooks.example/regradar"})
+    assert get_webhook_cursor(engine, sid) is not None  # accepted -> cursor advanced
+
+
+def test_dispatch_retries_with_backoff_and_logs_failure_after_max_retries(tmp_path, monkeypatch, caplog):
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET", "supersecret")
+
+    config_path = _write_config(tmp_path, [
+        {
+            "profile": "eu-casp", "url": "https://hooks.example/regradar", "secret_env": "WEBHOOK_SECRET",
+            "max_retries": 3, "backoff_seconds": 0,
+        },
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    attempts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with caplog.at_level("ERROR"):
+        dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+
+    assert len(attempts) == 3
+    assert "delivery failed" in caplog.text
+
+    sid = subscriber_id({"profile": "eu-casp", "url": "https://hooks.example/regradar"})
+    assert get_webhook_cursor(engine, sid) is None  # never advanced on failure
+
+
+def test_dispatch_one_subscriber_failure_does_not_block_another(tmp_path, monkeypatch):
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    upsert_regulator(engine, {"id": "uk-fca", "name": "FCA", "full_name": "FCA", "jurisdiction": "gb"})
+    insert_item(engine, _item("i-eu", regulator_id="esma"))
+    insert_item(engine, _item("i-uk", regulator_id="uk-fca"))
+    monkeypatch.setenv("WEBHOOK_SECRET_EU", "s1")
+    monkeypatch.setenv("WEBHOOK_SECRET_UK", "s2")
+
+    config_path = _write_config(tmp_path, [
+        {
+            "profile": "eu-casp", "url": "https://hooks.example/failing", "secret_env": "WEBHOOK_SECRET_EU",
+            "max_retries": 1, "backoff_seconds": 0,
+        },
+        {
+            "profile": "uk-equities-dealer", "url": "https://hooks.example/ok", "secret_env": "WEBHOOK_SECRET_UK",
+            "max_retries": 1, "backoff_seconds": 0,
+        },
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "failing" in str(request.url):
+            return httpx.Response(500)
+        return httpx.Response(200)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+
+    failing_id = subscriber_id({"profile": "eu-casp", "url": "https://hooks.example/failing"})
+    ok_id = subscriber_id({"profile": "uk-equities-dealer", "url": "https://hooks.example/ok"})
+    assert get_webhook_cursor(engine, failing_id) is None
+    assert get_webhook_cursor(engine, ok_id) is not None
+
+
+def test_dispatch_no_config_file_is_noop(tmp_path):
+    engine = _engine()
+    taxonomy, activities = _taxonomy_and_activities()
+    # Should not raise even though nothing is configured.
+    dispatch_all(engine, str(tmp_path / "missing-webhooks.yaml"), taxonomy, activities, "config/profiles")
+
+
+def test_load_subscribers_malformed_yaml_raises_config_error(tmp_path):
+    path = tmp_path / "webhooks.yaml"
+    path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(str(path))
+
+
+def test_dispatch_malformed_yaml_logs_error_and_does_not_raise(tmp_path, caplog):
+    engine = _engine()
+    taxonomy, activities = _taxonomy_and_activities()
+    path = tmp_path / "webhooks.yaml"
+    path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+
+    with caplog.at_level("ERROR"):
+        dispatch_all(engine, str(path), taxonomy, activities, "config/profiles")  # must not raise
+
+    assert str(path) in caplog.text
+
+
+def test_backoff_delays_double_between_retries():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    sleeps = []
+    ok = _deliver_with_retry(
+        client, "https://hooks.example/x", b"{}", "sha256=x",
+        max_retries=4, backoff_seconds=2, sleep_fn=sleeps.append,
+    )
+    assert ok is False
+    assert sleeps == [2, 4, 8]

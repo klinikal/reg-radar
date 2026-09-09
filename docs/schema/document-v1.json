@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/klinikal/regradar/docs/schema/document-v1.json",
+  "title": "RegRadar canonical document frontmatter (schema version 1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "regradar_schema",
+    "id",
+    "regulator",
+    "regulator_name",
+    "jurisdiction",
+    "jurisdiction_ancestors",
+    "title",
+    "published_at",
+    "fetched_at",
+    "updated_at",
+    "date_inferred",
+    "language",
+    "source_url",
+    "source_label",
+    "source_type",
+    "content_hash"
+  ],
+  "properties": {
+    "regradar_schema": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "regulator": { "type": "string", "minLength": 1 },
+    "regulator_name": { "type": "string" },
+    "jurisdiction": { "type": "string" },
+    "jurisdiction_ancestors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "title": { "type": "string" },
+    "published_at": {
+      "type": "string",
+      "description": "ISO 8601 date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "fetched_at": {
+      "type": "string",
+      "description": "ISO 8601 date-time, UTC, Z-suffixed (e.g. 2026-08-15T06:02:11Z)",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "ISO 8601 date-time, UTC, Z-suffixed (e.g. 2026-08-15T06:02:11Z)",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "date_inferred": { "type": "boolean" },
+    "language": { "type": "string" },
+    "source_url": { "type": "string" },
+    "source_label": { "type": "string" },
+    "source_type": { "type": "string" },
+    "labels": { "type": "object" },
+    "label_provenance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["axis", "value", "by"],
+        "properties": {
+          "axis": { "type": "string" },
+          "value": {},
+          "by": { "type": "string" },
+          "confidence": { "type": "number" },
+          "taxonomy_version": { "type": "integer" }
+        }
+      }
+    },
+    "content_hash": { "type": "string" },
+    "original": {
+      "type": "object",
+      "required": ["path", "mime", "sha256", "bytes"],
+      "properties": {
+        "path": { "type": "string" },
+        "mime": { "type": "string" },
+        "sha256": { "type": "string" },
+        "bytes": { "type": "integer" }
+      }
+    }
+  }
+}

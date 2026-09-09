@@ -1,0 +1,20 @@
+- id: is-cb
+  name: Central Bank of Iceland
+  full_name: Seðlabanki Íslands
+  jurisdiction: is
+  jurisdiction_type: eea_non_eu
+  website: https://cb.is/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://cb.is/consumers/warnings/
+  notes: "FME merged into Central Bank in 2020. Non-standard RSS path - GET returns valid RSS 2.0."
+  sources:
+  - type: rss
+    url: https://cb.is/api/documents/views/articles/RSS-feed-english/rss
+    label: all_news_en
+    preferred_language: en
+    labels: {}
+
+# ─── Ireland ──────────────────────────────────────────────────────────────────
+

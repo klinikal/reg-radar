@@ -1,0 +1,27 @@
+- id: cy-cysec
+  name: CySEC
+  full_name: Cyprus Securities and Exchange Commission
+  jurisdiction: cy
+  jurisdiction_type: member_state
+  website: https://www.cysec.gov.cy/en-GB/home/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cysec.gov.cy/en-GB/investor-protection/warnings/
+  notes: "No RSS - RSS endpoints return 410 Gone. Scraping announcements page. Selectors were broken (matched 0 items, silently) until fixed 2026-07-02 - confirmed live against real markup, not guessed."
+  sources:
+  - type: scrape
+    url: https://www.cysec.gov.cy/en-GB/home/announcements/
+    label: announcements
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".card-documents"
+      title_selector: "a.card-title"
+      link_selector: "a.card-title"
+      date_selector: ".text-muted"
+      date_attribute:
+      content_selector:
+
+# ─── Czech Republic ───────────────────────────────────────────────────────────
+

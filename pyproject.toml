@@ -1,0 +1,29 @@
+[project]
+name = "reg-radar"
+version = "2.0.0"
+description = "reg-radar canonical document format, taxonomy and CLI"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml==6.0.1",
+    "markdownify==1.2.3",
+]
+
+[project.scripts]
+reg-radar = "regradar.cli:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest==9.1.1",
+    "jsonschema==4.26.0",
+]
+llm = [
+    "anthropic==0.69.0",
+    "openai==1.109.1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["collector*", "mcpserver*", "webui*", "regradar*"]

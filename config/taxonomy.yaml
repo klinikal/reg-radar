@@ -1,0 +1,136 @@
+# Classification vocabularies (architecture doc §4.1). Code must not name
+# any axis except "jurisdiction" - everything else is read from here.
+#
+# Bump `version` on any change to values; it is recorded on every
+# classification row written (see regradar/classification.py).
+version: 1
+axes:
+  - id: document_type
+    cardinality: one
+    source_default_confidence: 1.0  # a single-purpose feed is strong evidence of its document_type
+    values:
+      - id: consultation
+        name: Consultation paper
+      - id: final_guidance
+        name: Final guidance, policy statement or Q&A
+      - id: technical_standard
+        name: Technical standard (RTS, ITS, delegated act)
+      - id: legislation
+        name: Primary or secondary legislation
+      - id: enforcement
+        name: Enforcement action, fine or decision notice
+      - id: warning
+        name: Consumer or firm warning
+      - id: speech
+        name: Speech or statement
+      - id: press_release
+        name: Press release or news
+      - id: register_update
+        name: Register or authorisation change
+      - id: page_change
+        name: Watched page changed
+  - id: instrument
+    cardinality: many
+    source_default_confidence: 0.6  # a feed named "crypto circulars" is strong evidence, not proof
+    values:
+      - id: mica
+        name: Markets in Crypto-Assets Regulation
+        aliases: ["MiCA", "MiCAR", "Regulation (EU) 2023/1114"]
+        jurisdiction: eu
+      - id: mifid2
+        name: MiFID II / MiFIR
+        aliases: ["MiFID II", "MiFID 2", "MiFIR", "Directive 2014/65/EU"]
+        jurisdiction: eu
+      - id: mar
+        name: Market Abuse Regulation
+        aliases: ["MAR", "Regulation (EU) 596/2014"]
+        jurisdiction: eu
+      - id: csdr
+        name: Central Securities Depositories Regulation
+        aliases: ["CSDR", "Regulation (EU) 909/2014"]
+        jurisdiction: eu
+      - id: emir
+        name: European Market Infrastructure Regulation
+        aliases: ["EMIR", "Regulation (EU) 648/2012"]
+        jurisdiction: eu
+      - id: sftr
+        name: Securities Financing Transactions Regulation
+        aliases: ["SFTR", "Regulation (EU) 2015/2365"]
+        jurisdiction: eu
+      - id: dora
+        name: Digital Operational Resilience Act
+        aliases: ["DORA", "Regulation (EU) 2022/2554"]
+        jurisdiction: eu
+      - id: amld
+        name: EU AML framework (AMLD4-6, AMLR, AMLA Regulation)
+        aliases: ["AMLD", "AMLR", "anti-money laundering directive", "AMLA"]
+        jurisdiction: eu
+      - id: psd2
+        name: Payment Services Directive 2 / PSD3 / PSR
+        aliases: ["PSD2", "PSD3", "PSR", "Payment Services Regulation"]
+        jurisdiction: eu
+      - id: emd2
+        name: Electronic Money Directive 2
+        aliases: ["EMD2", "Directive 2009/110/EC"]
+        jurisdiction: eu
+      - id: crr_crd
+        name: Capital Requirements Regulation and Directive
+        aliases: ["CRR", "CRD", "CRR3", "CRD VI"]
+        jurisdiction: eu
+      - id: brrd
+        name: Bank Recovery and Resolution Directive
+        aliases: ["BRRD", "Directive 2014/59/EU"]
+        jurisdiction: eu
+      - id: dgsd
+        name: Deposit Guarantee Schemes Directive
+        aliases: ["DGSD", "Directive 2014/49/EU"]
+        jurisdiction: eu
+      - id: ucits
+        name: Undertakings for Collective Investment in Transferable Securities
+        aliases: ["UCITS"]
+        jurisdiction: eu
+      - id: aifmd
+        name: Alternative Investment Fund Managers Directive
+        aliases: ["AIFMD", "AIFMD 2"]
+        jurisdiction: eu
+      - id: priips
+        name: Packaged Retail and Insurance-based Investment Products Regulation
+        aliases: ["PRIIPs", "Regulation (EU) 1286/2014"]
+        jurisdiction: eu
+      - id: sfdr
+        name: Sustainable Finance Disclosure Regulation
+        aliases: ["SFDR", "Regulation (EU) 2019/2088"]
+        jurisdiction: eu
+      - id: prospectus_regulation
+        name: Prospectus Regulation
+        aliases: ["Prospectus Regulation", "Regulation (EU) 2017/1129"]
+        jurisdiction: eu
+      - id: transfer_of_funds_regulation
+        name: Transfer of Funds Regulation (travel rule)
+        aliases: ["TFR", "travel rule", "Regulation (EU) 2023/1113"]
+        jurisdiction: eu
+      - id: uk_fsma
+        name: Financial Services and Markets Act 2000
+        aliases: ["FSMA 2000", "FSMA"]
+        jurisdiction: gb
+      - id: uk_consumer_duty
+        name: FCA Consumer Duty (PRIN 2A)
+        aliases: ["Consumer Duty", "PRIN 2A"]
+        jurisdiction: gb
+      - id: uk_mlr
+        name: Money Laundering Regulations 2017
+        aliases: ["MLR 2017", "Money Laundering Regulations"]
+        jurisdiction: gb
+      - id: uk_financial_promotions
+        name: UK financial promotions regime
+        aliases: ["financial promotions", "FPO", "s21 FSMA"]
+        jurisdiction: gb
+      - id: uk_psr
+        name: Payment Services Regulations 2017
+        aliases: ["UK PSRs 2017", "Payment Services Regulations"]
+        jurisdiction: gb
+      - id: uk_mar
+        name: UK Market Abuse Regulation
+        aliases: ["UK MAR"]
+        jurisdiction: gb
+      # ... grows by PR, no code change

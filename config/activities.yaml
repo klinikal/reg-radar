@@ -1,0 +1,22 @@
+# The interpretive layer between "what a document is" (taxonomy.yaml) and
+# "who should care" (a profile) - architecture doc §5.1. Each activity maps
+# to the set of instruments (config/taxonomy.yaml's "instrument" axis) a
+# firm doing that activity needs to watch. Grows by PR, no code change.
+#
+# Instrument ids here must be exactly the ids in config/taxonomy.yaml - the
+# design doc's illustrative example uses "travel_rule"/"uk_fin_prom", which
+# don't match the ids Task 5 actually shipped
+# (transfer_of_funds_regulation/uk_financial_promotions); this file uses the
+# real ids.
+- id: equities_dealing
+  name: Dealing and broking in equities
+  instruments: [mifid2, mar, csdr, emir, sftr, uk_fsma, uk_consumer_duty]
+- id: casp
+  name: Crypto-asset service provider
+  instruments: [mica, amld, dora, transfer_of_funds_regulation, uk_mlr, uk_financial_promotions]
+- id: emi
+  name: Electronic money or payment institution
+  instruments: [psd2, emd2, amld, dora, uk_psr]
+- id: bank
+  name: Credit institution
+  instruments: [crr_crd, brrd, dgsd, amld, dora]

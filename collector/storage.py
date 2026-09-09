@@ -1,11 +1,17 @@
+import hashlib
 import json
+import logging
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
+    Index,
     Integer,
     String,
     Text,
@@ -15,6 +21,40 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from collector.schema import Item
+
+logger = logging.getLogger(__name__)
+
+# Original-artefact storage (docs/design/regradar-architecture.md section
+# 3.3). Read at call time (not import time) so tests can point a single
+# call at a temp directory without needing to reload this module.
+_DEFAULT_ARTEFACTS_DIR = "/app/data/originals"
+_DEFAULT_MAX_ARTEFACT_BYTES = 25 * 1024 * 1024  # matches MAX_PDF_DOWNLOAD_BYTES's existing default
+
+
+def db_now() -> datetime:
+    """UTC timestamp for a raw-SQL datetime write (created_at/updated_at/
+    superseded_at/last_attempt_at/... via text()). SQLAlchemy's DateTime
+    type strips tzinfo before storing on sqlite, so every ORM write
+    (`Column(DateTime, default=lambda: datetime.now(timezone.utc))`, or a
+    plain `row.updated_at = datetime.now(timezone.utc)`) ends up naive in
+    the DB. A raw `text()` INSERT/UPDATE bypasses that stripping and stores
+    the tz-aware repr (`...+00:00`) verbatim, which sorts and compares
+    differently as a string than the naive ORM format - this is what broke
+    the get_changes() cursor for classification writes. Use this instead of
+    `datetime.now(timezone.utc)` at every raw-SQL datetime param."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _artefacts_dir() -> str:
+    return os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
+
+
+def _max_artefact_bytes() -> int:
+    return int(os.getenv("MAX_ARTEFACT_BYTES", str(_DEFAULT_MAX_ARTEFACT_BYTES)))
+
+
+def _store_artefacts_enabled() -> bool:
+    return os.getenv("STORE_ARTEFACTS", "true").strip().lower() not in ("false", "0", "")
 
 
 class Base(DeclarativeBase):
@@ -51,7 +91,11 @@ class ItemRow(Base):
     source_type = Column(String)
     source_tags = Column(Text)  # JSON array - structural (warnings, press_releases, ...)
     content_tags = Column(Text)  # JSON array - what the item is about (keyword-derived today)
+    labels = Column(Text)  # JSON object - materialised effective_labels(), see regradar/classification.py
     raw_content = Column(Text)
+    body_md = Column(Text)
+    extractor = Column(String)  # e.g. "markdownify/1.2.3" - which body_md conversion produced this row
+    updated_at = Column(DateTime)  # bumps on any change to body, labels or artefact; drives the sync cursor
 
 
 class RunRow(Base):
@@ -77,6 +121,60 @@ class SourceErrorRow(Base):
     consecutive_failures = Column(Integer, default=0)
     last_error = Column(Text)
     last_attempt_at = Column(DateTime)
+    # A successful fetch that yields zero items despite the site returning
+    # 200 OK - the "selector drift" case a redesign causes: the page still
+    # loads fine, it just no longer matches anything. consecutive_failures
+    # doesn't catch this (no exception is raised), so it needs its own
+    # counter, reset only when a fetch actually yields >=1 item.
+    consecutive_empty_runs = Column(Integer, default=0)
+
+
+class ItemArtefactRow(Base):
+    __tablename__ = "item_artefacts"
+
+    item_id = Column(String, primary_key=True)
+    path = Column(String, nullable=False)  # relative to ARTEFACTS_DIR
+    mime = Column(String, nullable=False)
+    sha256 = Column(String, nullable=False)
+    bytes = Column(Integer, nullable=False)
+    fetched_at = Column(DateTime, nullable=False)
+
+
+class ClassificationRow(Base):
+    """One classification event with provenance (architecture doc §4.4).
+    `items.labels`/`items.updated_at` and `item_labels` are materialised
+    from the live (superseded_at IS NULL) rows here by
+    regradar.classification.materialize_labels() - never written directly.
+    """
+    __tablename__ = "classifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String, nullable=False)
+    axis = Column(String, nullable=False)
+    value = Column(String, nullable=False)
+    by = Column(String, nullable=False)  # source_default | rule | llm:<provider>/<model> | human:<name> | import
+    confidence = Column(Float, nullable=False)
+    taxonomy_version = Column(Integer, nullable=False)
+    classifier_id = Column(String)
+    created_at = Column(DateTime, nullable=False)
+    superseded_at = Column(DateTime, nullable=True)
+
+
+Index("ix_classifications_item_axis_live", ClassificationRow.item_id, ClassificationRow.axis)
+
+
+class ItemLabelRow(Base):
+    """Denormalised (item_id, axis, value) index over the live effective
+    labels, rebuilt on every write - the query-speed side table recommended
+    in architecture doc §4.4 (see the measurement in the task report)."""
+    __tablename__ = "item_labels"
+
+    item_id = Column(String, primary_key=True)
+    axis = Column(String, primary_key=True)
+    value = Column(String, primary_key=True)
+
+
+Index("ix_item_labels_axis_value", ItemLabelRow.axis, ItemLabelRow.value)
 
 
 class ItemChunkRow(Base):
@@ -111,7 +209,12 @@ def init_db(db_path: str):
         conn.commit()
         _ensure_column(conn, "items", "source_tags", "TEXT")
         _ensure_column(conn, "items", "content_tags", "TEXT")
+        _ensure_column(conn, "items", "labels", "TEXT")
+        _ensure_column(conn, "items", "body_md", "TEXT")
+        _ensure_column(conn, "items", "extractor", "TEXT")
+        _ensure_column(conn, "items", "updated_at", "DATETIME")
         _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
+        _ensure_column(conn, "source_errors", "consecutive_empty_runs", "INTEGER DEFAULT 0")
     Base.metadata.create_all(engine)
     return engine
 
@@ -144,6 +247,31 @@ def upsert_regulator(engine, entry: dict) -> None:
         session.commit()
 
 
+def _write_artefact(item: Item) -> dict | None:
+    """Writes item.raw_bytes to ARTEFACTS_DIR/<id2>/<id>.<ext> and returns
+    the row fields for item_artefacts, or None if there's nothing to store
+    (no raw_bytes, STORE_ARTEFACTS=false, or over MAX_ARTEFACT_BYTES).
+    """
+    if not item.raw_bytes or not _store_artefacts_enabled():
+        return None
+    if len(item.raw_bytes) > _max_artefact_bytes():
+        return None
+    ext = "pdf" if item.mime == "application/pdf" else "html"
+    id2 = item.id[:2]
+    rel_path = f"{id2}/{item.id}.{ext}"
+    full_path = Path(_artefacts_dir()) / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(item.raw_bytes)
+    return {
+        "item_id": item.id,
+        "path": rel_path,
+        "mime": item.mime or "application/octet-stream",
+        "sha256": hashlib.sha256(item.raw_bytes).hexdigest(),
+        "bytes": len(item.raw_bytes),
+        "fetched_at": item.fetched_at,
+    }
+
+
 def insert_item(engine, item: Item) -> bool:
     with Session(engine) as session:
         existing = session.get(ItemRow, item.id)
@@ -164,6 +292,9 @@ def insert_item(engine, item: Item) -> bool:
             source_tags=json.dumps(item.source_tags),
             content_tags=json.dumps(item.content_tags),
             raw_content=item.raw_content,
+            body_md=item.body_md,
+            extractor=item.extractor,
+            updated_at=item.fetched_at,
         )
         session.add(row)
         session.execute(
@@ -178,8 +309,46 @@ def insert_item(engine, item: Item) -> bool:
                 "raw_content": item.raw_content or "",
             },
         )
+        try:
+            artefact = _write_artefact(item)
+        except OSError as e:
+            logger.warning("Artefact write failed for item %s, storing item without one: %s", item.id, e)
+            artefact = None
+        if artefact:
+            session.execute(
+                text(
+                    "INSERT INTO item_artefacts (item_id, path, mime, sha256, bytes, fetched_at) "
+                    "VALUES (:item_id, :path, :mime, :sha256, :bytes, :fetched_at)"
+                ),
+                artefact,
+            )
         session.commit()
         return True
+
+
+def get_artefact(engine, item_id: str) -> dict | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT item_id, path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id=:id"),
+            {"id": item_id},
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row._mapping)
+
+
+def update_item_body(engine, item_id: str, body_md: str, extractor: str) -> None:
+    """Used by scripts/reprocess_bodies.py to re-run Markdown conversion on
+    an existing row. Bumps updated_at, per section 3.2's sync-cursor rule.
+    """
+    with Session(engine) as session:
+        row = session.get(ItemRow, item_id)
+        if row is None:
+            return
+        row.body_md = body_md
+        row.extractor = extractor
+        row.updated_at = datetime.now(timezone.utc)
+        session.commit()
 
 
 def record_run_start(engine) -> str:
@@ -225,7 +394,7 @@ def record_source_error(engine, regulator_id: str, source_label: str, error: str
                 {
                     "f": row[1] + 1,
                     "e": error,
-                    "t": datetime.now(timezone.utc),
+                    "t": db_now(),
                     "r": regulator_id,
                     "s": source_label,
                 }
@@ -250,4 +419,188 @@ def reset_source_errors(engine, regulator_id: str, source_label: str) -> None:
             ),
             {"r": regulator_id, "s": source_label}
         )
+        session.commit()
+
+
+def record_source_empty_run(engine, regulator_id: str, source_label: str) -> None:
+    """Increments consecutive_empty_runs for a source that fetched
+    successfully but yielded zero items - the "200 OK, wrong content"
+    selector-drift case reset_source_errors alone never catches, since no
+    exception was raised. Mirrors record_source_error's upsert shape."""
+    with Session(engine) as session:
+        row = session.execute(
+            text("SELECT id, consecutive_empty_runs FROM source_errors WHERE regulator_id=:r AND source_label=:s"),
+            {"r": regulator_id, "s": source_label}
+        ).fetchone()
+        if row:
+            session.execute(
+                text(
+                    "UPDATE source_errors SET consecutive_empty_runs=:c, last_attempt_at=:t "
+                    "WHERE regulator_id=:r AND source_label=:s"
+                ),
+                {
+                    "c": (row[1] or 0) + 1,
+                    "t": db_now(),
+                    "r": regulator_id,
+                    "s": source_label,
+                }
+            )
+        else:
+            session.add(SourceErrorRow(
+                regulator_id=regulator_id,
+                source_label=source_label,
+                consecutive_empty_runs=1,
+                last_attempt_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def reset_source_empty_runs(engine, regulator_id: str, source_label: str) -> None:
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "UPDATE source_errors SET consecutive_empty_runs=0 "
+                "WHERE regulator_id=:r AND source_label=:s"
+            ),
+            {"r": regulator_id, "s": source_label}
+        )
+        session.commit()
+
+
+class WebhookSubscriptionRow(Base):
+    """One row per configured webhook subscriber (config/webhooks.yaml),
+    keyed by regradar.webhooks' stable subscriber id (derived from
+    profile+url - the config has no explicit id field). `cursor` is that
+    subscriber's own head of the change stream (architecture doc section
+    6), advanced only after a successful delivery. A later digest feature
+    (issue #13) reuses this same table under its own subscriber id
+    convention, per the task ruling that both share this mechanism.
+    """
+    __tablename__ = "webhook_subscriptions"
+
+    subscriber_id = Column(String, primary_key=True)
+    cursor = Column(String, nullable=True)
+    updated_at = Column(DateTime)
+
+
+class WebhookDeliveryRow(Base):
+    """Append-only delivery log - one row per attempted batch delivery
+    (status "success" or "failed"), for operator visibility into retries
+    and failures."""
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subscriber_id = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    status = Column(String, nullable=False)  # "success" | "failed"
+    detail = Column(Text)
+    delivered_at = Column(DateTime, nullable=False)
+
+
+def get_webhook_cursor(engine, subscriber_id: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT cursor FROM webhook_subscriptions WHERE subscriber_id = :id"),
+            {"id": subscriber_id},
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_webhook_cursor(engine, subscriber_id: str, cursor: str) -> None:
+    with Session(engine) as session:
+        row = session.get(WebhookSubscriptionRow, subscriber_id)
+        if row:
+            row.cursor = cursor
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(WebhookSubscriptionRow(
+                subscriber_id=subscriber_id, cursor=cursor, updated_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def record_webhook_delivery(engine, subscriber_id: str, url: str, status: str, detail: str = "") -> None:
+    with Session(engine) as session:
+        session.add(WebhookDeliveryRow(
+            subscriber_id=subscriber_id, url=url, status=status, detail=detail,
+            delivered_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+
+
+class DigestStateRow(Base):
+    """One row per configured digest (config/digests.yaml `name`), tracking
+    the same "advance only after full success" cursor semantics as
+    WebhookSubscriptionRow above (issue #13's ruling: reuse the webhook
+    cursor mechanism rather than a second one). `last_sent_at` is for
+    operator visibility only - `last_sent_cursor` is what a missed or
+    resumed run actually reads to catch up exactly."""
+    __tablename__ = "digest_state"
+
+    name = Column(String, primary_key=True)
+    last_sent_cursor = Column(String, nullable=True)
+    last_sent_at = Column(DateTime, nullable=True)
+
+
+def get_digest_cursor(engine, name: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT last_sent_cursor FROM digest_state WHERE name = :name"),
+            {"name": name},
+        ).fetchone()
+    return row[0] if row else None
+
+
+class SyncStateRow(Base):
+    """A small generic key/value store for one-off sync bookkeeping that
+    doesn't warrant its own table - currently just the change-stream cursor
+    `reg-radar import-dataset` (regradar/dataset.py) records for the
+    published dataset's `generated_at`.
+
+    It marks where the imported snapshot ends; it does NOT filter what the
+    collector fetches, and nothing consumes it automatically. A collection
+    run reads whatever is on each source's current feed pages either way,
+    and `reg-radar export` always starts full into a fresh --out. It is a
+    bookmark for change-stream consumers - get_changes()/`/api/changes`/a
+    webhook subscriber - that want only what arrived after the snapshot,
+    surfaced by get_health()'s `dataset_import`. Distinct from
+    `webhook_subscriptions`, which is keyed per outbound subscriber rather
+    than per inbound sync source.
+    """
+    __tablename__ = "sync_state"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime)
+
+
+def get_sync_state(engine, key: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT value FROM sync_state WHERE key = :key"), {"key": key},
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_digest_cursor(engine, name: str, cursor: str) -> None:
+    with Session(engine) as session:
+        row = session.get(DigestStateRow, name)
+        if row:
+            row.last_sent_cursor = cursor
+            row.last_sent_at = datetime.now(timezone.utc)
+        else:
+            session.add(DigestStateRow(
+                name=name, last_sent_cursor=cursor, last_sent_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def set_sync_state(engine, key: str, value: str) -> None:
+    with Session(engine) as session:
+        row = session.get(SyncStateRow, key)
+        if row:
+            row.value = value
+            row.updated_at = datetime.now(timezone.utc)
+        else:
+            session.add(SyncStateRow(key=key, value=value, updated_at=datetime.now(timezone.utc)))
         session.commit()

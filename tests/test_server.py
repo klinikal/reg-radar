@@ -25,6 +25,8 @@ def _server_with_db(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     write_engine = init_db(str(db_path))
     monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
     server = _fresh_server_module()
     return server, write_engine
 
@@ -60,7 +62,7 @@ def test_transport_security_enabled_with_allowed_hosts():
 
 def test_transport_security_allows_extra_hosts_from_env(monkeypatch):
     # Operators remapping the published port (e.g. 127.0.0.1:8001:8000, per
-    # skills/casp-radar-operator/SKILL.md's port-conflict guidance) send a
+    # skills/reg-radar-operator/SKILL.md's port-conflict guidance) send a
     # Host header reflecting that external port - it must be explicitly
     # allow-listed via MCP_EXTRA_ALLOWED_HOSTS or every request 421s.
     monkeypatch.setenv("MCP_EXTRA_ALLOWED_HOSTS", "127.0.0.1:8001, localhost:8001")
@@ -221,3 +223,133 @@ def test_get_item_tool_missing_id_returns_none(tmp_path, monkeypatch):
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     result = server.get_item_tool(item_id="nonexistent")
     assert result is None
+
+
+def test_get_taxonomy_tool_returns_axes_and_values(tmp_path, monkeypatch):
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    result = server.get_taxonomy_tool()
+    assert result["version"] >= 1
+    axis_ids = {a["id"] for a in result["axes"]}
+    assert {"document_type", "instrument"} <= axis_ids
+    instrument = next(a for a in result["axes"] if a["id"] == "instrument")
+    assert instrument["cardinality"] == "many"
+    mica = next(v for v in instrument["values"] if v["id"] == "mica")
+    assert "MiCA" in mica["aliases"]
+
+
+def test_get_unclassified_tool_excludes_items_with_a_live_row(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    unclassified = _item("Never classified item")
+    classified = _item("Already classified item")
+    insert_item(write_engine, unclassified)
+    insert_item(write_engine, classified)
+    server.write_classification(write_engine, server.get_taxonomy(), classified.id, "document_type", "warning",
+                                 by="rule", confidence=0.9)
+
+    result = server.get_unclassified_tool(axis="document_type")
+    ids = [i["id"] for i in result]
+    assert unclassified.id in ids
+    assert classified.id not in ids
+
+
+def test_get_unclassified_tool_returns_title_body_and_other_axis_labels(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("An item needing document_type")
+    item.body_md = "full body text"
+    insert_item(write_engine, item)
+    server.write_classification(write_engine, server.get_taxonomy(), item.id, "instrument", "mica",
+                                 by="rule", confidence=0.9)
+
+    result = server.get_unclassified_tool(axis="document_type")
+    row = next(r for r in result if r["id"] == item.id)
+    assert row["title"] == "An item needing document_type"
+    assert "regulator" in row and "jurisdiction" in row
+    assert row["labels"] == {"instrument": ["mica"]}
+
+
+def test_get_unclassified_tool_include_low_confidence(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("Weakly-scored item")
+    insert_item(write_engine, item)
+    # Below document_type's effective-label threshold - no entry in
+    # item_labels, but a live row exists.
+    server.write_classification(write_engine, server.get_taxonomy(), item.id, "document_type", "warning",
+                                 by="rule", confidence=0.2)
+
+    without_flag = server.get_unclassified_tool(axis="document_type")
+    with_flag = server.get_unclassified_tool(axis="document_type", include_low_confidence=True)
+    assert item.id not in [i["id"] for i in without_flag]
+    assert item.id in [i["id"] for i in with_flag]
+
+
+def test_classify_item_tool_writes_and_returns_labels(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("An item to classify")
+    insert_item(write_engine, item)
+
+    result = server.classify_item_tool(item_id=item.id, axis="document_type", value="warning",
+                                        by="llm:anthropic/claude-sonnet-5", confidence=0.9)
+    assert result["item_id"] == item.id
+    assert result["labels"] == {"document_type": "warning"}
+
+
+def test_classify_items_tool_writes_valid_and_reports_invalid(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item1 = _item("First item")
+    item2 = _item("Second item")
+    insert_item(write_engine, item1)
+    insert_item(write_engine, item2)
+
+    result = server.classify_items_tool(classifications=[
+        {"item_id": item1.id, "axis": "document_type", "value": "warning", "by": "llm:anthropic/claude-sonnet-5",
+         "confidence": 0.9},
+        {"item_id": item2.id, "axis": "document_type", "value": "press_release", "by": "llm:anthropic/claude-sonnet-5",
+         "confidence": 0.9},
+        {"item_id": item1.id, "axis": "document_type", "value": "not-a-real-value", "by": "llm:anthropic/claude-sonnet-5",
+         "confidence": 0.9},
+    ])
+    assert sorted(result["written"]) == sorted([item1.id, item2.id])
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["index"] == 2
+
+
+def test_classify_items_tool_batch_over_limit_raises(tmp_path, monkeypatch):
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    batch = [{"item_id": "x", "axis": "document_type", "value": "warning", "by": "rule"} for _ in range(101)]
+    import pytest
+    with pytest.raises(ValueError):
+        server.classify_items_tool(classifications=batch)
+
+
+def test_get_unclassified_tool_count_decreases_by_exactly_n_after_n_classify_writes(tmp_path, monkeypatch):
+    """Acceptance criterion: get_unclassified_tool(axis="document_type")
+    count decreases by exactly the number of items classified in a session -
+    stands in for the "agent classifies 50 items with the skill" criterion,
+    which needs a live agent and can't run in this test suite (per the task
+    brief)."""
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    items = [_item(f"Backlog item {i}") for i in range(50)]
+    for item in items:
+        insert_item(write_engine, item)
+
+    before = len(server.get_unclassified_tool(axis="document_type", limit=200))
+    assert before == 50
+
+    classifications = [
+        {"item_id": item.id, "axis": "document_type", "value": "press_release", "by": "llm:anthropic/claude-sonnet-5",
+         "confidence": 0.8}
+        for item in items
+    ]
+    result = server.classify_items_tool(classifications=classifications)
+    assert len(result["written"]) == 50
+    assert result["errors"] == []
+
+    after = len(server.get_unclassified_tool(axis="document_type", limit=200))
+    assert before - after == 50
+    assert after == 0

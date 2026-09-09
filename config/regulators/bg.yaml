@@ -1,0 +1,20 @@
+- id: bg-fsc
+  name: FSC Bulgaria
+  full_name: Financial Supervision Commission
+  jurisdiction: bg
+  jurisdiction_type: member_state
+  website: https://www.fsc.bg/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fsc.bg/en/for-the-consumers/warnings/
+  notes: "WordPress RSS 2.0. English warnings hub available; FSC-specific warnings are Bulgarian only."
+  sources:
+  - type: rss
+    url: https://www.fsc.bg/en/feed/
+    label: all_news
+    preferred_language: en
+    labels: {}
+
+# ─── Croatia ──────────────────────────────────────────────────────────────────
+

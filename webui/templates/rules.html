@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Classification rules - reg-radar{% endblock %}
+{% block content %}
+
+<h1>Classification Rules</h1>
+<p>
+  Deterministic, weighted rules that classify new items on insert (see <code>config/rules.yaml</code>).
+  A rule scores an item's title/body for one axis/value pair; a match writes a
+  <code>by: rule</code> classification when the score reaches the file's
+  <code>min_confidence</code> (currently {{ min_confidence }}). Alias lists in
+  <code>config/taxonomy.yaml</code> already cover most instruments at weight 0.7 -
+  add a rule here mainly for wording a taxonomy alias doesn't catch.
+</p>
+
+<table class="items">
+  <thead><tr><th>Axis</th><th>Value</th><th>Pattern</th><th>Weight</th><th>Fields</th><th></th></tr></thead>
+  <tbody>
+  {% for rule in rules %}
+    <tr>
+      <td>{{ rule.axis }}</td>
+      <td>{{ rule.value }}</td>
+      <td>
+        {% for m in rule.match %}
+          <code>{{ m.pattern }}</code>{% if m.flags %} ({{ m.flags }}){% endif %}<br>
+        {% endfor %}
+      </td>
+      <td>
+        {% for m in rule.match %}{{ m.weight }}<br>{% endfor %}
+      </td>
+      <td>{{ rule.fields | join(", ") }}</td>
+      <td>
+        <form method="post" action="/rules/{{ loop.index0 }}/delete" style="display:inline">
+          <button type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="empty">No rules yet - only taxonomy alias matching applies.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add a rule</h2>
+<form method="post" action="/rules">
+  <label>Axis
+    <select name="axis" required>
+      {% for axis in axes %}
+      <option value="{{ axis }}">{{ axis }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Value <input type="text" name="value" required placeholder="e.g. mica"></label>
+  <label>Pattern (regex) <input type="text" name="pattern" required placeholder="\\bMiCA(R)?\\b"></label>
+  <label>Weight <input type="number" name="weight" value="0.7" min="0" max="1" step="0.05"></label>
+  <label>Flags <input type="text" name="flags" placeholder="i for case-insensitive"></label>
+  <label><input type="checkbox" name="fields" value="title" checked> Title</label>
+  <label><input type="checkbox" name="fields" value="body" checked> Body</label>
+  <label>Title multiplier <input type="number" name="title_multiplier" value="1.0" min="1" step="0.1"></label>
+  <button type="submit">Add</button>
+</form>
+<p>Valid values by axis (from <code>config/taxonomy.yaml</code>):</p>
+<ul>
+{% for axis, values in axis_values.items() %}
+  <li><strong>{{ axis }}</strong>: {{ values | join(", ") }}</li>
+{% endfor %}
+</ul>
+
+{% endblock %}

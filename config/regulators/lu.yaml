@@ -1,0 +1,20 @@
+- id: lu-cssf
+  name: CSSF
+  full_name: Commission de Surveillance du Secteur Financier
+  jurisdiction: lu
+  jurisdiction_type: member_state
+  website: https://www.cssf.lu/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cssf.lu/en/warnings/
+  notes: "767 warnings entries as of 2026-07-01 - most comprehensive warnings list in EEA. Keyword filtering available on feed URL."
+  sources:
+  - type: rss
+    url: https://www.cssf.lu/en/feed/publications
+    label: publications
+    preferred_language: en
+    labels: {}
+
+# ─── Malta ────────────────────────────────────────────────────────────────────
+

@@ -1,0 +1,20 @@
+- id: lt-lb
+  name: Lietuvos bankas
+  full_name: Lietuvos bankas (Bank of Lithuania)
+  jurisdiction: lt
+  jurisdiction_type: member_state
+  website: https://www.lb.lt/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: true
+  warnings_url: https://www.lb.lt/en/the-list-of-entities-without-the-right-to-provide-financial-including-investment-services-in-lithuania
+  notes: "RSS URL confirmed but Cloudflare-protected - will work via FlareSolverr proxy."
+  sources:
+  - type: rss
+    url: https://www.lb.lt/en/publications/rss
+    label: publications_en
+    preferred_language: en
+    labels: {}
+
+# ─── Luxembourg ───────────────────────────────────────────────────────────────
+

@@ -1,0 +1,30 @@
+- id: be-fsma
+  name: FSMA
+  full_name: Financial Services and Markets Authority
+  jurisdiction: be
+  jurisdiction_type: member_state
+  website: https://www.fsma.be/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fsma.be/en/warnings
+  notes: "Combined news and warnings feed."
+  sources:
+  - type: rss
+    url: https://www.fsma.be/en/news-articles/rss.xml
+    label: news_and_warnings
+    preferred_language: en
+    labels: {}
+
+- id: be-nbb
+  name: NBB
+  full_name: National Bank of Belgium
+  jurisdiction: be
+  jurisdiction_type: member_state
+  website: https://www.nbb.be/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "No RSS feed found - email subscription only via Flexmail."
+  sources: []

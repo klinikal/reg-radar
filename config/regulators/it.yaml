@@ -1,0 +1,36 @@
+- id: it-consob
+  name: CONSOB
+  full_name: Commissione Nazionale per le Società e la Borsa
+  jurisdiction: it
+  jurisdiction_type: member_state
+  website: https://www.consob.it/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://www.consob.it/web/area-pubblica/abusivismo-finanziario
+  notes: "Radware Bot Manager blocks all automated access."
+  sources: []
+- id: it-bancaditalia
+  name: Banca d'Italia
+  full_name: Banca d'Italia
+  jurisdiction: it
+  jurisdiction_type: member_state
+  website: https://www.bancaditalia.it/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://www.bancaditalia.it/compiti/vigilanza/avvisi-pub/index.html
+  notes: "No RSS feed found."
+  sources: []
+- id: it-oam
+  name: OAM Italy
+  full_name: Organismo Agenti e Mediatori
+  jurisdiction: it
+  jurisdiction_type: member_state
+  website: https://www.organismo-am.it/
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "OAM VASP register no longer operational as of 1 July 2026 - MiCA CASPs now supervised by CONSOB and Banca d'Italia directly."
+  sources: []

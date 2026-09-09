@@ -5,8 +5,17 @@ WORKDIR /app
 COPY mcpserver/requirements.txt ./mcpserver/requirements.txt
 RUN pip install --no-cache-dir -r mcpserver/requirements.txt
 
+# regradar/ (installed below) imports collector.* modules (storage,
+# pipeline, main), so their runtime deps must be installed too - except
+# playwright, which is collector-image-only (see Dockerfile.collector).
+COPY collector/requirements.txt ./collector/requirements.txt
+RUN grep -v '^playwright' collector/requirements.txt | pip install --no-cache-dir -r /dev/stdin
+
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/
+COPY regradar/ ./regradar/
+COPY pyproject.toml ./pyproject.toml
+RUN pip install --no-cache-dir --no-deps .
 
 RUN addgroup --system appgroup && \
     adduser --system --ingroup appgroup appuser && \
@@ -14,7 +23,8 @@ RUN addgroup --system appgroup && \
 
 USER appuser
 
-ENV DB_PATH=/app/data/casp_radar.db \
+ENV PYTHONPATH=/app \
+    DB_PATH=/app/data/reg_radar.db \
     LOG_LEVEL=INFO
 
 CMD ["python", "-m", "mcpserver.server"]

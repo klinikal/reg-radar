@@ -11,9 +11,9 @@ the ESMA library backfill (see scripts/backfill_esma_library.py), and running
 it is a real decision, not a side effect of adding the source. Always
 --dry-run first.
 
-Reads source URLs and CSS selectors directly from config/regulators.yaml
-(the uk-fca entry) rather than duplicating them here, so the backfill can
-never silently drift out of sync with the live scrape config.
+Reads source URLs and CSS selectors directly from config/regulators/ (the
+uk-fca entry) rather than duplicating them here, so the backfill can never
+silently drift out of sync with the live scrape config.
 
 Run inside the collector container:
 
@@ -30,9 +30,9 @@ import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
-import yaml
 
 from collector.fetcher import fetch_source
+from collector.main import load_regulators
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -47,9 +47,8 @@ CATEGORIES = ["notices_and_decisions", "policy_and_guidance"]
 
 
 def _load_source(label: str) -> dict:
-    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
-    with open(regulators_path) as f:
-        regulators = yaml.safe_load(f)
+    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+    regulators = load_regulators(regulators_path)
     reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
     return next(s for s in reg["sources"] if s["label"] == label)
 
@@ -68,10 +67,10 @@ def _page_url(base_url: str, start: int) -> str:
 
 def run(label: str, delay: float, dry_run: bool, max_pages: int | None) -> None:
     source = _load_source(label)
-    user_agent = os.getenv("USER_AGENT", "casp-radar/1.0")
+    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
-    db_path = os.getenv("DB_PATH", "/app/data/casp_radar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     fetch_cfg = {"user_agent": user_agent, "timeout": timeout, "retries": retries}
 
     resp = httpx.get(source["url"], headers={"User-Agent": user_agent}, timeout=timeout, follow_redirects=True)
