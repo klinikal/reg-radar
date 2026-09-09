@@ -31,6 +31,20 @@ _DEFAULT_ARTEFACTS_DIR = "/app/data/originals"
 _DEFAULT_MAX_ARTEFACT_BYTES = 25 * 1024 * 1024  # matches MAX_PDF_DOWNLOAD_BYTES's existing default
 
 
+def db_now() -> datetime:
+    """UTC timestamp for a raw-SQL datetime write (created_at/updated_at/
+    superseded_at/last_attempt_at/... via text()). SQLAlchemy's DateTime
+    type strips tzinfo before storing on sqlite, so every ORM write
+    (`Column(DateTime, default=lambda: datetime.now(timezone.utc))`, or a
+    plain `row.updated_at = datetime.now(timezone.utc)`) ends up naive in
+    the DB. A raw `text()` INSERT/UPDATE bypasses that stripping and stores
+    the tz-aware repr (`...+00:00`) verbatim, which sorts and compares
+    differently as a string than the naive ORM format - this is what broke
+    the get_changes() cursor for classification writes. Use this instead of
+    `datetime.now(timezone.utc)` at every raw-SQL datetime param."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _artefacts_dir() -> str:
     return os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
 
@@ -380,7 +394,7 @@ def record_source_error(engine, regulator_id: str, source_label: str, error: str
                 {
                     "f": row[1] + 1,
                     "e": error,
-                    "t": datetime.now(timezone.utc),
+                    "t": db_now(),
                     "r": regulator_id,
                     "s": source_label,
                 }
@@ -426,7 +440,7 @@ def record_source_empty_run(engine, regulator_id: str, source_label: str) -> Non
                 ),
                 {
                     "c": (row[1] or 0) + 1,
-                    "t": datetime.now(timezone.utc),
+                    "t": db_now(),
                     "r": regulator_id,
                     "s": source_label,
                 }

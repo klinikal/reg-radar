@@ -191,3 +191,12 @@ def test_get_changes_picks_up_a_rule_classification_updated_at_bump():
     assert documents_after[0]["labels"]["instrument"] == ["mica"]
     assert cursor_after is not None
     assert cursor_after != cursor_before
+
+    # The regression this guards: a raw-SQL updated_at write (materialize_
+    # labels' UPDATE) that doesn't match the ORM's naive string format
+    # sorts differently, so a cursor sitting past the reclassified item
+    # never advances past it and a paginating caller (task 13's digest)
+    # sees it forever. Calling again with cursor_after must be empty.
+    documents_again, cursor_again = get_changes(engine, since=cursor_after, limit=10)
+    assert documents_again == []
+    assert cursor_again is None
