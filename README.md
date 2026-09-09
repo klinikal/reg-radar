@@ -1,4 +1,6 @@
-# casp-radar
+# regradar
+
+> Renamed from casp-radar. If you have an existing install, see [Upgrading from casp-radar](#upgrading-from-casp-radar).
 
 Open-source regulatory intelligence tool for European (EU, UK coming soon) entities. Collects news, warnings, and publications from financial regulators across the EU on a daily schedule, stores them in SQLite, and exposes the database via an MCP server so AI agents can query it. There is also a lightweight webUX that can be run to see, query and search.
 
@@ -15,8 +17,8 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
 
 1. **Run the stack**
    ```bash
-   git clone https://github.com/klinikal/casp-radar
-   cd casp-radar
+   git clone https://github.com/klinikal/regradar
+   cd regradar
    cp .env.example .env
    docker compose up -d
    ```
@@ -29,9 +31,9 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
 
 3. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
 
-4. **Give your agent the onboarding skill.** Point it at [`skills/casp-radar-onboarding/SKILL.md`](skills/casp-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/casp-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
+4. **Give your agent the onboarding skill.** Point it at [`skills/regradar-onboarding/SKILL.md`](skills/regradar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/regradar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
 
-5. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/casp-radar-operator/SKILL.md`](skills/casp-radar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
+5. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/regradar-operator/SKILL.md`](skills/regradar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
 
 ## Coverage
 
@@ -128,18 +130,18 @@ This is intentionally plain — a functional first pass, not a finished design. 
 
 ## Connecting an agent
 
-casp-radar speaks standard MCP over streamable HTTP — any MCP-compatible client works, not just one vendor's tool. Setup varies by client:
+regradar speaks standard MCP over streamable HTTP — any MCP-compatible client works, not just one vendor's tool. Setup varies by client:
 
 **Claude Code:**
 ```bash
-claude mcp add --transport http casp-radar http://localhost:8000/mcp
+claude mcp add --transport http regradar http://localhost:8000/mcp
 ```
 
 **Clients using the common `mcpServers` JSON config** (Claude Desktop, and many other MCP-compatible apps use a similar shape — check your client's docs for the exact config file location):
 ```json
 {
   "mcpServers": {
-    "casp-radar": {
+    "regradar": {
       "url": "http://localhost:8000/mcp"
     }
   }
@@ -152,17 +154,17 @@ claude mcp add --transport http casp-radar http://localhost:8000/mcp
 
 `skills/` contains two plain-markdown instruction documents — not a Claude-specific format, just structured guidance any agent (or human) can read and follow:
 
-- **[`casp-radar-operator`](skills/casp-radar-operator/SKILL.md)** — how to run, query, and navigate casp-radar: checking whether the stack is up, the MCP tool reference, and how to weight relevance using the operator's context (see below).
-- **[`casp-radar-onboarding`](skills/casp-radar-onboarding/SKILL.md)** — a guided interview that generates your private operator context (see next section).
+- **[`regradar-operator`](skills/regradar-operator/SKILL.md)** — how to run, query, and navigate regradar: checking whether the stack is up, the MCP tool reference, and how to weight relevance using the operator's context (see below).
+- **[`regradar-onboarding`](skills/regradar-onboarding/SKILL.md)** — a guided interview that generates your private operator context (see next section).
 
 If your agent harness has a native skill/tool-loading mechanism (e.g. Claude Code's `Skill` system), point it there. Otherwise, paste the file contents into your system prompt or custom instructions, or just tell your agent to read the file and follow it.
 
 ### Operator context (`refs/`)
 
-`skills/casp-radar-operator/refs/` holds two files:
+`skills/regradar-operator/refs/` holds two files:
 
 - **`example.context.md`** (tracked in git) — the template. Explains what each section means.
-- **`context.md`** (git-ignored, generated by the onboarding skill or filled in by hand) — your actual entity facts: what you're licensed for, where, what you do and don't do, which affiliates matter, what kind of regulatory content to prioritise. Never committed — this is exactly the kind of detail that shouldn't end up in a public repo, since anyone running casp-radar has their own regulatory profile.
+- **`context.md`** (git-ignored, generated by the onboarding skill or filled in by hand) — your actual entity facts: what you're licensed for, where, what you do and don't do, which affiliates matter, what kind of regulatory content to prioritise. Never committed — this is exactly the kind of detail that shouldn't end up in a public repo, since anyone running regradar has their own regulatory profile.
 
 Run the onboarding skill any time to generate or rebuild this file.
 
@@ -172,10 +174,10 @@ Copy `.env.example` to `.env` and adjust:
 
 | Variable | Default | Description |
 |---|---|---|
-| `DB_PATH` | `/app/data/casp_radar.db` | SQLite database path |
+| `DB_PATH` | `/app/data/regradar.db` | SQLite database path |
 | `SCHEDULE` | `0 6 * * *` | Cron schedule (UTC) |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `USER_AGENT` | `casp-radar/1.0 (+https://github.com/klinikal/casp-radar)` | HTTP User-Agent header |
+| `USER_AGENT` | `regradar/2.0 (+https://github.com/klinikal/regradar)` | HTTP User-Agent header |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
 | `REGULATORS_PATH` | `/app/config/regulators.yaml` | Regulator registry file |
@@ -188,11 +190,33 @@ Copy `.env.example` to `.env` and adjust:
 
 ## Backups & recovery
 
-The live database lives in a Docker-managed named volume (`casp_radar_data`), not a bind-mounted host folder — SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident. A `litestream` service continuously replicates the database to `./backups/casp_radar` on the host disk, so a corruption or data-loss event is a restore, not a salvage job.
+The live database lives in a Docker-managed named volume (`regradar_data`), not a bind-mounted host folder — SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident. A `litestream` service continuously replicates the database to `./backups/regradar` on the host disk, so a corruption or data-loss event is a restore, not a salvage job.
 
 The collector also runs a full `PRAGMA integrity_check` at the start of every collection cycle, so corruption is caught immediately and surfaced loudly (`get_health_tool`'s `db_integrity` field: `"ok"`, `"corrupted"`, or `"unknown"` if no run has completed yet) — not discovered later as a failed search.
 
-Full restore procedure and details: see [Backups & recovery in the operator skill](skills/casp-radar-operator/SKILL.md#backups--recovery).
+Full restore procedure and details: see [Backups & recovery in the operator skill](skills/regradar-operator/SKILL.md#backups--recovery).
+
+## Upgrading from casp-radar
+
+This project was renamed from casp-radar to regradar (same code, same data, new name and new default volume/database names). If you're on a fresh install, ignore this section.
+
+**Option A: keep running on the old volume for now.** Add this to `.env` and restart — nothing else changes:
+```bash
+echo "DATA_VOLUME_NAME=casp_radar_data" >> .env
+docker compose up -d
+```
+Remove that line once you've migrated with Option B so future upgrades use the new default.
+
+**Option B: migrate to the new volume name.** This copies your existing data into a volume named `regradar_data` and moves the Litestream backup directory to match:
+```bash
+docker compose down
+docker volume create regradar_data
+docker run --rm -v casp_radar_data:/from -v regradar_data:/to alpine sh -c "cp -a /from/. /to/"
+docker volume rm casp_radar_data
+mv ./backups/casp_radar ./backups/regradar
+docker compose up -d
+```
+Confirm the migration worked: `count_items_tool` should return the same number of items before and after.
 
 ### Keyword alerts
 
@@ -217,7 +241,7 @@ MIT
 
 ## Credits
 
-casp-radar bypasses Cloudflare-protected sources using [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) (MIT licence), run as a standalone Docker service — see [Coverage](#coverage) above.
+regradar bypasses Cloudflare-protected sources using [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) (MIT licence), run as a standalone Docker service — see [Coverage](#coverage) above.
 
 ## Copyright
 

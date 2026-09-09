@@ -1,6 +1,10 @@
 # Changelog
 
-All notable changes to casp-radar are documented here, grouped by day. Entries are outcome-focused (what changed and why it matters), not a commit-by-commit log — see `git log` for full detail.
+All notable changes to regradar are documented here, grouped by day. Entries are outcome-focused (what changed and why it matters), not a commit-by-commit log — see `git log` for full detail.
+
+## 2026-09-09
+
+**Renamed casp-radar to regradar** — code-side rename only; no functional change. The database file (`casp_radar.db` → `regradar.db`), Docker volume (`casp_radar_data` → `regradar_data`), Litestream backup path, compose project name, default `USER_AGENT`, MCP server name, and the `skills/casp-radar-*` directories all move to the `regradar` name. Python packages (`collector`, `mcpserver`, `webui`), database tables, and the item id scheme are unchanged. Existing installs: see the README's "Upgrading from casp-radar" section for the volume migration steps — the compose file also accepts `DATA_VOLUME_NAME=casp_radar_data` as a stopgap so nobody boots against an empty database by surprise. The GitHub repository rename, name/trademark check, and the `2.0.0-alpha.1` tag are tracked separately and not part of this change.
 
 ## 2026-07-04
 
