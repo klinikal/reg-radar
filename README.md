@@ -298,6 +298,7 @@ Copy `.env.example` to `.env` and adjust:
 | `STORE_ARTEFACTS` | `true` | Set to `false` to skip writing artefacts entirely (a constrained install) |
 | `FEED_MAX_ITEMS` | `50` | Entries returned by `/feeds/<profile>.atom` — see [Export and sync](#export-and-sync) |
 | `WEBHOOKS_PATH` | `/app/config/webhooks.yaml` | Webhook subscriber config — see [Export and sync](#export-and-sync); a missing file disables webhook delivery entirely |
+| `DIGESTS_PATH`, `SMTP_*`, `TELEGRAM_BOT_TOKEN` | see [Digests](#digests) | Scheduled email/Telegram/webhook digest config; a missing `digests.yaml` disables digests entirely |
 
 ## Canonical documents & artefacts
 
@@ -328,6 +329,45 @@ The primitive every downstream adapter builds on is "everything that changed sin
   ```
 
   Each subscriber gets its own cursor (stored in SQLite, not a file) advanced only after a successful (2xx) delivery, so a failed batch is retried — with doubling backoff — on the *same* items next time rather than skipped. The POST body is `{"cursor", "next_cursor", "items"}` (same item shape as `/api/changes`), signed with `X-RegRadar-Signature: sha256=<hex hmac-sha256 of the raw body>` using the subscriber's own secret — verify it before trusting a delivery. One subscriber's failure (bad URL, receiver down, wrong secret) never blocks another's delivery. Delivery outcomes are logged to a `webhook_deliveries` table for operator visibility.
+
+## Digests
+
+`config/digests.yaml` (a list, unset by default — a missing file disables all digests) turns "everything a profile hasn't seen yet" into a scheduled email, Telegram or webhook notification, built on the same [change stream](#export-and-sync) as everything above:
+
+```yaml
+- name: uk-equities-daily
+  profile: uk-equities-dealer      # config/profiles/<name>.yaml
+  schedule: "0 7 * * *"            # cron, UTC
+  send_empty: false                # default false - skip rather than send "nothing new"
+  channels:
+    - type: email
+      to: ops@example.org
+    - type: telegram
+      chat_id: "-1001234567890"    # numeric chat id only
+    - type: webhook
+      url: https://example.org/hooks/regradar-digest
+      secret_env: WEBHOOK_SECRET_DIGEST_UK   # same secret-in-env convention as webhooks.yaml
+```
+
+Each digest is grouped by jurisdiction then regulator, one entry per item (title, `document_type`, `instrument` labels, a one-line snippet, and a link), rendered as both Markdown and HTML (used as the plain-text and HTML parts of an email). Its own cursor is tracked in the same SQLite mechanism as webhook subscribers (a `digest_state` table, keyed by the digest's `name`) and is only advanced once **every** configured channel for that digest succeeds — a partial failure (e.g. email delivered, Telegram down) leaves the cursor untouched, so the whole digest, not just the failed channel, is retried in full next time, and a missed scheduled run catches up exactly rather than skipping items.
+
+- **`regradar digest --preview --profile <name> [--since <cursor>]`** renders and prints the digest to stdout; it never delivers anything or touches stored state — use it to see what a digest would contain before wiring up channels.
+- **`regradar digest --send [--name <digest-name>]`** renders and delivers. With `--name`, only that `config/digests.yaml` entry runs; without it, every configured digest runs once. Run it manually, from the collector's own scheduler (below), or from an external cron/systemd timer — all three call the same code path.
+- The collector process reads `config/digests.yaml` at startup and adds one cron job per digest to its existing scheduler (independent of the collector's own `SCHEDULE`) — no second scheduling mechanism. A missing file is a no-op; an invalid one is logged and skipped, never crashing the collector.
+- **Email** uses `smtplib` with the SMTP settings below, sending `multipart/alternative` (plain text + HTML parts).
+- **Telegram** uses the Bot API's `sendMessage`, chunked at its 4096-character message limit on paragraph boundaries.
+- **Webhook** reuses the signed-POST mechanism above exactly (same HMAC signing, same retry/backoff) — no second implementation.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DIGESTS_PATH` | `/app/config/digests.yaml` | Digest config; a missing file disables digests entirely |
+| `SMTP_HOST` | *(unset)* | SMTP server hostname — required for any `email` channel |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USER` | *(unset)* | SMTP auth username (omit for an unauthenticated relay) |
+| `SMTP_PASSWORD_ENV` | *(unset)* | Name of the env var holding the SMTP password — the password itself is never in config, matching `secret_env` above |
+| `SMTP_FROM` | *(unset)* | `From` address — required for any `email` channel |
+| `SMTP_STARTTLS` | `true` | Set to `false` to skip STARTTLS |
+| `TELEGRAM_BOT_TOKEN` | *(unset)* | Bot token — required for any `telegram` channel; never put it in `digests.yaml` |
 
 ## Backups & recovery
 
