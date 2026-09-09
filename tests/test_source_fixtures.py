@@ -65,5 +65,8 @@ def test_source_fixture_contract(regulator, source):
     path = fixture_path(regulator["id"], source)
     assert path.exists(), f"missing fixture: {path}"
     content = path.read_bytes()
-    items = parse_fixture(source, regulator["id"], content)
+    # fetch_pdf=False: this test is offline by contract (see module
+    # docstring) - a scrape source with extract_pdf_text: true (e.g.
+    # es-cnmv/warnings_unregistered) must not make a live network call here.
+    items = parse_fixture(source, regulator["id"], content, fetch_pdf=False)
     assert_contract(items)

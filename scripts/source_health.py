@@ -91,14 +91,23 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
     return content
 
 
-def parse_fixture(source: dict, regulator_id: str, content: bytes) -> list[Item]:
+def parse_fixture(source: dict, regulator_id: str, content: bytes, fetch_pdf: bool = True) -> list[Item]:
     """Runs the existing parser for source['type'] against raw fixture/live
-    content - the same functions the collector itself calls."""
+    content - the same functions the collector itself calls.
+
+    fetch_pdf=False forces off a scrape source's extract_pdf_text - that
+    option makes _parse_scrape fetch each matched item's URL over the
+    network, which the offline fixture contract test must never do. The
+    live nightly check (check_source) wants the real, network-fetching
+    behaviour, so it leaves this at the default True.
+    """
     source_type = source.get("type", "rss")
     if source_type in ("rss", "atom"):
         return _parse_rss(content, source, regulator_id)
     text_content = content.decode("utf-8", errors="replace")
     if source_type == "scrape":
+        if not fetch_pdf and source.get("scrape", {}).get("extract_pdf_text"):
+            source = {**source, "scrape": {**source["scrape"], "extract_pdf_text": False}}
         return _parse_scrape(text_content, source, regulator_id)
     if source_type == "page_watch":
         return _parse_page_watch(text_content, source, regulator_id)

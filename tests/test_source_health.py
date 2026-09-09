@@ -5,6 +5,7 @@ import pytest
 
 from collector.schema import Item
 from scripts.source_health import (
+    load_regulators,
     MAX_FIXTURE_BYTES,
     assert_contract,
     capture,
@@ -16,6 +17,7 @@ from scripts.source_health import (
     issue_title,
     iter_enabled_sources,
     open_or_update_issue,
+    parse_fixture,
     run_all_checks,
 )
 
@@ -51,6 +53,24 @@ def test_assert_contract_fails_when_no_item_has_title_url_and_date():
 def test_assert_contract_fails_on_empty_title():
     with pytest.raises(AssertionError):
         assert_contract([_make_item(title="", date_inferred=True)])
+
+
+def test_parse_fixture_scrape_with_extract_pdf_text_does_not_touch_network():
+    # es-cnmv/warnings_unregistered has extract_pdf_text: true in real
+    # config - _parse_scrape() would otherwise fetch every matched item's
+    # URL. parse_fixture(..., fetch_pdf=False) must yield items without
+    # ever calling the network fetch, proven by making that fetch raise.
+    regulators = load_regulators("config/regulators.yaml")
+    regulator = next(r for r in regulators if r["id"] == "es-cnmv")
+    source = next(s for s in regulator["sources"] if s["label"] == "warnings_unregistered")
+    assert source["scrape"]["extract_pdf_text"] is True
+
+    content = fixture_path("es-cnmv", source).read_bytes()
+
+    with patch("collector.fetcher._fetch_bytes", side_effect=AssertionError("network call made from offline parse")):
+        items = parse_fixture(source, "es-cnmv", content, fetch_pdf=False)
+
+    assert_contract(items)
 
 
 def test_fixture_extension_rss_and_atom_are_xml():
