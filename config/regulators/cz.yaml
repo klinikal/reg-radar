@@ -1,0 +1,21 @@
+- id: cz-cnb
+  name: CNB
+  full_name: Czech National Bank
+  jurisdiction: cz
+  jurisdiction_type: member_state
+  website: https://www.cnb.cz/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.cnb.cz/en/supervision-financial-market/consumer-protection-and-financial-literacy/consumer-protection/notices-about-activities/
+  notes: "RSS index at cnb.cz/en/general/rss/."
+  sources:
+  - type: rss
+    url: https://www.cnb.cz/en/.content/rss-feed/rss-feed_tz.xml
+    label: press_releases
+    preferred_language: en
+    labels:
+      document_type: press_release
+
+# ─── Denmark ──────────────────────────────────────────────────────────────────
+

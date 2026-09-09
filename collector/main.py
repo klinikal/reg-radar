@@ -1,4 +1,5 @@
 import fcntl
+import glob
 import logging
 import os
 import sys
@@ -44,24 +45,79 @@ def load_config():
     }
 
 
-def load_regulators(config_path: str) -> list[dict]:
+def _load_regulators_file(path: str) -> list[dict]:
     try:
-        with open(config_path) as f:
+        with open(path) as f:
             data = yaml.safe_load(f)
-    except FileNotFoundError:
-        logger.error("Regulators config not found: %s", config_path)
-        sys.exit(1)
     except yaml.YAMLError as e:
-        logger.error("Invalid YAML in regulators config %s: %s", config_path, e)
+        logger.error("Invalid YAML in regulators config %s: %s", path, e)
         sys.exit(1)
     if not isinstance(data, list) or len(data) == 0:
         logger.error(
             "Regulators config %s must be a non-empty list; got %s",
-            config_path,
+            path,
             type(data).__name__ if data is not None else "empty",
         )
         sys.exit(1)
     return data
+
+
+def load_regulators(config_path: str) -> list[dict]:
+    """A directory loads and concatenates every `*.yaml` in it (the
+    per-jurisdiction split, e.g. config/regulators/mt.yaml); a single file
+    path still works for migration compatibility. Fails loudly (matching
+    this module's existing sys.exit(1) convention) on a duplicate regulator
+    id across files or a duplicate source label within a regulator - unknown
+    jurisdictions are caught downstream by regradar.taxonomy against
+    config/jurisdictions.yaml.
+    """
+    if os.path.isdir(config_path):
+        # A leading underscore (config/regulators/_template.yaml) marks a
+        # file as documentation, not a real entry - never loaded, matching
+        # the common "_ = not a real file" convention CONTRIBUTING.md points
+        # contributors at.
+        paths = sorted(
+            p for p in glob.glob(os.path.join(config_path, "*.yaml"))
+            if not os.path.basename(p).startswith("_")
+        )
+        if not paths:
+            logger.error("Regulators config directory %s has no *.yaml files", config_path)
+            sys.exit(1)
+    elif os.path.isfile(config_path):
+        paths = [config_path]
+    else:
+        logger.error("Regulators config not found: %s", config_path)
+        sys.exit(1)
+
+    regulators: list[dict] = []
+    seen_ids: dict[str, str] = {}
+    for path in paths:
+        for reg in _load_regulators_file(path):
+            reg_id = reg.get("id") if isinstance(reg, dict) else None
+            if not reg_id:
+                logger.error("%s: regulator entry missing 'id'", path)
+                sys.exit(1)
+            if reg_id in seen_ids:
+                logger.error(
+                    "Duplicate regulator id '%s' in %s (already defined in %s)",
+                    reg_id, path, seen_ids[reg_id],
+                )
+                sys.exit(1)
+            seen_ids[reg_id] = path
+
+            seen_labels = set()
+            for source in reg.get("sources", []) or []:
+                label = source.get("label") if isinstance(source, dict) else None
+                if not label:
+                    logger.error("%s: regulator '%s' has a source missing 'label'", path, reg_id)
+                    sys.exit(1)
+                if label in seen_labels:
+                    logger.error("%s: regulator '%s' has duplicate source label '%s'", path, reg_id, label)
+                    sys.exit(1)
+                seen_labels.add(label)
+
+            regulators.append(reg)
+    return regulators
 
 
 def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: dict) -> None:
@@ -269,7 +325,7 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
 
 def main():
     cfg = load_config()
-    config_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
+    config_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
 
     logger.info("Initialising database at %s", cfg["db_path"])
     engine = init_db(cfg["db_path"])

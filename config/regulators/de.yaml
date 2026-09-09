@@ -1,0 +1,37 @@
+- id: de-bafin
+  name: BaFin
+  full_name: Bundesanstalt für Finanzdienstleistungsaufsicht
+  jurisdiction: de
+  jurisdiction_type: member_state
+  website: https://www.bafin.de/EN
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.bafin.de/EN/verbraucherinnen-verbraucher/news-warnungen/warnmeldungen/warnmeldungen_node_en.html
+  notes: "No standalone warnings-only RSS - warnings appear in general feeds. Four confirmed RSS feeds."
+  sources:
+  - type: rss
+    url: https://www.bafin.de/EN/service/rss/_function/rssnewsfeed.xml?nn=187494
+    label: all_news
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.bafin.de/EN/service/rss/_function/RSS_Presse.xml?nn=187494
+    label: press_pr
+    preferred_language: en
+    labels:
+      document_type: warning
+  - type: rss
+    url: https://www.bafin.de/EN/service/rss/_function/RSS_Aufsicht.xml?nn=187494
+    label: regulatory_law
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.bafin.de/EN/service/rss/_function/RSS_Massnahmen.xml?nn=187494
+    label: measures_sanctions
+    preferred_language: en
+    labels: {}
+
+# ─── Greece ───────────────────────────────────────────────────────────────────
+

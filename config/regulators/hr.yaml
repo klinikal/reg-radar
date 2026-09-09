@@ -1,0 +1,21 @@
+- id: hr-hanfa
+  name: HANFA
+  full_name: Croatian Financial Services Supervisory Agency
+  jurisdiction: hr
+  jurisdiction_type: member_state
+  website: https://www.hanfa.hr/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.hanfa.hr/consumers/warnings/
+  notes: "English RSS lags Croatian feed slightly."
+  sources:
+  - type: rss
+    url: https://www.hanfa.hr/rss-en/
+    label: all_news_en
+    preferred_language: en
+    labels:
+      document_type: warning
+
+# ─── Cyprus ───────────────────────────────────────────────────────────────────
+

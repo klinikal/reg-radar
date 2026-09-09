@@ -1,0 +1,12 @@
+- id: lv-latvijasb
+  name: Latvijas Banka
+  full_name: Latvijas Banka (Bank of Latvia)
+  jurisdiction: lv
+  jurisdiction_type: member_state
+  website: https://www.bank.lv/en/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "Site blocks automated requests. No RSS found. fktk.lv permanently redirects to bank.lv."
+  sources: []

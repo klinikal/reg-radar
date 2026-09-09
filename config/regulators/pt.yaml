@@ -1,0 +1,24 @@
+- id: pt-cmvm
+  name: CMVM
+  full_name: Comissão do Mercado de Valores Mobiliários
+  jurisdiction: pt
+  jurisdiction_type: member_state
+  website: https://www.cmvm.pt/en/
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "Full JavaScript SPA (OutSystems); no RSS; no scraping possible. Email subscription only."
+  sources: []
+- id: pt-bdp
+  name: Banco de Portugal
+  full_name: Banco de Portugal
+  jurisdiction: pt
+  jurisdiction_type: member_state
+  website: https://www.bportugal.pt/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: true
+  warnings_url: https://www.bportugal.pt/en/page/list-unauthorized-activity
+  notes: "Cloudflare-protected; no news RSS feed confirmed. Only confirmed feed is a podcast RSS - not useful."
+  sources: []

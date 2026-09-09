@@ -1,0 +1,88 @@
+# Template for adding a regulator to the registry. Copy this file to
+# config/regulators/<jurisdiction>.yaml (ISO alpha-2, lower-case, matching an
+# id in config/jurisdictions.yaml - "eu" for supranational bodies like ESMA/
+# AMLA/EBA/EIOPA), rename it, and fill in the fields below for your
+# regulator. See CONTRIBUTING.md for the full one-entry/one-fixture/one-test
+# flow. This file (any filename starting with "_") is never loaded by
+# collector.main.load_regulators() - it's documentation only.
+
+# - id: xx-example                      # unique across every file in this directory - lower-case, "<jurisdiction>-<short-name>"
+#   name: Example Authority
+#   full_name: Example Financial Supervisory Authority
+#   jurisdiction: xx                    # must be an id in config/jurisdictions.yaml, lower-case
+#   jurisdiction_type: national         # "national" or "supranational"
+#   website: https://example-authority.example
+#   mica_competent_authority: true      # true if this body is a MiCA competent authority
+#   enabled: true                       # false disables every source below without deleting them
+#   cloudflare_protected: false         # true routes every source through FlareSolverr (FLARESOLVERR_URL must be set)
+#   notes: "Why this regulator/source is configured the way it is - selector quirks, known gaps, etc."
+#   sources:
+#
+#     # --- rss / atom: feedparser-compatible feed -----------------------
+#     - type: rss                       # or "atom" - same adapter, feedparser handles both
+#       url: "https://example-authority.example/news/rss"
+#       label: all_news                 # unique within this regulator's sources - fixture path key
+#       preferred_language: en          # ISO 639-1; falls back to entry-level language, then detection
+#       labels:                         # source-default classification (architecture doc §4.3) - {} if none apply yet
+#         document_type: warning
+#       tags: [warnings]                # structural, per-feed tags (architecture doc §3.2's source_tags)
+#
+#     # --- scrape: CSS-selector listing page ------------------------------
+#     - type: scrape
+#       url: "https://example-authority.example/publications"
+#       label: publications
+#       preferred_language: en
+#       labels: {}
+#       tags: [publications]
+#       scrape:
+#         item_selector: ".publication-item"      # one element per listed document
+#         title_selector: ".title"                # relative to item_selector
+#         link_selector: "a"                       # relative to item_selector; relative hrefs are resolved against `url`
+#         date_selector: ".date"                   # optional; omit to leave every item's date inferred
+#         date_attribute: null                     # e.g. "datetime" to read date_selector's attribute instead of its text
+#         date_fuzzy: false                        # true only if the date is embedded in unrelated text (e.g. "Published: ...")
+#         content_selector: null                   # optional: an element whose HTML becomes the item body
+#         extract_pdf_text: false                  # true if the item's own link IS the document (a PDF, no HTML landing page)
+#
+#     # --- page_watch: hash-and-diff one page fragment --------------------
+#     - type: page_watch
+#       url: "https://example-authority.example/casp-register"
+#       label: casp_register
+#       preferred_language: en
+#       tags: [page_watch]
+#       watch_selector: "#register-table"          # a "changed" item is recorded whenever this fragment's text changes
+#
+#     # --- sitemap: sitemap.xml <loc>/<lastmod> ---------------------------
+#     - type: sitemap
+#       url: "https://example-authority.example/sitemap.xml"
+#       label: sitemap_publications
+#       preferred_language: en
+#       tags: [publications]
+#       sitemap:
+#         url_pattern: "/publications/"             # optional: only <loc> entries containing this substring
+#
+#     # --- json_api: JSON endpoint, dotted-path field mapping -------------
+#     - type: json_api
+#       url: "https://example-authority.example/api/publications"
+#       label: api_publications
+#       preferred_language: en
+#       tags: [publications]
+#       json_api:
+#         items_path: data.items                    # dotted path to the list of items; "" if the response itself is the list
+#         title_field: title
+#         url_field: link
+#         published_field: date                     # optional
+#
+#     # --- browser: Playwright, for JS-rendered listings -------------------
+#     - type: browser
+#       url: "https://example-authority.example/document-library"
+#       label: document_library
+#       preferred_language: en
+#       tags: [publications]
+#       browser:
+#         wait_selector: ".doc-list-item"            # waited for before reading the rendered DOM
+#         item_selector: ".doc-list-item"             # same shape as `scrape` beyond this point
+#         title_selector: ".doc-title"
+#         link_selector: "a"
+#         date_selector: ".doc-date"
+#         date_attribute: null

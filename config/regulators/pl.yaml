@@ -1,0 +1,21 @@
+- id: pl-knf
+  name: KNF
+  full_name: Komisja Nadzoru Finansowego
+  jurisdiction: pl
+  jurisdiction_type: member_state
+  website: https://www.knf.gov.pl/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.knf.gov.pl/dla_konsumenta/ostrzezenia_publiczne/ostrzezenia
+  notes: "RSS is Polish-language only. No English RSS feed. Warnings pages are Polish-only."
+  sources:
+  - type: rss
+    url: https://www.knf.gov.pl/api/rss
+    label: all_news_pl
+    preferred_language: pl
+    labels:
+      document_type: warning
+
+# ─── Portugal ─────────────────────────────────────────────────────────────────
+

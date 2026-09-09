@@ -1,0 +1,21 @@
+- id: no-finanstilsynet
+  name: Finanstilsynet Norway
+  full_name: Finanstilsynet (Financial Supervisory Authority of Norway)
+  jurisdiction: "no"
+  jurisdiction_type: eea_non_eu
+  website: https://www.finanstilsynet.no/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.finanstilsynet.no/en/investor-alerts/
+  notes: "Investor alerts database filterable by VASP entity type. Atom feeds."
+  sources:
+  - type: atom
+    url: https://www.finanstilsynet.no/en/rss/news-feed/
+    label: all_content_en
+    preferred_language: en
+    labels:
+      document_type: press_release
+
+# ─── Poland ───────────────────────────────────────────────────────────────────
+

@@ -1,0 +1,27 @@
+- id: fi-finfsa
+  name: FIN-FSA
+  full_name: Finnish Financial Supervisory Authority (Finanssivalvonta)
+  jurisdiction: fi
+  jurisdiction_type: member_state
+  website: https://www.finanssivalvonta.fi/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.finanssivalvonta.fi/en/registers/warning-lists/
+  notes: "No RSS - email subscription only. The original URL (/en/publications-and-press-releases/) is a category hub page with no listing of its own (just year/type archive links in a sidebar tree) - the old selectors matched 0 items there for that reason, not a markup guess gone wrong. Fixed 2026-07-02 to the Press-release type-hub page, which does list items directly and deliberately avoids embedding a year in the URL (a year-specific archive page also works and has the same markup, but would silently need updating every January)."
+  sources:
+  - type: scrape
+    url: https://www.finanssivalvonta.fi/en/publications-and-press-releases/Press-release/
+    label: publications
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: "ul.listing.pagelist > li"
+      title_selector: "a"
+      link_selector: "a"
+      date_selector: "time"
+      date_attribute: "datetime"
+      content_selector:
+
+# ─── France ───────────────────────────────────────────────────────────────────
+
