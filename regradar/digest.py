@@ -1,4 +1,4 @@
-"""`regradar digest --profile <p> --preview|--send` (docs/issues/11-
+"""`reg-radar digest --profile <p> --preview|--send` (docs/issues/11-
 digests-and-notifications.md, architecture doc section 6).
 
 Wired into regradar/cli.py's subcommand registry (add_subparser()/run() -
@@ -333,12 +333,12 @@ def run(args: argparse.Namespace) -> int:
 
     if args.preview:
         if not args.profile:
-            print("regradar digest --preview requires --profile", file=sys.stderr)
+            print("reg-radar digest --preview requires --profile", file=sys.stderr)
             return 1
         try:
             expanded_profile = get_expanded_profile(args.profile, taxonomy, activities, profiles_dir=args.profiles_dir)
         except Exception as e:
-            print(f"regradar digest: {e}", file=sys.stderr)
+            print(f"reg-radar digest: {e}", file=sys.stderr)
             return 1
         result = render_digest(engine, expanded_profile, args.profile, args.since, taxonomy=taxonomy)
         print(result["markdown"])
@@ -348,16 +348,16 @@ def run(args: argparse.Namespace) -> int:
     try:
         digests = load_digests(args.digests_path)
     except DigestConfigError as e:
-        print(f"regradar digest: {e}", file=sys.stderr)
+        print(f"reg-radar digest: {e}", file=sys.stderr)
         return 1
     if args.name:
         matches = [d for d in digests if d["name"] == args.name]
         if not matches:
-            print(f"regradar digest: no entry named {args.name!r} in {args.digests_path}", file=sys.stderr)
+            print(f"reg-radar digest: no entry named {args.name!r} in {args.digests_path}", file=sys.stderr)
             return 1
         digests = matches
     elif not digests:
-        print(f"regradar digest: no digests configured in {args.digests_path}", file=sys.stderr)
+        print(f"reg-radar digest: no digests configured in {args.digests_path}", file=sys.stderr)
         return 0
 
     all_ok = True

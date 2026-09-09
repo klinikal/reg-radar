@@ -378,7 +378,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
         "from_addr": "ops@example.org", "starttls": True,
     }
 
-    ok = send_email("dest@example.org", "RegRadar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
+    ok = send_email("dest@example.org", "reg-radar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
 
     assert ok is True
     # STARTTLS must verify the certificate and hostname, not just encrypt.
@@ -391,7 +391,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     from_addr, to_addrs, msg_str = _FakeSMTP.sent[0]
     assert from_addr == "ops@example.org"
     assert to_addrs == ["dest@example.org"]
-    assert "Subject: RegRadar digest: test" in msg_str
+    assert "Subject: reg-radar digest: test" in msg_str
     assert "From: ops@example.org" in msg_str
     assert "To: dest@example.org" in msg_str
     assert "multipart/alternative" in msg_str
