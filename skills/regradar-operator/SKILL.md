@@ -1,13 +1,13 @@
 ---
-name: casp-radar-operator
-description: Use when operating, querying, or debugging casp-radar — the regulatory intelligence tool for crypto-asset service providers (CASPs). Triggers on questions about EEA regulator news, MiCA developments, CASP warnings, or direct requests to run/query/debug the casp-radar MCP server or collector.
+name: regradar-operator
+description: Use when operating, querying, or debugging regradar — the regulatory intelligence tool for crypto-asset service providers (CASPs). Triggers on questions about EEA regulator news, MiCA developments, CASP warnings, or direct requests to run/query/debug the regradar MCP server or collector.
 ---
 
-# casp-radar Operator
+# regradar Operator
 
-How to run, query, and navigate casp-radar — the regulatory intelligence tool for crypto-asset service providers (CASPs). It collects news, warnings, and publications from ~33 EEA financial regulators (30 member states + ESMA/EBA/EIOPA) on a schedule, stores them in SQLite, and exposes the data via an MCP server.
+How to run, query, and navigate regradar — the regulatory intelligence tool for crypto-asset service providers (CASPs). It collects news, warnings, and publications from ~33 EEA financial regulators (30 member states + ESMA/EBA/EIOPA) on a schedule, stores them in SQLite, and exposes the data via an MCP server.
 
-**Read your context first:** check `skills/casp-radar-operator/refs/context.md` (relative to repo root). If it exists, read it — it tells you what entity is operating this instance and what's relevant to them. That file is git-ignored on purpose (it's instance-specific and contains private company details) so it won't exist in a fresh clone. If it's missing, read `refs/example.context.md` instead — a template showing what that file should contain — and treat this as an unconfigured instance until the operator fills one in (see the `casp-radar-onboarding` skill, in the sibling `skills/casp-radar-onboarding/` folder, to generate it interactively).
+**Read your context first:** check `skills/regradar-operator/refs/context.md` (relative to repo root). If it exists, read it — it tells you what entity is operating this instance and what's relevant to them. That file is git-ignored on purpose (it's instance-specific and contains private company details) so it won't exist in a fresh clone. If it's missing, read `refs/example.context.md` instead — a template showing what that file should contain — and treat this as an unconfigured instance until the operator fills one in (see the `regradar-onboarding` skill, in the sibling `skills/regradar-onboarding/` folder, to generate it interactively).
 
 ---
 
@@ -49,16 +49,16 @@ Use the `!override` merge tag — a plain list under `ports:` gets *appended* to
 
 ## Backups & recovery
 
-The live database lives in a Docker-managed named volume (`casp_radar_data`), not a bind-mounted host folder — this is deliberate: SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident in July 2026. You can no longer browse the `.db` file directly from Finder/Terminal; use `docker compose exec mcp sqlite3 /app/data/casp_radar.db` (or similar) if you need to inspect it.
+The live database lives in a Docker-managed named volume (`regradar_data`), not a bind-mounted host folder — this is deliberate: SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident in July 2026. You can no longer browse the `.db` file directly from Finder/Terminal; use `docker compose exec mcp sqlite3 /app/data/regradar.db` (or similar) if you need to inspect it.
 
-A `litestream` service continuously replicates the database to `./backups/casp_radar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
+A `litestream` service continuously replicates the database to `./backups/regradar` on the host (real host disk, outside Docker), keeping roughly constant size (a snapshot plus a rolling ~24h retention window, auto-pruned — not accumulating daily copies). Check `docker compose logs litestream` to confirm it's running.
 
 **To restore from backup** (e.g. after corruption or accidental data loss):
 ```bash
 docker compose stop collector mcp webui
-docker run --rm -v "$(pwd)/backups:/backups:ro" -v casp_radar_data:/out litestream/litestream:0.5.9 restore -o /out/casp_radar.db file:///backups/casp_radar
+docker run --rm -v "$(pwd)/backups:/backups:ro" -v regradar_data:/out litestream/litestream:0.5.9 restore -o /out/regradar.db file:///backups/regradar
 # verify before trusting it:
-docker run --rm -v casp_radar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/casp_radar.db 'PRAGMA integrity_check;'"
+docker run --rm -v regradar_data:/data alpine sh -c "apk add --no-cache sqlite && sqlite3 /data/regradar.db 'PRAGMA integrity_check;'"
 docker compose up -d collector mcp webui
 ```
 
