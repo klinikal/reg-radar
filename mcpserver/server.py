@@ -21,6 +21,7 @@ from mcpserver.queries import (
     search_items,
     search_items_advanced,
 )
+from regradar.profiles import get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
@@ -54,6 +55,7 @@ mcp = FastMCP(
 
 _engine = None
 _taxonomy = None
+_activities = None
 
 
 def get_engine():
@@ -85,6 +87,26 @@ def get_taxonomy():
     return _taxonomy
 
 
+def get_activities():
+    global _activities
+    if _activities is None:
+        _activities = load_activities(os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"), get_taxonomy())
+    return _activities
+
+
+def _resolve_profile(profile: str | None):
+    """Turns a `profile` tool parameter (a shipped template name or a path)
+    into a regradar.profiles.ExpandedProfile, or None if omitted. Cached
+    per process (see regradar.profiles.get_expanded_profile) - restart to
+    pick up an edited profile file."""
+    if profile is None:
+        return None
+    return get_expanded_profile(
+        profile, get_taxonomy(), get_activities(),
+        profiles_dir=os.getenv("PROFILES_DIR", "/app/config/profiles"),
+    )
+
+
 def _safe(label: str, fn, *args, **kwargs):
     """Run a query function; on failure, log the real exception (with DB
     path/SQL detail) and raise a sanitized RuntimeError so internals never
@@ -106,7 +128,8 @@ def _safe(label: str, fn, *args, **kwargs):
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
                        content_tags: list[str] | None = None, jurisdictions: list[str] | None = None,
-                       labels: dict[str, list[str]] | None = None, date_from: str | None = None,
+                       labels: dict[str, list[str]] | None = None, profile: str | None = None,
+                       date_from: str | None = None,
                        date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
 
@@ -129,10 +152,16 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     limit defaults to 20, max 100. Use `offset` to page past the first
     `limit` results (e.g. offset=20 for page 2 of a limit=20 search), or use
     count_items_tool first to check the total before paging through it.
+
+    `profile` narrows to items matching a named filter profile (architecture
+    doc §5): a shipped template id (e.g. "eu-casp", "uk-equities-dealer")
+    or a path to your own profile YAML file. Combines with every other
+    filter above (AND).
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
                      jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
+                     profile=_resolve_profile(profile),
                      date_from=date_from, date_to=date_to, limit=limit, offset=offset)
     return results
 
@@ -140,7 +169,7 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
 @mcp.tool()
 def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
-                     language: str | None = None) -> list[dict]:
+                     language: str | None = None, profile: str | None = None) -> list[dict]:
     """Returns the most recent regulatory items (ordered by fetched_at,
     newest first), with optional filters.
 
@@ -149,9 +178,12 @@ def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list
     `tags` searches both notice-type (source_tags) and topic (content_tags)
     buckets combined; use `source_tags`/`content_tags` to filter one bucket
     only. Call list_tags_tool to see valid tag values with their counts.
+
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
     results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
-                     source_tags=source_tags, content_tags=content_tags, language=language)
+                     source_tags=source_tags, content_tags=content_tags, language=language,
+                     profile=_resolve_profile(profile))
     return results
 
 
@@ -204,7 +236,8 @@ def get_run_log_tool(limit: int = 10) -> list[dict]:
 
 
 @mcp.tool()
-def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50) -> list[dict]:
+def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: int = 50,
+                       profile: str | None = None) -> list[dict]:
     """Returns items tagged 'warnings' at the feed/source level, newest first.
 
     days=0 returns all (no date filter), max 365. limit defaults to 50, max
@@ -219,46 +252,53 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     broad feed as "may contain warnings," not a filtered warnings list -
     read the item to judge.
 
+    `profile` narrows to a named filter profile - see search_items_tool.
+
     Deprecated: kept as an alias, reading the old source_tags column, for
     one release. Prefer search_items_tool(labels={"document_type":
     ["warning"]}), which reads the classification store and is not limited
     to feed-level tagging.
     """
-    results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
+    results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id,
+                     limit=limit, profile=_resolve_profile(profile))
     return results
 
 
 @mcp.tool()
 def count_items_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
-                      date_from: str | None = None, date_to: str | None = None) -> dict:
+                      date_from: str | None = None, date_to: str | None = None,
+                      profile: str | None = None) -> dict:
     """Returns the total count of items matching a search, without fetching rows.
 
     Cheaper than search_items_tool when an agent only needs "how many", not
     the items themselves. `query` uses the same AND/quoted-phrase semantics
     as search_items_tool; `exact=True` treats the whole query as one literal
     phrase. date_from/date_to are YYYY-MM-DD. regulator_id must be a valid
-    id from list_regulators_tool.
+    id from list_regulators_tool. `profile` narrows to a named filter
+    profile - see search_items_tool.
     """
     def _count():
         _, total = search_items_advanced(
             get_engine(), query=query, exact=exact,
             regulator_ids=[regulator_id] if regulator_id else None,
-            date_from=date_from, date_to=date_to, limit=1,
+            date_from=date_from, date_to=date_to, profile=_resolve_profile(profile), limit=1,
         )
         return {"total": total}
     return _safe("count_items_tool", _count)
 
 
 @mcp.tool()
-def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None) -> list[dict]:
+def get_month_facets_tool(query: str = "", exact: bool = False, regulator_id: str | None = None,
+                           profile: str | None = None) -> list[dict]:
     """Returns item counts grouped by publish month (YYYY-MM), newest first.
 
     Ignores date filters deliberately, so every month stays visible for a
     month-picker regardless of any date range applied separately via
     search_items_tool. query/exact/regulator_id semantics match count_items_tool.
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
     return _safe("get_month_facets_tool", get_month_facets, get_engine(), query=query, exact=exact,
-                 regulator_ids=[regulator_id] if regulator_id else None)
+                 regulator_ids=[regulator_id] if regulator_id else None, profile=_resolve_profile(profile))
 
 
 @mcp.tool()
@@ -285,15 +325,18 @@ def list_labels_tool() -> dict:
 
 
 @mcp.tool()
-def get_items_since_tool(since: str, limit: int = 100) -> list[dict]:
+def get_items_since_tool(since: str, limit: int = 100, profile: str | None = None) -> list[dict]:
     """Returns items collected (fetched_at) strictly after `since`, oldest
     first, up to `limit` (default 100, max 200). This is the polling
     primitive: save the fetched_at of the last item you saw and pass it
     back in as `since` on the next call to get everything new. Pair with
     get_run_log_tool's run_ids if you need to correlate results with a
     specific collector run.
+
+    `profile` narrows to a named filter profile - see search_items_tool.
     """
-    return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit)
+    return _safe("get_items_since_tool", get_items_since, get_engine(), since=since, limit=limit,
+                 profile=_resolve_profile(profile))
 
 
 @mcp.tool()
