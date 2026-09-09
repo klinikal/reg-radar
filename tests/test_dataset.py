@@ -3,14 +3,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 
 from collector.schema import Item, make_item_id
 from collector.storage import get_sync_state, init_db, insert_item, upsert_regulator
-from mcpserver.queries import get_changes, search_items
+from mcpserver.queries import get_changes, get_health, search_items
 from regradar.changes import encode_cursor
 from regradar.classification import write_classification
 from regradar.cli import main
+from regradar import dataset
 from regradar.dataset import DatasetError, import_dataset, load_exclusions, publish_dataset
 from regradar.taxonomy import load_and_exit_on_error
 
@@ -251,8 +252,141 @@ def test_import_dataset_cli_end_to_end(tmp_path, monkeypatch):
     ])
     assert rc == 0
 
-    from sqlalchemy import create_engine
     engine2 = create_engine(f"sqlite:///{empty_db_path}")
     with engine2.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM items")).scalar()
     assert count == 1
+
+
+def test_import_summary_prints_cursor_and_ready_to_use_commands(tmp_path, monkeypatch, capsys):
+    """The cursor is not applied automatically anywhere except `regradar
+    export`'s no-cursor fallback, so the summary has to hand it over in a
+    form the operator can paste, or it may as well not be stored."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, engine, ids = _setup_db(tmp_path, n=1)
+    manifest, tarball_path, dist_dir = _export_and_publish(tmp_path, db_path)
+
+    empty_db_path = str(tmp_path / "empty.db")
+    rc = main([
+        "import-dataset", str(tarball_path), "--db-path", empty_db_path,
+        "--taxonomy-path", TAXONOMY_PATH, "--jurisdictions-path", JURISDICTIONS_PATH,
+    ])
+    assert rc == 0
+
+    out = capsys.readouterr().out
+    stored = get_sync_state(create_engine(f"sqlite:///{empty_db_path}"), "dataset_import_cursor")
+    assert stored in out
+    assert f"regradar export --format jsonl --out <dir> --since {stored}" in out
+    assert f'get_changes_tool(since="{stored}")' in out
+
+
+def test_get_health_reports_dataset_import(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, engine, ids = _setup_db(tmp_path, n=1)
+    manifest, tarball_path, dist_dir = _export_and_publish(tmp_path, db_path)
+
+    empty_db_path = str(tmp_path / "empty.db")
+    engine2 = init_db(empty_db_path)
+    # Absent before an import, not an error and not a missing key.
+    assert get_health(engine2)["dataset_import"] is None
+
+    summary = import_dataset(engine2, str(tarball_path), taxonomy=_taxonomy())
+
+    state = get_health(engine2)["dataset_import"]
+    assert state["cursor"] == summary["cursor"]
+    assert state["generated_at"] == manifest["generated_at"]
+    assert state["imported_at"] is not None
+
+
+def test_export_with_no_out_dir_cursor_falls_back_to_dataset_import_cursor(tmp_path, monkeypatch, caplog):
+    """First export after an import must not re-export the snapshot it just
+    imported: with no .regradar-cursor in --out, the dataset import cursor
+    is the right starting point, and the format safety net must not undo it
+    just because --out is empty."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, engine, ids = _setup_db(tmp_path, n=1)
+    manifest, tarball_path, dist_dir = _export_and_publish(tmp_path, db_path)
+
+    empty_db_path = str(tmp_path / "empty.db")
+    engine2 = init_db(empty_db_path)
+    import_dataset(engine2, str(tarball_path), taxonomy=_taxonomy())
+
+    fresh_out = tmp_path / "post-import-export"
+    with caplog.at_level("INFO"):
+        rc = main(["export", "--format", "jsonl", "--out", str(fresh_out), "--db-path", empty_db_path])
+
+    assert rc == 0
+    assert "starting from the dataset import cursor" in caplog.text
+    # Nothing newer than the snapshot yet, so the export is empty rather
+    # than a re-run of the whole imported corpus.
+    assert (fresh_out / "export.jsonl").read_text() == ""
+
+    # A genuinely newer item does come through.
+    later = datetime.now(timezone.utc)
+    insert_item(engine2, Item(
+        id=make_item_id("fca", "https://example.com/after-import", later),
+        regulator_id="fca", source_label="news", title="Later notice",
+        url="https://example.com/after-import", published_at=later, fetched_at=later,
+        date_inferred=False, language="en", content_snippet="s", source_type="scrape",
+        raw_content="r", body_md="later body", extractor="raw/1",
+    ))
+    assert main(["export", "--format", "jsonl", "--out", str(fresh_out), "--db-path", empty_db_path]) == 0
+    lines = (fresh_out / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["title"] == "Later notice"
+
+
+class _FakeResponse:
+    """Minimal urlopen() stand-in: a context manager whose read(n) yields
+    `chunks` in order, then b"" forever."""
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    def read(self, _n):
+        return self._chunks.pop(0) if self._chunks else b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_download_aborts_and_cleans_up_when_over_max_bytes(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_urlopen(url, timeout=None):
+        calls["timeout"] = timeout
+        return _FakeResponse([b"x" * 1024, b"y" * 1024])
+
+    monkeypatch.setattr(dataset.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(DatasetError, match="exceeded the 1500 byte limit"):
+        dataset._download("https://example.org/d.tar.gz", tmp_path, max_bytes=1500)
+
+    # The truncated file must not survive - a later run finding it would
+    # sha256-check it and report tampering rather than "download failed".
+    assert not (tmp_path / "dataset.tar.gz").exists()
+    assert calls["timeout"] == dataset.DEFAULT_TIMEOUT_SECONDS
+
+
+def test_download_passes_timeout_and_wraps_socket_errors(tmp_path, monkeypatch):
+    def timing_out_urlopen(url, timeout=None):
+        assert timeout == 5
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(dataset.urllib.request, "urlopen", timing_out_urlopen)
+
+    with pytest.raises(DatasetError, match="failed: timed out"):
+        dataset._download("https://example.org/d.tar.gz", tmp_path, timeout=5)
+    assert not (tmp_path / "dataset.tar.gz").exists()
+
+
+def test_download_writes_the_file_when_within_limits(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        dataset.urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse([b"tarball-bytes"]),
+    )
+    dest = dataset._download("https://example.org/d.tar.gz", tmp_path)
+    assert dest.read_bytes() == b"tarball-bytes"
