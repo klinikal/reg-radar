@@ -4,12 +4,9 @@
 This issue re-applies source defaults only; a later issue adds the rules
 engine and the LLM classifier skill to the same command.
 
-Runnable standalone via `python -m regradar.reclassify reclassify ...` for
-this branch's own tests. `regradar/cli.py` (a parallel branch) wires this
-module's add_subparser()/run() into the integrated CLI at merge - it
-attaches by calling `add_subparser(subparsers)` on its own subparsers
-object and dispatches to `run(args)`; see that module's docstring for the
-full convention.
+Wired into `regradar/cli.py`'s subcommand registry (add_subparser()/run(),
+returning an exit code - see that module's docstring for the convention).
+Also runnable standalone via `python -m regradar.reclassify reclassify ...`.
 """
 import argparse
 import logging
@@ -39,8 +36,7 @@ def source_defaults(regulators: list) -> dict:
     return defaults
 
 
-def run(args) -> None:
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+def run(args) -> int:
     engine = init_db(args.db_path)
     with open(args.regulators_path) as f:
         regulators = yaml.safe_load(f)
@@ -48,7 +44,7 @@ def run(args) -> None:
 
     if args.axis not in taxonomy.axes():
         logger.error("Unknown axis %r - valid axes: %s", args.axis, sorted(taxonomy.axes()))
-        sys.exit(1)
+        return 1
 
     defaults = source_defaults(regulators)
 
@@ -96,6 +92,7 @@ def run(args) -> None:
         )
     else:
         logger.info("Reclassified %d item(s) on axis %r", changed, args.axis)
+    return 0
 
 
 def add_subparser(subparsers) -> None:
@@ -114,11 +111,12 @@ def add_subparser(subparsers) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_subparser(subparsers)
     args = parser.parse_args()
-    args.func(args)
+    sys.exit(args.func(args))
 
 
 if __name__ == "__main__":
