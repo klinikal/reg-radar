@@ -37,9 +37,9 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
 
 ## Coverage
 
-44 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA as a deliberate non-EEA exception. Full list, per-source status, and notes on disabled entries: `config/regulators.yaml`.
+44 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA as a deliberate non-EEA exception. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
-Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `regulators.yaml` so gaps stay visible rather than silently missing.
+Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 
 Note: some sources are better than others. This is beta software. Contributions are welcome to fill gaps, enhance coverage of regulators or sources *you* care about.
 
@@ -47,17 +47,17 @@ Optional: the `flaresolverr` service (included in Docker Compose by default) ena
 
 ### Non-EEA additions
 
-The UK's FCA is included as a deliberate exception to the EEA scope above — see the "Non-EEA Additions" section at the bottom of `config/regulators.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance). It's kept structurally separate so the EEA coverage numbers above stay accurate.
+The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance). It's kept structurally separate so the EEA coverage numbers above stay accurate.
 
 ### Cloudflare coverage
 
-Some regulators' websites e.g. MFSA in Malta are Cloudflare-protected — confirmed to block plain HTTP regardless of User-Agent, so every request goes through `flaresolverr` (already in the Docker stack). `config/regulators.yaml` defines the taxonomy. Some are `enabled: true` by default, others are defined but disabled. Flip `enabled: true` on any of them, or target them directly via the backfill script below, without needing to redefine URLs or selectors.
+Some regulators' websites e.g. MFSA in Malta are Cloudflare-protected — confirmed to block plain HTTP regardless of User-Agent, so every request goes through `flaresolverr` (already in the Docker stack). `config/regulators/` defines the taxonomy. Some are `enabled: true` by default, others are defined but disabled. Flip `enabled: true` on any of them, or target them directly via the backfill script below, without needing to redefine URLs or selectors.
 
 Because every request needs FlareSolverr (a real browser, ~10-15s each), `collector/fetcher.py` throttles and backs off automatically — a minimum interval between requests (`FLARESOLVERR_MIN_INTERVAL_SECONDS`, default 8s) and longer exponential backoff specifically when the target's response looks like a ban/block rather than a normal failure (`FLARESOLVERR_RETRY_BACKOFF_SECONDS`, default 45s, doubling per retry, `FLARESOLVERR_MAX_RETRIES` attempts). This is global — any current or future `cloudflare_protected` source benefits. It also skips wasting plain-HTTP retry attempts against a known-Cloudflare-protected source, since those still count toward the target's own rate limit for no chance of success.
 
 ### Historic backfills
 
-The regular collector only scrapes the first page of each scrape-type source on every run (newest-first) — enough to catch new publications going forward, but not the historic archive behind a source that only recently got added here. One-off backfill scripts under `scripts/` read URLs/selectors straight from `config/regulators.yaml` (no duplicated config to drift out of sync), all support `--dry-run`, and none run automatically — running one is a deliberate decision, not a side effect of adding a source:
+The regular collector only scrapes the first page of each scrape-type source on every run (newest-first) — enough to catch new publications going forward, but not the historic archive behind a source that only recently got added here. One-off backfill scripts under `scripts/` read URLs/selectors straight from `config/regulators/` (no duplicated config to drift out of sync), all support `--dry-run`, and none run automatically — running one is a deliberate decision, not a side effect of adding a source:
 
 - `backfill_esma_library.py` — ESMA's document library, ~7,260 documents across ~363 pages. Has been run; that data is in the default dataset once you clone and run the collector's normal `--once`/scheduled pass — no need to re-run this unless you're rebuilding from an empty database.
 - `backfill_fca_publications.py` — FCA's notices/decisions (~5,980 documents) and policy/guidance (~3,743 documents). **Has not been run** — built and tested (`--dry-run --max-pages N`) but the full historic crawl is left to you to trigger deliberately, since FCA is a non-EEA addition and a larger crawl than ESMA's.
@@ -93,7 +93,7 @@ Selector drift (a regulator redesign keeps returning HTTP 200 with a parser matc
 
 Every item carries two separate tag lists, kept apart deliberately:
 
-- **`source_tags`** — structural, config-curated per feed in `regulators.yaml` (e.g. `warnings`, `press_releases`, `news`, `publications`, `page_watch`). Set once when a source is configured, same for every item that feed produces.
+- **`source_tags`** — structural, config-curated per feed in `config/regulators/` (e.g. `warnings`, `press_releases`, `news`, `publications`, `page_watch`). Set once when a source is configured, same for every item that feed produces.
 - **`content_tags`** — what the item is actually about, computed per item. Today this comes from the [keyword alerts](#keyword-alerts) config; nothing else populates it yet.
 
 Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliberately excluded from `source_tags` — they used to be stamped on nearly every item from a MiCA-relevant regulator regardless of content, which made them useless for filtering. If you want one of those as a real tag, add it as a keyword rule instead (see below) so it only lands on items that actually mention it.
@@ -119,7 +119,7 @@ docker compose exec collector python -m regradar.reclassify reclassify --axis in
 
 `--dry-run` reports what would change, including how many live rows on that axis carry an older `taxonomy_version` than the current config, without writing anything. Human corrections are never touched by this or any other automated path. (The rules engine and LLM classifier skill that also write through this same command are a follow-on.)
 
-**Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` in `regulators.yaml` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`); `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better. Both support `--dry-run`.
+**Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`) - it predates the registry split and targets a single regulators file, so point it at one of the files under `config/regulators/` at a time; `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better. Both support `--dry-run`.
 
 ## Profiles
 
@@ -244,7 +244,7 @@ Copy `.env.example` to `.env` and adjust:
 | `USER_AGENT` | `regradar/2.0 (+https://github.com/klinikal/regradar)` | HTTP User-Agent header |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
-| `REGULATORS_PATH` | `/app/config/regulators.yaml` | Regulator registry file |
+| `REGULATORS_PATH` | `/app/config/regulators` | Regulator registry directory (a single file path also still works) |
 | `TAXONOMY_PATH` | `/app/config/taxonomy.yaml` | Classification axis/value vocabulary — see [Classification](#classification) |
 | `JURISDICTIONS_PATH` | `/app/config/jurisdictions.yaml` | Jurisdiction hierarchy |
 | `ACTIVITIES_PATH` | `/app/config/activities.yaml` | Activity-to-instrument mapping — see [Profiles](#profiles) |
@@ -314,7 +314,7 @@ Push notifications (webhook, email, Telegram, etc.) are **not** implemented yet 
 
 ## Contributing
 
-The primary contribution surface is `config/regulators.yaml`. Community PRs to:
+The primary contribution surface is `config/regulators/` - see [CONTRIBUTING.md](CONTRIBUTING.md) for the one-entry/one-fixture/one-test flow. Community PRs to:
 - Add missing regulators (Liechtenstein PFSA is a known gap)
 - Fix broken feed URLs
 - Add or improve scrape selectors for no-RSS regulators

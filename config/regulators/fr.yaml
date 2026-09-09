@@ -1,0 +1,53 @@
+- id: fr-amf
+  name: AMF France
+  full_name: Autorité des marchés financiers
+  jurisdiction: fr
+  jurisdiction_type: member_state
+  website: https://www.amf-france.org/en
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.amf-france.org/en/warnings
+  notes: "Multiple confirmed RSS feeds. Warnings feed is highest priority."
+  sources:
+  - type: rss
+    url: https://www.amf-france.org/en/flux-rss/display/28
+    label: warnings
+    preferred_language: en
+    labels:
+      document_type: warning
+  - type: rss
+    url: https://www.amf-france.org/en/flux-rss/display/23
+    label: press_releases
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.amf-france.org/en/flux-rss/display/21
+    label: all_news
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.amf-france.org/en/flux-rss/display/31
+    label: regulatory_updates
+    preferred_language: en
+    labels: {}
+  - type: rss
+    url: https://www.amf-france.org/en/flux-rss/display/25
+    label: publications
+    preferred_language: en
+    labels: {}
+
+- id: fr-acpr
+  name: ACPR
+  full_name: Autorité de contrôle prudentiel et de résolution
+  jurisdiction: fr
+  jurisdiction_type: member_state
+  website: https://acpr.banque-france.fr/en
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: false
+  warnings_url: https://acpr.banque-france.fr/en/particuliers/vos-moyens-daction/browse-scam-warnings
+  notes: "No RSS - WAF-blocked; email subscription only. Joint ACPR/AMF blacklist at abe-infoservice.fr."
+  sources: []

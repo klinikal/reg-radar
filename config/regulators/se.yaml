@@ -1,0 +1,28 @@
+- id: se-fi
+  name: Finansinspektionen
+  full_name: Finansinspektionen
+  jurisdiction: se
+  jurisdiction_type: member_state
+  website: https://www.fi.se/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fi.se/en/our-registers/investor-alerts/
+  notes: "Append /rss to any FI listing page URL to get a feed."
+  sources:
+  - type: rss
+    url: https://www.fi.se/en/published/all-published-material/rss
+    label: all_material
+    preferred_language: en
+    labels:
+      document_type: warning
+
+# ─── Non-EEA Additions ──────────────────────────────────────────────────────
+# Deliberately outside this tool's core EEA/MiCA scope (see README "Coverage").
+# The UK left the EU and runs its own separate crypto-asset regulatory regime,
+# not MiCA - FCA is not an EEA/MiCA competent authority. Added anyway because
+# it's directly relevant to CASP-adjacent regulatory monitoring for operators
+# who deal with the UK market. Kept in its own section so the EEA coverage
+# claim elsewhere in this repo stays accurate - don't fold entries here into
+# the counts/claims above without updating those too.
+

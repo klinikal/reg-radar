@@ -22,7 +22,7 @@ import os
 
 from sqlalchemy import text
 
-from collector.fetcher import _filter_source_tags
+from collector.pipeline import filter_source_tags as _filter_source_tags
 from collector.keyword_alerts import load_alert_rules, match_keywords
 from collector.storage import init_db
 

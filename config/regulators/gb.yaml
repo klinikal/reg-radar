@@ -1,0 +1,51 @@
+- id: uk-fca
+  name: FCA
+  full_name: Financial Conduct Authority
+  jurisdiction: gb
+  jurisdiction_type: non_eea
+  website: https://www.fca.org.uk
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fca.org.uk/news/warnings
+  notes: "UK regulator, not MiCA/EEA. No RSS exists for consultations/notices - only /news and /news/warnings have real feeds (confirmed 2026-07-02). The two scrape sources below use the site's own category filter format (?category=..., NOT ?np_category= - that parameter is silently ignored and returns unfiltered results, confirmed by testing). Historic backfill (~5,980 notices/decisions + ~3,743 policy/guidance docs) is NOT run automatically - see scripts/backfill_fca_publications.py, run manually and deliberately."
+  sources:
+  - type: rss
+    url: https://www.fca.org.uk/news/rss.xml
+    label: news
+    preferred_language: en
+    labels:
+      document_type: press_release
+  - type: rss
+    url: https://www.fca.org.uk/news/warnings/rss.xml
+    label: warnings
+    preferred_language: en
+    labels:
+      document_type: warning
+  - type: scrape
+    url: "https://www.fca.org.uk/publications/search-results?p_search_term=&category=notices%20and%20decisions-decision%20notices%2Cnotices%20and%20decisions-libor%20notices%2Cnotices%20and%20decisions-final%20notices%2Cnotices%20and%20decisions-warning%20notices%2Cnotices%20and%20decisions-supervisory%20notices%2Cnotices%20and%20decisions-cancellation%20notices%2Cnotices%20and%20decisions-requirement%20notices%2Cnotices%20and%20decisions-temporary%20product%20interventions%2Cnotices%20and%20decisions-undertakings%2Cnotices%20and%20decisions-waivers%20and%20crr%20notices"
+    label: notices_and_decisions
+    preferred_language: en
+    labels:
+      document_type: warning
+    scrape:
+      item_selector: "li.search-item"
+      title_selector: "h3.search-item__title a"
+      link_selector: "h3.search-item__title a"
+      date_selector: "p.meta-item.published-date"
+      date_attribute:
+      date_fuzzy: true
+      content_selector: "div.search-item__body"
+  - type: scrape
+    url: "https://www.fca.org.uk/publications/search-results?p_search_term=&category=policy%20and%20guidance%2Cpolicy%20and%20guidance-calls%20for%20input%2Cpolicy%20and%20guidance-consultation%20papers%2Cpolicy%20and%20guidance-dear%20ceo%20letters%2Cpolicy%20and%20guidance-discussion%20papers%2Cpolicy%20and%20guidance-feedback%20statements%2Cpolicy%20and%20guidance-finalised%20guidance%2Cpolicy%20and%20guidance-guidance%20consultations%2Cpolicy%20and%20guidance-good%20and%20poor%20practice%2Cpolicy%20and%20guidance-handbook%2Cpolicy%20and%20guidance-market%20studies%2Cpolicy%20and%20guidance-multi-firm%20reviews%2Cpolicy%20and%20guidance-newsletters%2Cpolicy%20and%20guidance-policy%20statements%2Cpolicy%20and%20guidance-portfolio%20letters%2Cpolicy%20and%20guidance-regulatory%20priorities%2Cpolicy%20and%20guidance-thematic%20reviews"
+    label: policy_and_guidance
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: "li.search-item"
+      title_selector: "h3.search-item__title a"
+      link_selector: "h3.search-item__title a"
+      date_selector: "p.meta-item.published-date"
+      date_attribute:
+      date_fuzzy: true
+      content_selector: "div.search-item__body"

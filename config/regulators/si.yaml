@@ -1,0 +1,24 @@
+- id: si-atvp
+  name: ATVP
+  full_name: Agencija za trg vrednostnih papirjev
+  jurisdiction: si
+  jurisdiction_type: member_state
+  website: https://www.atvp.si
+  mica_competent_authority: true
+  enabled: false
+  cloudflare_protected: true
+  warnings_url:
+  notes: "Cloudflare-protected; requires manual browser check."
+  sources: []
+- id: si-bsi
+  name: Banka Slovenije
+  full_name: Banka Slovenije
+  jurisdiction: si
+  jurisdiction_type: member_state
+  website: https://www.bsi.si/en
+  mica_competent_authority: false
+  enabled: false
+  cloudflare_protected: false
+  warnings_url:
+  notes: "No RSS found - /rss redirects to /en/rss which returns 404."
+  sources: []

@@ -13,8 +13,7 @@ import logging
 import os
 import sys
 
-import yaml
-
+from collector.main import load_regulators
 from collector.storage import init_db
 from regradar.classification import supersede_axis, write_classification
 from regradar.taxonomy import build_taxonomy
@@ -38,8 +37,7 @@ def source_defaults(regulators: list) -> dict:
 
 def run(args) -> int:
     engine = init_db(args.db_path)
-    with open(args.regulators_path) as f:
-        regulators = yaml.safe_load(f)
+    regulators = load_regulators(args.regulators_path)
     taxonomy = build_taxonomy(args.taxonomy_path, args.jurisdictions_path)
 
     if args.axis not in taxonomy.axes():
@@ -104,7 +102,7 @@ def add_subparser(subparsers) -> None:
                               "are added by a follow-on issue)")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
-    parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators.yaml"))
+    parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.set_defaults(func=run)

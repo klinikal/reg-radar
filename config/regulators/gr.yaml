@@ -1,0 +1,28 @@
+- id: gr-hcmc
+  name: HCMC
+  full_name: Hellenic Capital Market Commission
+  jurisdiction: gr
+  jurisdiction_type: member_state
+  website: http://www.hcmc.gr
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: http://www.hcmc.gr/en_US/web/portal/warninghcmc
+  notes: "No RSS - site runs Liferay CE 6.2. Site operates over HTTP only (no HTTPS) - a security consideration for monitoring. Scraping press releases page. Selectors were guessed and matched 0 items until fixed 2026-07-02 against real markup. date_selector is deliberately null (not an oversight) - dates are embedded inconsistently inside the title text itself (\"...1095 30.06.2026\", \"...1093/10 06 2026\") with no clean sub-element, so items fall back to fetched_at (date_inferred=True) rather than risk misparsing."
+  sources:
+  - type: scrape
+    url: http://www.hcmc.gr/en_US/web/portal/elib/press
+    label: press_releases
+    preferred_language: en
+    labels:
+      document_type: press_release
+    scrape:
+      item_selector: ".a-p-elib-catLine"
+      title_selector: "a"
+      link_selector: "a"
+      date_selector:
+      date_attribute:
+      content_selector:
+
+# ─── Hungary ──────────────────────────────────────────────────────────────────
+

@@ -60,14 +60,14 @@ def test_parse_fixture_scrape_with_extract_pdf_text_does_not_touch_network():
     # config - _parse_scrape() would otherwise fetch every matched item's
     # URL. parse_fixture(..., fetch_pdf=False) must yield items without
     # ever calling the network fetch, proven by making that fetch raise.
-    regulators = load_regulators("config/regulators.yaml")
+    regulators = load_regulators("config/regulators")
     regulator = next(r for r in regulators if r["id"] == "es-cnmv")
     source = next(s for s in regulator["sources"] if s["label"] == "warnings_unregistered")
     assert source["scrape"]["extract_pdf_text"] is True
 
     content = fixture_path("es-cnmv", source).read_bytes()
 
-    with patch("collector.fetcher._fetch_bytes", side_effect=AssertionError("network call made from offline parse")):
+    with patch("collector.adapters.scrape.fetch_bytes", side_effect=AssertionError("network call made from offline parse")):
         items = parse_fixture(source, "es-cnmv", content, fetch_pdf=False)
 
     assert_contract(items)

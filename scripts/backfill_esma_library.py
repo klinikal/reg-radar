@@ -15,6 +15,11 @@ mounted data volume:
 Always try --dry-run first - it fetches and parses every page exactly as the
 real run would, but does not write to the database, so you can sanity-check
 counts before committing to the full crawl.
+
+Fetches via fetch_source() (collector/fetcher.py), which looks up the
+registered `scrape` adapter (collector/adapters/scrape.py) and runs its
+output through the shared pipeline - this script never duplicates selector
+or parsing logic itself.
 """
 import argparse
 import logging
@@ -25,7 +30,8 @@ import time
 
 import httpx
 
-from collector.fetcher import _backoff_with_jitter, fetch_source
+from collector.adapters.http import _backoff_with_jitter
+from collector.fetcher import fetch_source
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(

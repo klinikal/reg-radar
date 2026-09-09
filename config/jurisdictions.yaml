@@ -1,6 +1,6 @@
 # Jurisdiction hierarchy (architecture doc §4.2). `parents` is a list so the
 # graph can be a DAG; ancestors are the transitive closure. Every regulator's
-# `jurisdiction` in config/regulators.yaml must be an id in this file - the
+# `jurisdiction` in config/regulators/*.yaml must be an id in this file - the
 # collector fails loudly at startup if it is not (regradar/taxonomy.py).
 #
 # The EEA is deliberately not its own jurisdiction id: EEA-EFTA states (is,

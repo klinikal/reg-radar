@@ -1,0 +1,883 @@
+- id: mt-mfsa
+  name: MFSA
+  full_name: Malta Financial Services Authority
+  jurisdiction: mt
+  jurisdiction_type: member_state
+  website: https://www.mfsa.mt
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: true
+  warnings_url: https://www.mfsa.mt/news/warnings/MFSA-Warnings/
+  notes: "Site pages are Cloudflare-protected (confirmed 2026-07-02: blocks plain HTTP regardless of User-Agent, requires FlareSolverr for every request) - the feed endpoint (all_news, below) is the one exception and stays on plain RSS. Malta is the home jurisdiction for this operator - see the operator context (skills/casp-radar-operator/refs/context.md) for why MFSA coverage matters more here than for other member states. Publication categories below cover the full site taxonomy (~65 categories, confirmed via manual crawl of the /publications/ nav - not from MFSA's own category sitemap, which points to broken/mismatched /events/ URLs and can't be trusted). Only categories relevant to a bitcoin-only CASP are enabled by default; the rest are enabled: false so a full-taxonomy backfill (scripts/backfill_mfsa_publications.py) can target them later without needing to redefine every URL/selector from scratch. All scrape sources share one identical selector set (Salient WordPress theme, .single-publication blocks) confirmed against notices-and-decisions, dear-ceo-letters, and crypto-assets-circulars directly. Filter by title prefix 'MFSA Warning' on all_news to isolate warnings from that feed specifically."
+  sources:
+  - type: rss
+    url: https://www.mfsa.mt/feed/
+    label: all_news
+    preferred_language: en
+    labels:
+      document_type: warning
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/"
+    label: circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/anti-money-laundering/"
+    label: circulars_anti_money_laundering
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/authorisations/"
+    label: circulars_authorisations
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/banking-supervision/"
+    label: circulars_banking_supervision
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/brexit/"
+    label: circulars_brexit
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/capital-markets-supervision/"
+    label: circulars_capital_markets_supervision
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/capital-markets-supervision/dlt-regulation-circulars/"
+    label: circulars_capital_markets_supervision_dlt_regulation_circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/company-service-providers/"
+    label: circulars_company_service_providers
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/conduct-of-business/"
+    label: circulars_conduct_of_business
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/crypto-assets-circulars/"
+    label: circulars_crypto_assets_circulars
+    preferred_language: en
+    labels:
+      instrument:
+      - mica
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/eu-and-international-affairs-circulars/"
+    label: circulars_eu_and_international_affairs_circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/financial-institutions-circulars/"
+    label: circulars_financial_institutions_circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/fintech/"
+    label: circulars_fintech
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/insurance-and-pensions-supervision/"
+    label: circulars_insurance_and_pensions_supervision
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/insurance-and-pensions-supervision/insurance-and-pensions/"
+    label: circulars_insurance_and_pensions_supervision_insurance_and_pensions
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/insurance-and-pensions-supervision/solvency-ii/"
+    label: circulars_insurance_and_pensions_supervision_solvency_ii
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/"
+    label: circulars_investment_services_supervision
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/collective-investment-schemes/"
+    label: circulars_investment_services_supervision_collective_investment_schemes
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/csdr/"
+    label: circulars_investment_services_supervision_csdr
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/financial-markets/"
+    label: circulars_investment_services_supervision_financial_markets
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/investment-services/"
+    label: circulars_investment_services_supervision_investment_services
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/prevention-of-market-abuse/"
+    label: circulars_investment_services_supervision_prevention_of_market_abuse
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/investment-services-supervision/securitisation/"
+    label: circulars_investment_services_supervision_securitisation
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/resolution/"
+    label: circulars_resolution
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/aifmd/"
+    label: circulars_securities_markets_supervision_aifmd
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/brrd/"
+    label: circulars_securities_markets_supervision_brrd
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/crd-iv-package/"
+    label: circulars_securities_markets_supervision_crd_iv_package
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/crowdfunding/"
+    label: circulars_securities_markets_supervision_crowdfunding
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/emir/"
+    label: circulars_securities_markets_supervision_emir
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/ifd-package-circulars/"
+    label: circulars_securities_markets_supervision_ifd_package_circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/mifid-and-mifir/"
+    label: circulars_securities_markets_supervision_mifid_and_mifir
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/recognised-persons/"
+    label: circulars_securities_markets_supervision_recognised_persons
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/sftr/"
+    label: circulars_securities_markets_supervision_sftr
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/short-selling-regulation/"
+    label: circulars_securities_markets_supervision_short_selling_regulation
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/securities-markets-supervision/ucits/"
+    label: circulars_securities_markets_supervision_ucits
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/supervisory-ict-risk-and-cybersecurity-circulars/"
+    label: circulars_supervisory_ict_risk_and_cybersecurity_circulars
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/sustainable-finance-circulars/"
+    label: circulars_sustainable_finance_circulars
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/circulars/trust-and-fiduciaries/"
+    label: circulars_trust_and_fiduciaries
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/"
+    label: corporate_publications
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/annual-reports/"
+    label: corporate_publications_annual_reports
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/brochures/"
+    label: corporate_publications_brochures
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/compensation-schemes/"
+    label: corporate_publications_compensation_schemes
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/consumer-reports/"
+    label: corporate_publications_consumer_reports
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/corporate-governance/"
+    label: corporate_publications_corporate_governance
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/dear-ceo-letters/"
+    label: corporate_publications_dear_ceo_letters
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/information-leaflets/"
+    label: corporate_publications_information_leaflets
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/mfsa-strategy-documents/"
+    label: corporate_publications_mfsa_strategy_documents
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/mfsa-training-policy/"
+    label: corporate_publications_mfsa_training_policy
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/newsletter/"
+    label: corporate_publications_newsletter
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/public-accounts/"
+    label: corporate_publications_public_accounts
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/statistics/"
+    label: corporate_publications_statistics
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/statistics/banking/"
+    label: corporate_publications_statistics_banking
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/statistics/insurance/"
+    label: corporate_publications_statistics_insurance
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/statistics/licenses-statistics/"
+    label: corporate_publications_statistics_licenses_statistics
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/statistics/securities/"
+    label: corporate_publications_statistics_securities
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/supervisory-priorities/"
+    label: corporate_publications_supervisory_priorities
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/corporate-publications/the-nature-and-art-of-financial-supervision/"
+    label: corporate_publications_the_nature_and_art_of_financial_supervision
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/mfsas-supervisory-and-enforcement-effectiveness-dashboard/"
+    label: mfsas_supervisory_and_enforcement_effectiveness_dashboard
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/net-short-positions/"
+    label: net_short_positions
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/notices-and-decisions/"
+    label: notices_and_decisions
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/policy-and-guidelines/consultations/"
+    label: policy_and_guidelines_consultations
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/policy-and-guidelines/feedback-and-statements/"
+    label: policy_and_guidelines_feedback_and_statements
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/prevention-of-financial-markets-abuse-pdmr-notifications/"
+    label: prevention_of_financial_markets_abuse_pdmr_notifications
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/procurement/"
+    label: procurement
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+  - type: scrape
+    url: "https://www.mfsa.mt/publications/procurement/eu-funded-projects/"
+    label: procurement_eu_funded_projects
+    preferred_language: en
+    labels: {}
+    enabled: false
+    scrape:
+      item_selector: ".posts-container .single-publication"
+      title_selector: ".publication-title a"
+      link_selector: ".publication-title a"
+      date_selector: ".date-published"
+      date_attribute:
+      content_selector:
+
+- id: mt-fiau
+  name: FIAU
+  full_name: Financial Intelligence Analysis Unit (Malta)
+  jurisdiction: mt
+  jurisdiction_type: member_state
+  website: https://fiaumalta.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  warnings_url:
+  notes: "Malta's AML/CFT supervisor - CASPs are AML-obliged entities, so FIAU guidance is directly relevant alongside MFSA's MiCA-competent-authority role. No RSS feed exists; scraped directly. Page structure is unusual: all items on page 1 share one wrapping <article class=\"grid\"> rather than one <article> per item - item_selector targets the div.col-span-1 children. Each item has two <a> tags to the same URL (title + \"Read More\") - a:not(.flex) reliably picks the title link, confirmed live against all 6 current items 2026-07-03."
+  sources:
+  - type: scrape
+    url: "https://fiaumalta.org/news/"
+    label: all_news
+    preferred_language: en
+    labels: {}
+    scrape:
+      item_selector: "article.grid > div.col-span-1"
+      title_selector: "a:not(.flex)"
+      link_selector: "a:not(.flex)"
+      date_selector: "span.text-blue-light"
+      date_attribute:
+      content_selector:
+
+# ─── Netherlands ──────────────────────────────────────────────────────────────
+

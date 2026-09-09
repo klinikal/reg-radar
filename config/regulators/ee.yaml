@@ -1,0 +1,21 @@
+- id: ee-fi
+  name: Finantsinspektsioon
+  full_name: Estonian Financial Supervision Authority
+  jurisdiction: ee
+  jurisdiction_type: member_state
+  website: https://www.fi.ee/en/
+  mica_competent_authority: true
+  enabled: true
+  cloudflare_protected: false
+  warnings_url: https://www.fi.ee/en/alerts
+  notes: "Non-standard RSS path. Item titles may be in Estonian; English content in description field."
+  sources:
+  - type: rss
+    url: https://www.fi.ee/en/uudised/rss
+    label: news_en
+    preferred_language: en
+    labels:
+      document_type: press_release
+
+# ─── Finland ──────────────────────────────────────────────────────────────────
+

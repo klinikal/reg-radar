@@ -5,6 +5,13 @@ WORKDIR /app
 COPY collector/requirements.txt ./collector/requirements.txt
 RUN pip install --no-cache-dir -r collector/requirements.txt
 
+# Playwright's browser binary (collector/adapters/browser.py) - collector
+# image only, not mcp/webui (issue #8: "install it in the collector image
+# only"). --with-deps pulls the system libraries Chromium needs; run as
+# root, before the appuser switch below, since apt needs root.
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
+RUN playwright install --with-deps chromium
+
 COPY collector/ ./collector/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
@@ -26,6 +33,6 @@ ENV PYTHONPATH=/app \
     USER_AGENT="regradar/2.0 (+https://github.com/klinikal/regradar)" \
     REQUEST_TIMEOUT_SECONDS=30 \
     REQUEST_RETRIES=3 \
-    REGULATORS_PATH=/app/config/regulators.yaml
+    REGULATORS_PATH=/app/config/regulators
 
 CMD ["python", "-m", "collector.main"]

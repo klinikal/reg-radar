@@ -90,7 +90,7 @@ def html_to_markdown(html: str) -> str:
 
 
 def normalize_pdf_text(text: str) -> str:
-    """pypdf's extract_text() (collector.fetcher._extract_pdf_text) returns
+    """pypdf's extract_text() (collector.adapters.http.extract_pdf_text) returns
     one line per visual line with no font-size information, so heading
     detection by font size (per the design doc) isn't possible from it -
     every line is treated as body text and only paragraph breaks are
