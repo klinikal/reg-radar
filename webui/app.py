@@ -446,6 +446,8 @@ def _atom_feed_xml(profile_name: str, items: list[dict], feed_url: str) -> bytes
     link = ET.SubElement(feed, f"{{{_ATOM_NS}}}link")
     link.set("href", feed_url)
     ET.SubElement(feed, f"{{{_ATOM_NS}}}updated").text = items[0]["updated_at"] if items else _now_z()
+    author = ET.SubElement(feed, f"{{{_ATOM_NS}}}author")
+    ET.SubElement(author, f"{{{_ATOM_NS}}}name").text = "regradar"
 
     for doc in items:
         entry = ET.SubElement(feed, f"{{{_ATOM_NS}}}entry")
