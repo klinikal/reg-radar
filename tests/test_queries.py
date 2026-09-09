@@ -1092,7 +1092,7 @@ def test_search_items_jurisdictions_without_taxonomy_raises():
 
 def test_get_unclassified_derives_body_md_from_raw_content_for_pre_v2_items():
     """A v1-upgraded row has items.body_md NULL but raw_content populated.
-    Returning the raw column left the classifier skill and `regradar
+    Returning the raw column left the classifier skill and `reg-radar
     classify` with an empty body to classify."""
     from mcpserver.queries import get_unclassified
 

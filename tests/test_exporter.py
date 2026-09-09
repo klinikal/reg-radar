@@ -195,7 +195,7 @@ def test_export_persists_cursor_and_since_overrides_it(tmp_path, monkeypatch):
 
     rc1 = main(["export", "--format", "markdown", "--out", str(out_dir), "--db-path", db_path])
     assert rc1 == 0
-    cursor_path = out_dir / ".regradar-cursor"
+    cursor_path = out_dir / ".reg-radar-cursor"
     assert cursor_path.exists()
     persisted = cursor_path.read_text().strip()
     assert "|" in persisted
@@ -212,7 +212,7 @@ def test_export_unparseable_persisted_cursor_falls_back_to_full_export(tmp_path,
     db_path, _item_id = _setup_db(tmp_path)
     out_dir = tmp_path / "out"
     out_dir.mkdir(parents=True)
-    (out_dir / ".regradar-cursor").write_text("not-a-valid-cursor")
+    (out_dir / ".reg-radar-cursor").write_text("not-a-valid-cursor")
 
     with caplog.at_level("WARNING"):
         rc = main(["export", "--format", "markdown", "--out", str(out_dir), "--db-path", db_path])
@@ -269,7 +269,7 @@ def test_export_repeatable_format_writes_both_from_one_run(tmp_path, monkeypatch
     lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
     assert len(lines) == 1
     # One shared cursor for both formats, not one each.
-    assert (out_dir / ".regradar-cursor").exists()
+    assert (out_dir / ".reg-radar-cursor").exists()
 
 
 def test_export_second_format_with_no_prior_output_falls_back_to_full_export(tmp_path, monkeypatch, caplog):
@@ -323,7 +323,7 @@ def test_explicit_since_into_an_empty_out_dir_is_not_second_guessed(tmp_path, mo
 
 def test_export_jsonl_deleted_with_persisted_cursor_rebuilds_the_full_snapshot(tmp_path, monkeypatch, caplog):
     """The exact reported repro: a completed jsonl export, then export.jsonl
-    removed (a botched copy, a cleanup script) while .regradar-cursor
+    removed (a botched copy, a cleanup script) while .reg-radar-cursor
     survives. Trusting that cursor wrote an EMPTY snapshot - the whole
     corpus silently gone from the export."""
     monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
@@ -332,7 +332,7 @@ def test_export_jsonl_deleted_with_persisted_cursor_rebuilds_the_full_snapshot(t
 
     assert main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path]) == 0
     assert len((out_dir / "export.jsonl").read_text().strip().splitlines()) == 1
-    cursor_before = (out_dir / ".regradar-cursor").read_text()
+    cursor_before = (out_dir / ".reg-radar-cursor").read_text()
 
     (out_dir / "export.jsonl").unlink()
     with caplog.at_level("WARNING"):
@@ -341,7 +341,7 @@ def test_export_jsonl_deleted_with_persisted_cursor_rebuilds_the_full_snapshot(t
     assert rc == 0
     assert "falling back to a full export" in caplog.text
     assert len((out_dir / "export.jsonl").read_text().strip().splitlines()) == 1
-    assert (out_dir / ".regradar-cursor").read_text() == cursor_before
+    assert (out_dir / ".reg-radar-cursor").read_text() == cursor_before
 
 
 def test_export_reports_only_items_it_actually_wrote(tmp_path, monkeypatch, capsys):

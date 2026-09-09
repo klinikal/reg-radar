@@ -309,7 +309,7 @@ def test_webhook_channel_signature_validates_the_same_way_issue_8_does():
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["body"] = request.content
-        captured["signature"] = request.headers["X-RegRadar-Signature"]
+        captured["signature"] = request.headers["X-Reg-Radar-Signature"]
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -585,7 +585,7 @@ def test_scheduler_skips_invalid_digests_yaml_without_crashing(tmp_path):
 
 
 def test_digest_preview_documents_carry_jurisdiction_ancestors_and_label_provenance(tmp_path, monkeypatch, capsys):
-    """`regradar digest --preview` must pass the taxonomy through to
+    """`reg-radar digest --preview` must pass the taxonomy through to
     render_digest(), or every document it builds loses
     jurisdiction_ancestors and label_provenance."""
     import argparse
