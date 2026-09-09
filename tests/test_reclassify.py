@@ -135,3 +135,36 @@ def test_run_supersedes_prior_source_default_rows_before_rewriting(tmp_path):
             sa_text("SELECT value FROM classifications WHERE item_id='i1' AND superseded_at IS NULL")
         ).fetchall()
     assert [r[0] for r in live] == ["mica"]
+
+
+def test_run_uses_taxonomy_source_default_confidence_not_a_hardcoded_axis_branch(tmp_path):
+    """Confidence must come from the axis's configured
+    source_default_confidence (config/taxonomy.yaml), not a branch on axis
+    name in reclassify.py."""
+    taxonomy_path = tmp_path / "taxonomy.yaml"
+    taxonomy_path.write_text("""\
+version: 1
+axes:
+  - id: topic
+    cardinality: many
+    source_default_confidence: 0.42
+    values:
+      - id: staking
+        name: Staking
+""")
+    jurisdictions_path = tmp_path / "jurisdictions.yaml"
+    jurisdictions_path.write_text("- id: eu\n  name: European Union\n")
+
+    db_path = _db_path()
+    engine = init_db(db_path)
+    _insert_item(engine, "i1", source_label="s")
+    regulators = [{"id": "esma", "sources": [{"label": "s", "labels": {"topic": ["staking"]}}]}]
+    args = _args(
+        axis="topic", db_path=db_path, regulators_path=_regulators_path(tmp_path, regulators),
+        taxonomy_path=str(taxonomy_path), jurisdictions_path=str(jurisdictions_path),
+    )
+    run(args)
+
+    with engine.connect() as conn:
+        confidence = conn.execute(sa_text("SELECT confidence FROM classifications WHERE item_id='i1'")).scalar()
+    assert confidence == 0.42

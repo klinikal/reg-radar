@@ -7,6 +7,7 @@ version: 1
 axes:
   - id: document_type
     cardinality: one
+    source_default_confidence: 1.0  # a single-purpose feed is strong evidence of its document_type
     values:
       - id: consultation
         name: Consultation paper
@@ -30,6 +31,7 @@ axes:
         name: Watched page changed
   - id: instrument
     cardinality: many
+    source_default_confidence: 0.6  # a feed named "crypto circulars" is strong evidence, not proof
     values:
       - id: mica
         name: Markets in Crypto-Assets Regulation

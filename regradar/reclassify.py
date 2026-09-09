@@ -25,16 +25,6 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-# Source-default confidence, per architecture doc §4.3: 1.0 for
-# document_type on a single-purpose feed, 0.6 for instruments (a feed
-# named "crypto circulars" is strong evidence, not proof).
-_DEFAULT_CONFIDENCE = {"document_type": 1.0}
-_FALLBACK_CONFIDENCE = 0.6
-
-
-def _confidence_for(axis: str) -> float:
-    return _DEFAULT_CONFIDENCE.get(axis, _FALLBACK_CONFIDENCE)
-
 
 def source_defaults(regulators: list) -> dict:
     """Maps (regulator_id, source_label) -> that source's `labels` block
@@ -93,7 +83,7 @@ def run(args) -> None:
         for value in values:
             write_classification(
                 engine, taxonomy, item_id, args.axis, value,
-                by="source_default", confidence=_confidence_for(args.axis),
+                by="source_default", confidence=taxonomy.source_default_confidence(args.axis),
                 classifier_id="reclassify",
             )
         changed += 1
@@ -111,8 +101,10 @@ def run(args) -> None:
 def add_subparser(subparsers) -> None:
     parser = subparsers.add_parser("reclassify", help="Re-apply classification defaults to existing items")
     parser.add_argument("--axis", required=True, help="Taxonomy axis to reclassify")
-    parser.add_argument("--by", default="source_default",
-                         help="Only supersede rows with this provenance (default: source_default)")
+    parser.add_argument("--by", default="source_default", choices=["source_default"],
+                         help="Provenance to supersede and rewrite (default and only choice for now: "
+                              "source_default - this issue re-applies source defaults only; rule/llm:* "
+                              "are added by a follow-on issue)")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
     parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators.yaml"))

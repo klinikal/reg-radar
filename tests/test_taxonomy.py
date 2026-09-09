@@ -61,6 +61,47 @@ def test_build_taxonomy_loads_valid_config(tmp_path):
     assert t.is_valid("instrument", "mica") is True
 
 
+def test_source_default_confidence_reads_configured_value(tmp_path):
+    taxonomy_yaml = """\
+version: 1
+axes:
+  - id: document_type
+    cardinality: one
+    source_default_confidence: 1.0
+    values:
+      - id: warning
+        name: Warning
+  - id: instrument
+    cardinality: many
+    source_default_confidence: 0.6
+    values:
+      - id: mica
+        name: MiCA
+"""
+    t = _build(tmp_path, taxonomy_yaml=taxonomy_yaml)
+    assert t.source_default_confidence("document_type") == 1.0
+    assert t.source_default_confidence("instrument") == 0.6
+
+
+def test_source_default_confidence_falls_back_when_axis_omits_it(tmp_path):
+    t = _build(tmp_path)  # VALID_TAXONOMY sets no source_default_confidence
+    assert t.source_default_confidence("document_type") == 0.6
+
+
+def test_source_default_confidence_applies_to_a_new_axis_with_no_code_change(tmp_path):
+    """A new axis added to a copy of the taxonomy gets its own configured
+    source_default_confidence with no code change - same principle as
+    list_labels_tool picking up a new axis automatically."""
+    taxonomy_yaml = VALID_TAXONOMY.replace(
+        "axes:\n",
+        "axes:\n  - id: topic\n    cardinality: many\n    source_default_confidence: 0.42\n"
+        "    values:\n      - id: staking\n        name: Staking\n",
+    )
+    t = _build(tmp_path, taxonomy_yaml=taxonomy_yaml)
+    assert "topic" in t.axes()
+    assert t.source_default_confidence("topic") == 0.42
+
+
 def test_ancestors_single_level(tmp_path):
     t = _build(tmp_path)
     assert t.ancestors("fr") == ["eu"]

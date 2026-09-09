@@ -35,6 +35,11 @@ class Axis:
     cardinality: str  # "one" or "many"
     values: dict  # value id -> AxisValue
     min_confidence: float = 0.5
+    # Confidence a `by: source_default` write gets on this axis (architecture
+    # doc §4.3: 1.0 for document_type on a single-purpose feed, 0.6 for
+    # instrument - a feed named "crypto circulars" is strong evidence, not
+    # proof). Config-driven so no code branches on an axis name.
+    source_default_confidence: float = 0.6
 
 
 class Taxonomy:
@@ -54,6 +59,9 @@ class Taxonomy:
 
     def min_confidence(self, axis: str) -> float:
         return self._axes[axis].min_confidence
+
+    def source_default_confidence(self, axis: str) -> float:
+        return self._axes[axis].source_default_confidence
 
     def is_valid(self, axis: str, value: str) -> bool:
         ax = self._axes.get(axis)
@@ -140,6 +148,7 @@ def _build_axes(path: str, data) -> tuple:
             cardinality=cardinality,
             values=values,
             min_confidence=raw_axis.get("min_confidence", 0.5),
+            source_default_confidence=raw_axis.get("source_default_confidence", 0.6),
         )
     return version, axes
 

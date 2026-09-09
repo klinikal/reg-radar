@@ -116,3 +116,48 @@ def test_run_collection_without_taxonomy_skips_classification_silently():
         assert count == 0
     finally:
         os.unlink(db_path)
+
+
+def test_run_collection_uses_a_new_axis_configured_confidence_with_no_code_change(tmp_path):
+    """Source-default confidence must come from taxonomy.yaml, not a branch
+    on axis name in collector code - a brand new axis with its own
+    source_default_confidence is applied with zero code changes."""
+    taxonomy_path = tmp_path / "taxonomy.yaml"
+    taxonomy_path.write_text("""\
+version: 1
+axes:
+  - id: topic
+    cardinality: one
+    source_default_confidence: 0.42
+    values:
+      - id: staking
+        name: Staking
+""")
+    jurisdictions_path = tmp_path / "jurisdictions.yaml"
+    jurisdictions_path.write_text("- id: eu\n  name: European Union\n")
+    taxonomy = build_taxonomy(str(taxonomy_path), str(jurisdictions_path))
+
+    engine, db_path = _make_engine()
+    try:
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+            from collector.schema import Item, make_item_id
+            now = datetime.now(timezone.utc)
+            return [Item(
+                id=make_item_id(reg_id, "https://example.com/a", now), regulator_id=reg_id,
+                source_label=source["label"], title="A", url="https://example.com/a",
+                published_at=now, fetched_at=now, date_inferred=False, language="en",
+                content_snippet="...", source_type="rss",
+            )]
+
+        reg = {
+            "id": "test-reg", "name": "Test", "enabled": True,
+            "sources": [{"label": "s", "url": "http://example.com/s", "labels": {"topic": "staking"}}],
+        }
+        with patch("collector.main.fetch_source", side_effect=fake_fetch):
+            run_collection(engine, [reg], _base_cfg(), taxonomy=taxonomy)
+
+        with engine.connect() as conn:
+            confidence = conn.execute(sa_text("SELECT confidence FROM classifications WHERE axis='topic'")).scalar()
+        assert confidence == 0.42
+    finally:
+        os.unlink(db_path)

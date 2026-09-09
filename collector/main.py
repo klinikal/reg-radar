@@ -65,19 +65,20 @@ def load_regulators(config_path: str) -> list[dict]:
 def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: dict) -> None:
     """Writes each of a source's configured `labels` (regulators.yaml
     sources[].labels, architecture doc §4.3) as a `by: source_default`
-    classification for a newly-inserted item. confidence is 1.0 for
-    document_type on a single-purpose feed, 0.6 for instruments - a feed
-    named "crypto circulars" is strong evidence, not proof (§4.3)."""
+    classification for a newly-inserted item, at that axis's configured
+    source_default_confidence (config/taxonomy.yaml - see Taxonomy.
+    source_default_confidence()). Code deliberately doesn't branch on axis
+    name here; per-axis confidence is a config concern."""
     for axis, axis_value in (source_labels or {}).items():
-        confidence = 1.0 if axis == "document_type" else 0.6
         values = axis_value if isinstance(axis_value, list) else [axis_value]
         for value in values:
             try:
+                confidence = taxonomy.source_default_confidence(axis)
                 write_classification(
                     engine, taxonomy, item_id, axis, value,
                     by="source_default", confidence=confidence, classifier_id="collector",
                 )
-            except ValueError as e:
+            except (KeyError, ValueError) as e:
                 logger.warning("Skipping invalid source default label for item %s: %s", item_id, e)
 
 
