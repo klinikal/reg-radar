@@ -14,7 +14,7 @@ RUN addgroup --system appgroup && \
 
 USER appuser
 
-ENV DB_PATH=/app/data/casp_radar.db \
+ENV DB_PATH=/app/data/regradar.db \
     LOG_LEVEL=INFO
 
 CMD ["python", "-m", "mcpserver.server"]

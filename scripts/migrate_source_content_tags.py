@@ -93,7 +93,7 @@ def run(db_path: str, alerts_path: str, dry_run: bool, batch_size: int = 500) ->
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Compute and log changes but write nothing")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/casp_radar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
     parser.add_argument("--alerts-path", default=os.getenv("ALERTS_PATH", "/app/config/alerts.yaml"))
     args = parser.parse_args()
     run(args.db_path, args.alerts_path, args.dry_run)

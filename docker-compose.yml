@@ -1,4 +1,4 @@
-name: casp-radar
+name: regradar
 
 services:
   collector:
@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.collector
     volumes:
-      - casp_radar_data:/app/data
+      - regradar_data:/app/data
       - ./config:/app/config
     env_file: .env
     restart: unless-stopped
@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile.mcp
     volumes:
-      - casp_radar_data:/app/data
+      - regradar_data:/app/data
       - ./config:/app/config
     env_file: .env
     ports:
@@ -30,7 +30,7 @@ services:
       context: .
       dockerfile: Dockerfile.webui
     volumes:
-      - casp_radar_data:/app/data
+      - regradar_data:/app/data
       - ./config:/app/config
     env_file: .env
     ports:
@@ -45,11 +45,11 @@ services:
   # bind mounts doesn't fully honour the file-locking guarantees SQLite's
   # WAL mode relies on) to a plain folder on the host disk (./backups),
   # so a restore is always available within Litestream's retention window.
-  # Restore: litestream restore -o restored.db file:///backups/casp_radar
+  # Restore: litestream restore -o restored.db file:///backups/regradar
   litestream:
     image: litestream/litestream:0.5.9
     volumes:
-      - casp_radar_data:/app/data
+      - regradar_data:/app/data
       - ./backups:/backups
       - ./litestream.yml:/etc/litestream.yml:ro
     command: replicate
@@ -64,5 +64,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  casp_radar_data:
-    name: casp_radar_data
+  regradar_data:
+    name: ${DATA_VOLUME_NAME:-regradar_data}
