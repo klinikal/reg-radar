@@ -152,6 +152,34 @@ Manage rules from the browser at **`http://localhost:8080/rules`** (`/alerts` re
 
 `skills/regradar-classifier/SKILL.md` instructs any MCP-connected agent to pull unclassified items via `get_unclassified_tool`, read `get_taxonomy_tool`, and write labels back via `classify_items_tool` with `by: "llm:<provider>/<model>"` and a self-reported confidence — no API keys or provider lock-in in this repo; the agent reading the skill *is* the classifier. `get_taxonomy_tool()` returns every axis/value/alias so an agent never needs filesystem access to `config/taxonomy.yaml`. See the skill file for the full worked examples and judgment calls (consultation vs. feedback statement, when an instrument mention counts as "substantive," etc.).
 
+## Batch LLM classifier runner
+
+`skills/regradar-classifier/SKILL.md` (above) needs an agent sat in a chat session. `regradar classify` does the same job unattended, against a provider of your choosing, so classification can run on a schedule alongside the collector:
+
+```bash
+docker compose exec collector python -m regradar.classify classify \
+  --provider anthropic --axis instrument --limit 200 --dry-run
+```
+
+Drop `--dry-run` to actually write. Omit `--axis` to work every axis in `config/taxonomy.yaml`; `--limit` caps items classified *per axis* this run. Every write goes through `write_classification()` (the same function the skill's `classify_item_tool` calls) with `by: "llm:<provider>/<model>"` and `classifier_id: "regradar-classify/<provider>"` — never a bespoke insert. One taxonomy axis is requested per model call; a response with an unknown axis, an unknown value id, the wrong cardinality (more than one value for a single-valued axis), or an out-of-range confidence is rejected, logged, and written nowhere — never quarantined for later review, just a log line.
+
+**Four built-in providers** (`regradar/providers/`), one file each:
+
+| Provider | Requires | Notes |
+|---|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY`, `pip install regradar[llm]` | Structured output via tool-use, built from the taxonomy for the axis in play |
+| `openai` | `OPENAI_API_KEY`, `pip install regradar[llm]` | Structured output via a JSON-schema response format |
+| `ollama` | A local Ollama server (`OLLAMA_BASE_URL`, default `http://localhost:11434`) | Strict prompt instructions + parsing, no key needed |
+| `command` | `--command "<shell command>"` | Shells out to any CLI that reads a prompt on stdin and writes text on stdout — see below |
+
+`anthropic`/`openai` import their SDK lazily, only when that provider is actually selected, so the rest of the CLI (and every other provider) works without either package installed. `pip install regradar[llm]` (or the `anthropic`/`openai` packages directly) pulls them in.
+
+**The `command` provider** runs a configured shell command, feeding the prompt on stdin and reading the raw response from stdout — no provider-specific code, so a subscription-backed CLI tool (rather than a metered API key) can drive unattended classification, e.g. `--provider command --command "claude -p"`. **Before pointing this at any vendor's subscription CLI for scheduled, unattended use, check that vendor's terms of service actually permit automated use under a subscription plan** — this README makes no recommendation either way; that's an operator decision, not a code one.
+
+**Rate limiting:** `--rpm <n>` caps requests per minute between provider calls (sensible per-provider defaults if omitted — see `regradar/providers/PROVIDER_DEFAULTS`); the wait is real time in production, injectable in tests so the test suite never sleeps.
+
+**Cost logging:** `anthropic`/`openai` calls log input/output token counts and an estimated cost per call, priced from `config/llm_prices.yaml` (`LLM_PRICES_PATH`, editable — it records the date it was last updated). `ollama`/`command` always log as **unmetered** — there's no generic way to price a local model or an arbitrary shelled-out command, so no cost figure is ever fabricated for them.
+
 ## Profiles
 
 The taxonomy above says what a document *is*. A **profile** says who should care: a named, versionable filter turning "everything the taxonomy knows" into "what a UK equities dealer, or an EU CASP, needs to read." A profile file (`config/profiles/<name>.yaml`) has:
@@ -287,6 +315,8 @@ Copy `.env.example` to `.env` and adjust:
 | `ACTIVITIES_PATH` | `/app/config/activities.yaml` | Activity-to-instrument mapping — see [Profiles](#profiles) |
 | `PROFILES_DIR` | `/app/config/profiles` | Directory of shipped profile templates |
 | `RULES_PATH` | `/app/config/rules.yaml` | Classification rules engine config — see [Classification rules](#classification-rules) |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | *(unset)* | API keys for `regradar classify --provider anthropic\|openai` — see [Batch LLM classifier runner](#batch-llm-classifier-runner); only needed for the provider you use |
+| `LLM_PRICES_PATH` | `/app/config/llm_prices.yaml` | Price table for `regradar classify` cost logging — see [Batch LLM classifier runner](#batch-llm-classifier-runner) |
 | `FLARESOLVERR_URL` | `http://flaresolverr:8191` | FlareSolverr service URL; leave blank to disable (Cloudflare-protected sources are then skipped) |
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
 | `FLARESOLVERR_MAX_RETRIES` | `3` | Retry attempts per FlareSolverr fetch |
