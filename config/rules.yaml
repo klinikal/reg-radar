@@ -1,0 +1,49 @@
+# Deterministic, weighted, regex-capable classification rules (architecture
+# doc §4.3), replacing the old alerts.yaml keyword tagger. Each entry scores
+# an (axis, value) pair from config/taxonomy.yaml against an item's title
+# and/or body; a match writes a `by: rule` classification row when the
+# summed score reaches min_confidence below.
+#
+# Alias lists on taxonomy.yaml values are compiled into implicit rules at
+# weight 0.7 automatically - most instruments need no entry here at all.
+#
+# Edit this file directly, or manage rules via the web UI at /rules.
+#
+min_confidence: 0.5
+rules:
+- axis: instrument
+  value: mica
+  match:
+  - pattern: MiCA
+    weight: 0.7
+    flags: i
+  fields:
+  - title
+  - body
+- axis: instrument
+  value: mifid2
+  match:
+  - pattern: MiFID
+    weight: 0.7
+    flags: i
+  fields:
+  - title
+  - body
+- axis: instrument
+  value: transfer_of_funds_regulation
+  match:
+  - pattern: travel\ rule
+    weight: 0.7
+    flags: i
+  fields:
+  - title
+  - body
+- axis: document_type
+  value: enforcement
+  match:
+  - pattern: enforcement\ action
+    weight: 0.7
+    flags: i
+  fields:
+  - title
+  - body
