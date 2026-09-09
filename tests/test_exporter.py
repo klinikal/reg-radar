@@ -111,6 +111,57 @@ def test_export_jsonl_matches_document_schema(tmp_path, monkeypatch):
     jsonschema.validate(doc, SCHEMA)
 
 
+def test_export_jsonl_second_run_with_no_changes_leaves_mtime_untouched(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc1 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+    assert rc1 == 0
+    jsonl_path = out_dir / "export.jsonl"
+    mtime1 = jsonl_path.stat().st_mtime_ns
+
+    rc2 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+    assert rc2 == 0
+    assert jsonl_path.stat().st_mtime_ns == mtime1
+
+
+def test_export_jsonl_is_a_snapshot_one_line_per_id_latest_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    rc1 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+    assert rc1 == 0
+
+    # A second item, plus an update to the first item's title (bumps
+    # updated_at) - the snapshot should end up with exactly one line per
+    # id: two ids total, the first one carrying the new title.
+    from collector.storage import init_db as _init_db
+    from collector.storage import insert_item as _insert_item
+    engine = _init_db(db_path)
+    now = datetime.now(timezone.utc)
+    second = Item(
+        id=make_item_id("fca", "https://example.com/export-2", now),
+        regulator_id="fca", source_label="news", title="Second notice",
+        url="https://example.com/export-2", published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="snip2",
+        source_type="scrape", raw_content="<p>second</p>", body_md="second", extractor="raw/1",
+    )
+    _insert_item(engine, second)
+    from collector.storage import update_item_body
+    update_item_body(engine, item_id, "hello world, updated", "raw/1")
+
+    rc2 = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+    assert rc2 == 0
+
+    lines = (out_dir / "export.jsonl").read_text().strip().splitlines()
+    assert len(lines) == 2
+    docs_by_id = {json.loads(line)["id"]: json.loads(line) for line in lines}
+    assert set(docs_by_id) == {item_id, second.id}
+    assert docs_by_id[item_id]["body_md"] == "hello world, updated"
+
+
 def test_export_with_originals_copies_artefact(tmp_path, monkeypatch):
     artefacts_dir = tmp_path / "originals"
     monkeypatch.setenv("ARTEFACTS_DIR", str(artefacts_dir))

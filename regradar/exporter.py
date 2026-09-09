@@ -10,6 +10,14 @@ regradar.render.render_item_to_dir for the markdown format - the section
 need external state tracking: the next run without `--since` picks up
 exactly where the last one left off. `--since` on the command line always
 overrides the persisted cursor for that one run.
+
+`--format jsonl` writes export.jsonl as a full current-state snapshot (one
+line per item id, latest wins) rather than an append-only log - a
+downstream consumer (e.g. issue #12's published dataset) reads it as "the
+whole corpus right now", not "everything that has ever changed". It is
+still rebuilt cheaply on each run by reading the existing snapshot, folding
+in only what get_changes() reports as new since the cursor, and skipping
+the rewrite entirely when the resulting content is byte-identical.
 """
 import argparse
 import json
@@ -77,6 +85,44 @@ def resolve_since(out_dir: Path, cli_since: str | None) -> str | None:
     return persisted
 
 
+def _jsonl_path(out_dir: Path) -> Path:
+    return out_dir / JSONL_FILENAME
+
+
+def _read_jsonl_snapshot(out_dir: Path) -> dict[str, str]:
+    """Loads the current export.jsonl into {item_id: line} - the snapshot
+    export_profile() updates in place (latest wins) and rewrites from."""
+    path = _jsonl_path(out_dir)
+    if not path.exists():
+        return {}
+    snapshot: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            doc_id = json.loads(line)["id"]
+        except (json.JSONDecodeError, KeyError):
+            continue
+        snapshot[doc_id] = line
+    return snapshot
+
+
+def _write_jsonl_snapshot(out_dir: Path, snapshot: dict[str, str]) -> None:
+    """Rewrites export.jsonl as the full current-state snapshot (one line
+    per item id, sorted for a deterministic byte-for-byte diff). Skips the
+    write entirely when the content is unchanged, so an unchanged export
+    doesn't touch the file's mtime - the same idempotency contract as the
+    markdown format's per-item files.
+    """
+    lines = [snapshot[item_id] for item_id in sorted(snapshot)]
+    content = "".join(line + "\n" for line in lines)
+    path = _jsonl_path(out_dir)
+    if path.exists() and path.read_text(encoding="utf-8") == content:
+        return
+    path.write_text(content, encoding="utf-8")
+
+
 def _copy_original(engine, item_id: str, out_dir: Path) -> None:
     artefact = get_artefact(engine, item_id)
     if not artefact:
@@ -97,15 +143,18 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
     """Writes every item matching `profile` changed after `since` (an
     opaque cursor, or None for everything) to out_dir: the section 3.1
     layout for "markdown" (idempotent per render_item_to_dir - unchanged
-    items are not rewritten), one JSON object per line appended to
-    export.jsonl for "jsonl". Returns {"written": int, "cursor": str |
-    None} - `cursor` is the new head of the stream (or `since` again if
-    nothing changed), for the caller to persist.
+    items are not rewritten). For "jsonl", export.jsonl is a full
+    current-state snapshot - one line per item id, latest wins - rebuilt
+    from the existing snapshot plus whatever changed since `since`, and
+    only rewritten if its content actually changed (so an unchanged run
+    doesn't touch the file's mtime either). Returns {"written": int,
+    "cursor": str | None} - `cursor` is the new head of the stream (or
+    `since` again if nothing changed), for the caller to persist.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     written = 0
     cursor = since
-    jsonl_lines: list[str] = []
+    snapshot = _read_jsonl_snapshot(out_dir) if export_format == "jsonl" else None
 
     while True:
         items, next_cursor = get_changes(engine, since=cursor, profile=profile, limit=_PAGE_SIZE, include_body=True)
@@ -117,16 +166,14 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
                 if render_item_to_dir(engine, item_id, out_dir) is not None:
                     written += 1
             else:
-                jsonl_lines.append(json.dumps(doc, sort_keys=False))
+                snapshot[item_id] = json.dumps(doc, sort_keys=False)
                 written += 1
             if with_originals:
                 _copy_original(engine, item_id, out_dir)
         cursor = next_cursor
 
-    if jsonl_lines:
-        with open(out_dir / JSONL_FILENAME, "a", encoding="utf-8") as f:
-            for line in jsonl_lines:
-                f.write(line + "\n")
+    if snapshot is not None:
+        _write_jsonl_snapshot(out_dir, snapshot)
 
     return {"written": written, "cursor": cursor}
 
