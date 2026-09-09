@@ -16,6 +16,7 @@ import sys
 from collector.main import load_regulators
 from collector.storage import init_db
 from regradar.classification import supersede_axis, write_classification
+from regradar.rules import RulesEngine
 from regradar.taxonomy import build_taxonomy
 from sqlalchemy import text
 
@@ -35,15 +36,52 @@ def source_defaults(regulators: list) -> dict:
     return defaults
 
 
+def _run_rule_reclassify(engine, taxonomy, args) -> int:
+    """`reclassify --axis <a> --by rule`: rescoring every item against the
+    current config/rules.yaml (docs/issues/04-rules-engine-write-interface
+    -llm-classifier-skill.md), superseding and rewriting only this axis's
+    prior `by: rule` rows - human rows are untouched (supersede_axis()'s own
+    NOT LIKE 'human:%' guard, architecture doc §4.4)."""
+    rules_engine = RulesEngine.load(args.rules_path, taxonomy)
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT id, title, raw_content FROM items")).fetchall()
+
+    changed = 0
+    for item_id, title, raw_content in rows:
+        scores = rules_engine.score(title or "", raw_content or "")
+        axis_values = {value: confidence for (axis, value), confidence in scores.items() if axis == args.axis}
+        if not axis_values:
+            continue
+        if args.dry_run:
+            changed += 1
+            continue
+        supersede_axis(engine, item_id, args.axis, by="rule")
+        for value, confidence in axis_values.items():
+            write_classification(
+                engine, taxonomy, item_id, args.axis, value,
+                by="rule", confidence=confidence, classifier_id=rules_engine.classifier_id,
+            )
+        changed += 1
+
+    verb = "[DRY RUN] Would reclassify" if args.dry_run else "Reclassified"
+    logger.info("%s %d item(s) on axis %r via rule scoring", verb, changed, args.axis)
+    return 0
+
+
 def run(args) -> int:
     engine = init_db(args.db_path)
-    regulators = load_regulators(args.regulators_path)
     taxonomy = build_taxonomy(args.taxonomy_path, args.jurisdictions_path)
 
     if args.axis not in taxonomy.axes():
         logger.error("Unknown axis %r - valid axes: %s", args.axis, sorted(taxonomy.axes()))
         return 1
 
+    if args.by == "rule":
+        # No regulators.yaml needed for rule-based rescoring - only
+        # config/rules.yaml and each item's own title/body.
+        return _run_rule_reclassify(engine, taxonomy, args)
+
+    regulators = load_regulators(args.regulators_path)
     defaults = source_defaults(regulators)
 
     with engine.connect() as conn:
@@ -96,15 +134,17 @@ def run(args) -> int:
 def add_subparser(subparsers) -> None:
     parser = subparsers.add_parser("reclassify", help="Re-apply classification defaults to existing items")
     parser.add_argument("--axis", required=True, help="Taxonomy axis to reclassify")
-    parser.add_argument("--by", default="source_default", choices=["source_default"],
-                         help="Provenance to supersede and rewrite (default and only choice for now: "
-                              "source_default - this issue re-applies source defaults only; rule/llm:* "
-                              "are added by a follow-on issue)")
+    parser.add_argument("--by", default="source_default", choices=["source_default", "rule"],
+                         help="Provenance to supersede and rewrite: source_default re-applies "
+                              "regulators.yaml sources[].labels; rule rescores every item against "
+                              "config/rules.yaml (llm:* is agent-driven via the classifier skill, not "
+                              "this command)")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
     parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
+    parser.add_argument("--rules-path", default=os.getenv("RULES_PATH", "config/rules.yaml"))
     parser.set_defaults(func=run)
 
 

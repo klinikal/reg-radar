@@ -22,6 +22,7 @@ def fetch_source(
     regulator_id: str,
     flaresolverr_url: str | None,
     config: dict,
+    rules_engine=None,
 ) -> list[Item]:
     user_agent = config.get("user_agent", "regradar/2.0")
     timeout = int(config.get("timeout", 30))
@@ -38,4 +39,4 @@ def fetch_source(
         flaresolverr_url=flaresolverr_url, regulator_id=regulator_id,
     )
     raw_docs = adapter.fetch(source, ctx)
-    return process_raw_documents(raw_docs, source, regulator_id)
+    return process_raw_documents(raw_docs, source, regulator_id, rules_engine=rules_engine)

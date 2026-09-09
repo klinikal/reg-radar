@@ -47,17 +47,21 @@ def resolve_language(override: str | None, source_preferred: str | None, title: 
     return detect_language(f"{title} {snippet}")
 
 
-def classify(item: Item, raw_doc: RawDocument) -> None:
-    """Call-out point for issue #6's rules engine (config/rules.yaml).
+def classify(item: Item, raw_doc: RawDocument, rules_engine=None) -> None:
+    """The rules engine's call-out point (issue #6, config/rules.yaml):
+    scores this item's title/raw_content against `rules_engine` (a
+    regradar.rules.RulesEngine) and stores the result on `item.rule_labels`.
 
-    A no-op today: source-default labels (regulators.yaml sources[].labels)
-    are still written by collector.main._apply_source_label_defaults from
-    the source config, not from here - that write needs a DB engine and
-    taxonomy, neither of which this pipeline holds. This hook exists so #6
-    has a single, clearly-named place to add rule-based classification per
-    item once it lands, instead of threading it through run_collection()
-    again.
+    Scoring only - never writes to the database, since the item doesn't
+    exist in it yet at this point in the pipeline. collector.main writes
+    `item.rule_labels` as `by: rule` classifications once insert_item()
+    succeeds, the same way source-default labels are written from
+    `item`/`source` data after insertion. `rules_engine=None` (the default,
+    matching every caller that predates this issue) is a no-op, matching
+    the old behaviour.
     """
+    if rules_engine is not None:
+        item.rule_labels = rules_engine.score(item.title, item.raw_content)
     return None
 
 
@@ -97,7 +101,7 @@ def _body_and_extractor(raw: RawDocument, snippet: str) -> tuple[str, str]:
     )
 
 
-def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_id: str) -> list[Item]:
+def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_id: str, rules_engine=None) -> list[Item]:
     """The shared "extract, hash, ..." half of the pipeline (storage and the
     classify call-out happen in collector.main.run_collection, which already
     owns insert_item()/_apply_source_label_defaults() per-item decisions).
@@ -149,6 +153,6 @@ def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_i
             raw_bytes=raw.body if raw.body else None,
             mime=raw.mime if raw.body else None,
         )
-        classify(item, raw)
+        classify(item, raw, rules_engine=rules_engine)
         items.append(item)
     return items

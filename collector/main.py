@@ -8,7 +8,6 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from collector.fetcher import fetch_source
-from collector.keyword_alerts import load_alert_rules, match_keywords
 from collector.storage import (
     check_db_integrity,
     init_db,
@@ -22,6 +21,7 @@ from collector.storage import (
     upsert_regulator,
 )
 from regradar.classification import write_classification
+from regradar.rules import RulesEngine
 from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
@@ -39,7 +39,7 @@ def load_config():
         "timeout": int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,
-        "alerts_path": os.getenv("ALERTS_PATH", "/app/config/alerts.yaml"),
+        "rules_path": os.getenv("RULES_PATH", "/app/config/rules.yaml"),
         "taxonomy_path": os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
         "jurisdictions_path": os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
     }
@@ -140,7 +140,23 @@ def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: 
                 logger.warning("Skipping invalid source default label for item %s: %s", item_id, e)
 
 
-def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[dict] = None, taxonomy=None):
+def _apply_rule_labels(engine, taxonomy, rules_engine, item_id: str, rule_labels: dict) -> None:
+    """Writes each (axis, value): confidence pair scored by the rules
+    engine (collector.pipeline.classify(), regradar.rules.RulesEngine) for a
+    newly-inserted item as a `by: rule` classification, classifier_id set to
+    the engine's classifier_id (sha256 of rules.yaml + taxonomy version -
+    docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md)."""
+    for (axis, value), confidence in (rule_labels or {}).items():
+        try:
+            write_classification(
+                engine, taxonomy, item_id, axis, value,
+                by="rule", confidence=confidence, classifier_id=rules_engine.classifier_id,
+            )
+        except (KeyError, ValueError) as e:
+            logger.warning("Skipping invalid rule label for item %s: %s", item_id, e)
+
+
+def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None):
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
@@ -191,18 +207,15 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
                         logger.debug("Skipping disabled source: %s/%s", reg.get("id", "<unknown>"), source.get("label", "<unknown>"))
                         continue
                     try:
-                        items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg)
+                        items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg, rules_engine=rules_engine)
                         total_fetched += len(items)
                         for item in items:
-                            if alert_rules:
-                                combined_text = f"{item.title} {item.content_snippet} {item.raw_content}"
-                                matched_tags = match_keywords(combined_text, alert_rules)
-                                if matched_tags:
-                                    item.content_tags = sorted(set(item.content_tags) | set(matched_tags))
                             if insert_item(engine, item):
                                 total_new += 1
                                 if taxonomy is not None:
                                     _apply_source_label_defaults(engine, taxonomy, item.id, source.get("labels"))
+                                    if rules_engine is not None:
+                                        _apply_rule_labels(engine, taxonomy, rules_engine, item.id, item.rule_labels)
                         # fetch_source() returns [] both when a fetch genuinely
                         # fails (network error, blocked, etc.) and when it
                         # succeeds but the parser finds nothing - those look
@@ -302,7 +315,7 @@ def _release_lock(lock_file) -> None:
     lock_file.close()
 
 
-def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list[dict] = None, taxonomy=None):
+def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, taxonomy=None, rules_engine=None):
     """run_collection(), but skips entirely (rather than overlapping) if
     another collection run already holds the lock - a long FlareSolverr-
     heavy run (MFSA's ~10+ enabled categories at an 8s minimum interval
@@ -318,7 +331,7 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
         )
         return
     try:
-        run_collection(engine, regulators, cfg, alert_rules=alert_rules, taxonomy=taxonomy)
+        run_collection(engine, regulators, cfg, taxonomy=taxonomy, rules_engine=rules_engine)
     finally:
         _release_lock(lock_file)
 
@@ -344,14 +357,14 @@ def main():
             for k in ("id", "name", "full_name", "jurisdiction", "jurisdiction_type", "website", "mica_competent_authority", "enabled")
         })
 
-    alert_rules = load_alert_rules(cfg["alerts_path"])
-    logger.info("Loaded %d keyword alert rule(s) from %s", len(alert_rules), cfg["alerts_path"])
+    rules_engine = RulesEngine.load(cfg["rules_path"], taxonomy)
+    logger.info("Loaded %d classification rule(s) from %s", len(rules_engine.rules), cfg["rules_path"])
 
     lock_path = os.path.join(os.path.dirname(cfg["db_path"]) or ".", ".collector.lock")
 
     if "--once" in sys.argv:
         logger.info("Running single collection pass")
-        run_collection_locked(engine, regulators, cfg, lock_path, alert_rules=alert_rules, taxonomy=taxonomy)
+        run_collection_locked(engine, regulators, cfg, lock_path, taxonomy=taxonomy, rules_engine=rules_engine)
         return
 
     from apscheduler.events import EVENT_JOB_ERROR
@@ -370,7 +383,7 @@ def main():
     scheduler.add_job(
         run_collection_locked,
         CronTrigger.from_crontab(schedule),
-        args=[engine, regulators, cfg, lock_path, alert_rules, taxonomy],
+        args=[engine, regulators, cfg, lock_path, taxonomy, rules_engine],
     )
     try:
         scheduler.start()
