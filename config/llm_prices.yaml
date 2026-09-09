@@ -1,0 +1,23 @@
+# Price table for `regradar classify` cost logging (docs/issues/12-batch
+# -llm-classifier-runner.md). Only used for API-metered providers
+# (anthropic, openai) - ollama and command always log "unmetered", never a
+# fabricated cost. A missing entry for a model just logs "cost unknown",
+# it is not an error.
+#
+# Prices are USD per 1,000,000 tokens. They go stale - check your
+# provider's current pricing page before trusting these for real spend
+# tracking.
+#
+# Last updated: 2026-09-09
+
+anthropic:
+  # ASSUMPTION: verify this is still the current model id and price before relying on it.
+  claude-sonnet-4-5-20250929:
+    input_per_million: 3.00
+    output_per_million: 15.00
+
+openai:
+  # ASSUMPTION: verify this is still the current model id and price before relying on it.
+  gpt-5-mini:
+    input_per_million: 0.25
+    output_per_million: 2.00
