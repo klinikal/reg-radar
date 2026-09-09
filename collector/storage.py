@@ -10,6 +10,8 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
+    Index,
     Integer,
     String,
     Text,
@@ -75,6 +77,7 @@ class ItemRow(Base):
     source_type = Column(String)
     source_tags = Column(Text)  # JSON array - structural (warnings, press_releases, ...)
     content_tags = Column(Text)  # JSON array - what the item is about (keyword-derived today)
+    labels = Column(Text)  # JSON object - materialised effective_labels(), see regradar/classification.py
     raw_content = Column(Text)
     body_md = Column(Text)
     extractor = Column(String)  # e.g. "markdownify/1.2.3" - which body_md conversion produced this row
@@ -123,6 +126,43 @@ class ItemArtefactRow(Base):
     fetched_at = Column(DateTime, nullable=False)
 
 
+class ClassificationRow(Base):
+    """One classification event with provenance (architecture doc §4.4).
+    `items.labels`/`items.updated_at` and `item_labels` are materialised
+    from the live (superseded_at IS NULL) rows here by
+    regradar.classification.materialize_labels() - never written directly.
+    """
+    __tablename__ = "classifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(String, nullable=False)
+    axis = Column(String, nullable=False)
+    value = Column(String, nullable=False)
+    by = Column(String, nullable=False)  # source_default | rule | llm:<provider>/<model> | human:<name> | import
+    confidence = Column(Float, nullable=False)
+    taxonomy_version = Column(Integer, nullable=False)
+    classifier_id = Column(String)
+    created_at = Column(DateTime, nullable=False)
+    superseded_at = Column(DateTime, nullable=True)
+
+
+Index("ix_classifications_item_axis_live", ClassificationRow.item_id, ClassificationRow.axis)
+
+
+class ItemLabelRow(Base):
+    """Denormalised (item_id, axis, value) index over the live effective
+    labels, rebuilt on every write - the query-speed side table recommended
+    in architecture doc §4.4 (see the measurement in the task report)."""
+    __tablename__ = "item_labels"
+
+    item_id = Column(String, primary_key=True)
+    axis = Column(String, primary_key=True)
+    value = Column(String, primary_key=True)
+
+
+Index("ix_item_labels_axis_value", ItemLabelRow.axis, ItemLabelRow.value)
+
+
 class ItemChunkRow(Base):
     __tablename__ = "item_chunks"
 
@@ -155,6 +195,7 @@ def init_db(db_path: str):
         conn.commit()
         _ensure_column(conn, "items", "source_tags", "TEXT")
         _ensure_column(conn, "items", "content_tags", "TEXT")
+        _ensure_column(conn, "items", "labels", "TEXT")
         _ensure_column(conn, "items", "body_md", "TEXT")
         _ensure_column(conn, "items", "extractor", "TEXT")
         _ensure_column(conn, "items", "updated_at", "DATETIME")

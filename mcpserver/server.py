@@ -15,11 +15,13 @@ from mcpserver.queries import (
     get_recent,
     get_run_log,
     get_warnings,
+    list_labels,
     list_regulators,
     list_tags,
     search_items,
     search_items_advanced,
 )
+from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -51,6 +53,7 @@ mcp = FastMCP(
 )
 
 _engine = None
+_taxonomy = None
 
 
 def get_engine():
@@ -70,6 +73,16 @@ def get_engine():
             poolclass=NullPool,
         )
     return _engine
+
+
+def get_taxonomy():
+    global _taxonomy
+    if _taxonomy is None:
+        _taxonomy = load_and_exit_on_error(
+            os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
+            os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
+        )
+    return _taxonomy
 
 
 def _safe(label: str, fn, *args, **kwargs):
@@ -92,7 +105,8 @@ def _safe(label: str, fn, *args, **kwargs):
 @mcp.tool()
 def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
-                       content_tags: list[str] | None = None, date_from: str | None = None,
+                       content_tags: list[str] | None = None, jurisdictions: list[str] | None = None,
+                       labels: dict[str, list[str]] | None = None, date_from: str | None = None,
                        date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
 
@@ -100,12 +114,25 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     buckets combined. Use `source_tags` to filter by notice kind only (e.g.
     "warnings", "press_releases") or `content_tags` to filter by topic only
     (e.g. "mica", "travel-rule") when you need one bucket specifically.
+    These three are the deprecated v1 tag columns - prefer `jurisdictions`
+    and `labels` below, which read the classification store with
+    provenance (see list_labels_tool).
+
+    `jurisdictions` filters to items from a regulator in one of these
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any of their
+    descendants (e.g. "eu" also matches "fr", "de", ...). `labels` filters
+    by classification axis, e.g. {"document_type": ["warning"]} or
+    {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
+    values within one axis OR together. Call list_labels_tool to see valid
+    axes/values with their counts.
+
     limit defaults to 20, max 100. Use `offset` to page past the first
     `limit` results (e.g. offset=20 for page 2 of a limit=20 search), or use
     count_items_tool first to check the total before paging through it.
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
+                     jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
                      date_from=date_from, date_to=date_to, limit=limit, offset=offset)
     return results
 
@@ -156,7 +183,7 @@ def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | 
     max_content_chars to truncate it and protect your context window; omit
     for the full text. Returns None if the id doesn't exist.
     """
-    result = _safe("get_item_tool", get_item, get_engine(), item_id)
+    result = _safe("get_item_tool", get_item, get_engine(), item_id, taxonomy=get_taxonomy())
     if result and max_content_chars is not None and result.get("raw_content"):
         result["raw_content"] = result["raw_content"][:max_content_chars]
     return result
@@ -191,6 +218,11 @@ def get_warnings_tool(days: int = 30, regulator_id: str | None = None, limit: in
     precise; broad "all_news"-style feeds are not. Treat results from a
     broad feed as "may contain warnings," not a filtered warnings list -
     read the item to judge.
+
+    Deprecated: kept as an alias, reading the old source_tags column, for
+    one release. Prefer search_items_tool(labels={"document_type":
+    ["warning"]}), which reads the classification store and is not limited
+    to feed-level tagging.
     """
     results = _safe("get_warnings_tool", get_warnings, get_engine(), days=days, regulator_id=regulator_id, limit=limit)
     return results
@@ -237,6 +269,19 @@ def list_tags_tool() -> dict:
     search_items_tool and get_recent_tool before guessing.
     """
     return _safe("list_tags_tool", list_tags, get_engine())
+
+
+@mcp.tool()
+def list_labels_tool() -> dict:
+    """Returns every taxonomy axis (config-driven - see config/taxonomy.yaml)
+    with its distinct classified values and item counts, most-common first.
+
+    Sibling of list_tags_tool for the new classification store: use this to
+    discover valid `labels` values for search_items_tool (e.g. axis
+    "document_type" has value "warning", axis "instrument" has values like
+    "mica", "dora") before guessing.
+    """
+    return _safe("list_labels_tool", list_labels, get_engine(), get_taxonomy())
 
 
 @mcp.tool()

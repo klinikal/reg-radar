@@ -328,6 +328,71 @@ def test_get_item_includes_body_md_and_document_frontmatter():
         os.unlink(db_path)
 
 
+def test_get_item_document_frontmatter_includes_labels_provenance_and_jurisdiction_ancestors():
+    """A classified item's frontmatter carries effective labels, one
+    label_provenance entry per effective value, and jurisdiction_ancestors
+    from the real jurisdiction hierarchy (architecture doc §3.2/§4.4) -
+    e.g. a French regulator's ancestors are [eu]."""
+    from regradar.classification import write_classification
+    from regradar.taxonomy import build_taxonomy
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+            "jurisdiction": "fr", "jurisdiction_type": "member_state", "website": "https://www.amf-france.org",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="fr-amf")
+        insert_item(engine, item)
+
+        taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+        write_classification(engine, taxonomy, item.id, "document_type", "warning",
+                              by="source_default", confidence=1.0)
+        write_classification(engine, taxonomy, item.id, "instrument", "mica",
+                              by="rule", confidence=0.9)
+
+        result = get_item(engine, item.id, taxonomy=taxonomy)
+        document = result["document"]
+
+        assert document["jurisdiction"] == "fr"
+        assert document["jurisdiction_ancestors"] == ["eu"]
+        assert document["labels"] == {"document_type": "warning", "instrument": ["mica"]}
+        provenance_by_axis = {p["axis"]: p for p in document["label_provenance"]}
+        assert provenance_by_axis["document_type"] == {
+            "axis": "document_type", "value": "warning", "by": "source_default",
+            "confidence": 1.0, "taxonomy_version": taxonomy.version(),
+        }
+        assert provenance_by_axis["instrument"] == {
+            "axis": "instrument", "value": "mica", "by": "rule",
+            "confidence": 0.9, "taxonomy_version": taxonomy.version(),
+        }
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_without_taxonomy_omits_provenance_and_ancestors():
+    """Backward compatibility: a caller with no taxonomy handy still gets a
+    valid document, just without the taxonomy-derived fields."""
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+            "jurisdiction": "fr", "jurisdiction_type": "member_state", "website": "https://www.amf-france.org",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="fr-amf")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+        document = result["document"]
+        assert document["jurisdiction_ancestors"] == []
+        assert "labels" not in document
+        assert "label_provenance" not in document
+    finally:
+        os.unlink(db_path)
+
+
 def test_get_run_log():
     engine, db_path = setup_engine()
     try:

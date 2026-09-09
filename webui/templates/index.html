@@ -34,6 +34,24 @@
       </div>
     </div>
   </div>
+
+  <div class="reg-select">
+    <button type="button" class="reg-select-toggle">
+      Jurisdiction{% if jurisdiction %} ({{ jurisdiction|length }} selected){% endif %} &#9662;
+    </button>
+    <div class="reg-select-panel" hidden>
+      <div class="reg-select-list">
+        {% for j in jurisdiction_options %}
+        <label class="checkbox">
+          <input type="checkbox" name="jurisdiction" value="{{ j.id }}" {% if j.id in jurisdiction %}checked{% endif %}> {{ j.name }} ({{ j.id }})
+        </label>
+        {% endfor %}
+      </div>
+      <div class="reg-select-actions">
+        {% if jurisdiction %}<a class="clear-sub" href="/?{{ filter_qs_no_jurisdiction }}">Clear selected</a>{% endif %}
+      </div>
+    </div>
+  </div>
 </form>
 
 <aside class="months">

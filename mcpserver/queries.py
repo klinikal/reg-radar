@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from regradar.classification import winning_classification_rows
 from regradar.document import build_frontmatter, frontmatter_to_json_safe
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,12 @@ def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") ->
     shared by search_items() and get_recent(): `tags` searches source_tags OR
     content_tags combined (backward-compatible default), `source_tags` and
     `content_tags` each filter their own column specifically."""
+    if tags or source_tags or content_tags:
+        logger.warning(
+            "Query used deprecated tags/source_tags/content_tags filter - these read the old "
+            "flat columns; prefer jurisdictions/labels, which read the classification store "
+            "with provenance (architecture doc §4.4)."
+        )
     conditions = []
     params = {}
     if tags:
@@ -95,7 +102,8 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
 
 
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
-                  content_tags=None, date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
+                  content_tags=None, jurisdictions=None, labels=None, taxonomy=None,
+                  date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
@@ -135,6 +143,14 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
         tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
         conditions.extend(tag_conditions)
         params.update(tag_params)
+        if jurisdictions and taxonomy is not None:
+            jur_conditions, jur_params = _jurisdiction_filter_conditions(jurisdictions, taxonomy)
+            conditions.extend(jur_conditions)
+            params.update(jur_params)
+        if labels:
+            label_conditions, label_params = _labels_filter_conditions(labels)
+            conditions.extend(label_conditions)
+            params.update(label_params)
         if date_from:
             conditions.append("published_at >= :date_from")
             params["date_from"] = date_from
@@ -189,6 +205,54 @@ def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = T
             placeholders.append(f":{key}")
             params[key] = rid
         conditions.append(f"regulator_id IN ({', '.join(placeholders)})")
+    return conditions, params
+
+
+def _jurisdiction_filter_conditions(jurisdictions, taxonomy, prefix: str = "") -> tuple[list[str], dict]:
+    """Expands each requested jurisdiction through taxonomy.ancestors() (a
+    profile selecting "fr" also matches "eu" - architecture doc §4.2) and
+    builds a condition matching any item whose regulator's jurisdiction (or
+    an ancestor of it) is in that expanded set."""
+    if not jurisdictions:
+        return [], {}
+    expanded = set()
+    for j in jurisdictions:
+        j = j.lower()
+        expanded.add(j)
+        expanded.update(taxonomy.ancestors(j))
+    params = {}
+    placeholders = []
+    for i, j in enumerate(sorted(expanded)):
+        key = f"{prefix}jur_{i}"
+        placeholders.append(f":{key}")
+        params[key] = j
+    condition = (
+        "regulator_id IN (SELECT id FROM regulators WHERE LOWER(jurisdiction) IN "
+        f"({', '.join(placeholders)}))"
+    )
+    return [condition], params
+
+
+def _labels_filter_conditions(labels, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds one `id IN (SELECT item_id FROM item_labels WHERE axis=... AND
+    value IN (...))` condition per axis in `labels` (ANDed across axes, ORed
+    within an axis's values) - see regradar/classification.py's item_labels
+    side table."""
+    conditions = []
+    params = {}
+    for axis_i, (axis, values) in enumerate(sorted((labels or {}).items())):
+        if not values:
+            continue
+        placeholders = []
+        for i, value in enumerate(values):
+            key = f"{prefix}lbl_{axis_i}_{i}"
+            placeholders.append(f":{key}")
+            params[key] = value
+        axis_key = f"{prefix}lbl_axis_{axis_i}"
+        params[axis_key] = axis
+        conditions.append(
+            f"id IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key} AND value IN ({', '.join(placeholders)}))"
+        )
     return conditions, params
 
 
@@ -345,22 +409,28 @@ def list_regulators(engine) -> list[dict]:
     return results
 
 
-def get_item(engine, item_id: str) -> dict | None:
+def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
     """Returns the item, including `body_md` (the Markdown body alongside
     the existing `raw_content`) and a `document` object holding the same
     frontmatter fields a rendered file would have (section 3.2) - built
-    from whatever `labels`/artefact data exists for this item, which is
-    empty until the classification and artefact-writing paths populate it.
+    from whatever `labels`/artefact data exists for this item.
+
+    `taxonomy` (a regradar.taxonomy.Taxonomy) is optional but needed to
+    populate `document.jurisdiction_ancestors` (via ancestors()) and
+    `document.label_provenance` (via winning_classification_rows() over
+    this item's live classifications); without it those come back empty/
+    omitted rather than erroring, so existing callers that don't have a
+    taxonomy handy keep working.
     """
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
                fetched_at, updated_at, date_inferred, language, content_snippet, source_type,
-               source_tags, content_tags, raw_content, body_md, extractor
+               source_tags, content_tags, labels, raw_content, body_md, extractor
         FROM items WHERE id = :id
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "updated_at", "date_inferred", "language", "content_snippet", "source_type",
-            "source_tags", "content_tags", "raw_content", "body_md", "extractor"]
+            "source_tags", "content_tags", "labels", "raw_content", "body_md", "extractor"]
     with engine.connect() as conn:
         row = conn.execute(text(sql), {"id": item_id}).fetchone()
         if row is None:
@@ -374,14 +444,39 @@ def get_item(engine, item_id: str) -> dict | None:
             text("SELECT path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id = :id"),
             {"id": item_id},
         ).fetchone()
+        classification_rows = (
+            conn.execute(
+                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
+                     "FROM classifications WHERE item_id = :id"),
+                {"id": item_id},
+            ).fetchall()
+            if taxonomy is not None else []
+        )
 
     doc_item = dict(item)
+    jurisdiction = None
     if reg_row is not None:
         reg = dict(reg_row._mapping)
         doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
-        doc_item["jurisdiction"] = reg.get("jurisdiction")
+        jurisdiction = reg.get("jurisdiction")
+        doc_item["jurisdiction"] = jurisdiction
     artefact = dict(artefact_row._mapping) if artefact_row is not None else None
-    fm = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+
+    labels = None
+    label_provenance = None
+    if taxonomy is not None:
+        if jurisdiction:
+            doc_item["jurisdiction_ancestors"] = taxonomy.ancestors(jurisdiction.lower())
+        labels = json.loads(item["labels"]) if item.get("labels") else None
+        winners = winning_classification_rows([dict(r._mapping) for r in classification_rows], taxonomy)
+        if winners:
+            label_provenance = [
+                {"axis": w["axis"], "value": w["value"], "by": w["by"],
+                 "confidence": w["confidence"], "taxonomy_version": w["taxonomy_version"]}
+                for w in winners
+            ]
+
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
     item["document"] = frontmatter_to_json_safe(fm)
     return item
 
@@ -414,6 +509,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
         limit = max(1, min(int(limit), 200))
     except (TypeError, ValueError):
         limit = 50
+    logger.warning(
+        "get_warnings() read the deprecated source_tags column - prefer filtering on "
+        "labels={'document_type': ['warning']}, which reads the classification store."
+    )
     conditions = ['source_tags LIKE \'%"warnings"%\'']
     params: dict = {"limit": limit}
     if days > 0:
@@ -442,6 +541,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
 def list_tags(engine) -> dict:
     """Returns distinct source_tags and content_tags values with item
     counts, each bucket sorted most-common first."""
+    logger.warning(
+        "list_tags() read the deprecated source_tags/content_tags columns - prefer "
+        "list_labels(), which reads the classification store with provenance."
+    )
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT source_tags, content_tags FROM items")).fetchall()
     source_counts = Counter()
@@ -455,6 +558,23 @@ def list_tags(engine) -> dict:
         "source_tags": [{"tag": t, "count": c} for t, c in source_counts.most_common()],
         "content_tags": [{"tag": t, "count": c} for t, c in content_counts.most_common()],
     }
+
+
+def list_labels(engine, taxonomy) -> dict:
+    """Returns every axis known to the current taxonomy (config-driven -
+    adding an axis to taxonomy.yaml makes it appear here with no code
+    change) with its distinct values and item counts, most-common first.
+    An axis with no live rows yet still appears, with an empty list."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT axis, value, COUNT(*) as c FROM item_labels GROUP BY axis, value")).fetchall()
+    counts: dict = {}
+    for axis, value, count in rows:
+        counts.setdefault(axis, []).append((value, count))
+    result = {}
+    for axis in taxonomy.axes():
+        values = sorted(counts.get(axis, []), key=lambda t: -t[1])
+        result[axis] = [{"value": v, "count": c} for v, c in values]
+    return result
 
 
 def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
