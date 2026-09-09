@@ -14,8 +14,7 @@
     url: https://www.hanfa.hr/rss-en/
     label: all_news_en
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Cyprus ───────────────────────────────────────────────────────────────────
 

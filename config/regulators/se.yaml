@@ -14,8 +14,7 @@
     url: https://www.fi.se/en/published/all-published-material/rss
     label: all_material
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Non-EEA Additions ──────────────────────────────────────────────────────
 # Deliberately outside this tool's core EEA/MiCA scope (see README "Coverage").

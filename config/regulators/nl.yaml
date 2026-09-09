@@ -14,8 +14,7 @@
     url: https://www.afm.nl/en/rss-feed/nieuws-professionals
     label: news_professionals_en
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 - id: nl-dnb
   name: DNB
@@ -41,7 +40,7 @@
     label: enforcement_measures
     preferred_language: en
     labels:
-      document_type: warning
+      document_type: enforcement
 
 # ─── Norway ───────────────────────────────────────────────────────────────────
 

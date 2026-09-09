@@ -14,8 +14,7 @@
     url: https://www.fsma.be/en/news-articles/rss.xml
     label: news_and_warnings
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 - id: be-nbb
   name: NBB

@@ -14,8 +14,7 @@
     url: https://www.cssf.lu/en/feed/publications
     label: publications
     preferred_language: en
-    labels:
-      document_type: warning
+    labels: {}
 
 # ─── Malta ────────────────────────────────────────────────────────────────────
 

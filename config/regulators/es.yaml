@@ -15,7 +15,7 @@
     label: press_releases
     preferred_language: en
     labels:
-      document_type: warning
+      document_type: press_release
   - type: rss
     url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=4
     label: sector_information
@@ -52,8 +52,7 @@
     url: https://www.bde.es/wbe/en/inicio/rss/rss-noticias/
     label: news_and_events
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
   - type: rss
     url: https://www.bde.es/wbe/en/inicio/rss/rss-normativa/
     label: financial_regulation

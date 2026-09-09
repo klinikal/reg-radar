@@ -14,8 +14,7 @@
     url: https://www.fca.org.uk/news/rss.xml
     label: news
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
   - type: rss
     url: https://www.fca.org.uk/news/warnings/rss.xml
     label: warnings
@@ -27,7 +26,7 @@
     label: notices_and_decisions
     preferred_language: en
     labels:
-      document_type: warning
+      document_type: enforcement
     scrape:
       item_selector: "li.search-item"
       title_selector: "h3.search-item__title a"

@@ -14,14 +14,13 @@
     url: https://www.bafin.de/EN/service/rss/_function/rssnewsfeed.xml?nn=187494
     label: all_news
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
   - type: rss
     url: https://www.bafin.de/EN/service/rss/_function/RSS_Presse.xml?nn=187494
     label: press_pr
     preferred_language: en
     labels:
-      document_type: warning
+      document_type: press_release
   - type: rss
     url: https://www.bafin.de/EN/service/rss/_function/RSS_Aufsicht.xml?nn=187494
     label: regulatory_law

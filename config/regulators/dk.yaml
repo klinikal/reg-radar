@@ -14,8 +14,7 @@
     url: https://www.dfsa.dk/news
     label: news
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
     enabled: false
     scrape:
       item_selector: "article, .news-item, .list__item"

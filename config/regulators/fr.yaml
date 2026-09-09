@@ -26,8 +26,7 @@
     url: https://www.amf-france.org/en/flux-rss/display/21
     label: all_news
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
   - type: rss
     url: https://www.amf-france.org/en/flux-rss/display/31
     label: regulatory_updates

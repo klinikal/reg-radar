@@ -14,8 +14,7 @@
     url: https://www.lb.lt/en/publications/rss
     label: publications_en
     preferred_language: en
-    labels:
-      document_type: press_release
+    labels: {}
 
 # ─── Luxembourg ───────────────────────────────────────────────────────────────
 
