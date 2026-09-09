@@ -272,7 +272,12 @@ def test_run_collection_rss_source_zero_items_not_treated_as_error():
 
         with Session(engine) as session:
             rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="quiet_feed").all()
-            assert len(rows) == 0
+            # Not an error (consecutive_failures stays 0) - but the stall
+            # detector still counts the empty run, independent of the
+            # scrape-only error check above.
+            assert len(rows) == 1
+            assert rows[0].consecutive_failures == 0
+            assert rows[0].consecutive_empty_runs == 1
     finally:
         os.unlink(db_path)
 
@@ -295,7 +300,12 @@ def test_run_collection_page_watch_zero_items_not_treated_as_error():
 
         with Session(engine) as session:
             rows = session.query(SourceErrorRow).filter_by(regulator_id="test-reg", source_label="watched_page").all()
-            assert len(rows) == 0
+            # Not an error (consecutive_failures stays 0) - but the stall
+            # detector still counts the empty run, independent of the
+            # scrape-only error check above.
+            assert len(rows) == 1
+            assert rows[0].consecutive_failures == 0
+            assert rows[0].consecutive_empty_runs == 1
     finally:
         os.unlink(db_path)
 

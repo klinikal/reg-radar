@@ -4,7 +4,9 @@ import tempfile
 import pytest
 from datetime import datetime, timezone, timedelta
 from collector.schema import Item, make_item_id
-from collector.storage import init_db, insert_item, upsert_regulator, record_run_start, record_run_complete
+from collector.storage import (
+    init_db, insert_item, upsert_regulator, record_run_start, record_run_complete, record_source_empty_run,
+)
 from mcpserver.queries import (
     search_items,
     search_items_advanced,
@@ -870,5 +872,83 @@ def test_get_health_reports_db_integrity_unknown_when_never_checked():
         record_run_complete(engine, run_id, 10, 5, 0, [])
         result = get_health(engine)
         assert result["db_integrity"] == "unknown"
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_flags_stalled_source_at_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        for _ in range(3):
+            record_source_empty_run(engine, "esma", "all_news")
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is True
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_not_stalled_below_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "esma", "all_news")
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is False
+    finally:
+        os.unlink(db_path)
+
+
+def test_list_regulators_healthy_regulator_not_stalled():
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+            "jurisdiction": "EU", "jurisdiction_type": "supranational",
+            "website": "https://www.esma.europa.eu", "mica_competent_authority": True, "enabled": True,
+        })
+        results = list_regulators(engine)
+        esma = next(r for r in results if r["id"] == "esma")
+        assert esma["stalled"] is False
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_lists_stalled_sources_at_threshold(monkeypatch):
+    import mcpserver.queries as queries
+    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 2)
+    engine, db_path = setup_engine()
+    try:
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "esma", "all_news")
+        record_source_empty_run(engine, "fr-amf", "warnings")  # below threshold
+        result = get_health(engine)
+        stalled_keys = {(s["regulator_id"], s["source_label"]) for s in result["stalled_sources"]}
+        assert ("esma", "all_news") in stalled_keys
+        assert ("fr-amf", "warnings") not in stalled_keys
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_stalled_sources_empty_when_none_stalled():
+    engine, db_path = setup_engine()
+    try:
+        result = get_health(engine)
+        assert result["stalled_sources"] == []
     finally:
         os.unlink(db_path)

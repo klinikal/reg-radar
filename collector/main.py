@@ -14,7 +14,9 @@ from collector.storage import (
     insert_item,
     record_run_complete,
     record_run_start,
+    record_source_empty_run,
     record_source_error,
+    reset_source_empty_runs,
     reset_source_errors,
     upsert_regulator,
 )
@@ -142,6 +144,18 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
                             )
                         else:
                             reset_source_errors(engine, reg["id"], source["label"])
+
+                        # Stall detection is independent of the scrape-only
+                        # zero-items error above: an RSS/page_watch source
+                        # returning 0 items on one run is normal (no new
+                        # entries today), but a *string* of empty runs across
+                        # any source type despite a successful fetch is the
+                        # "200 OK, selectors matching nothing" case that a
+                        # single-run check can't tell apart from a quiet day.
+                        if len(items) == 0:
+                            record_source_empty_run(engine, reg["id"], source["label"])
+                        else:
+                            reset_source_empty_runs(engine, reg["id"], source["label"])
                     except Exception as e:
                         total_errors += 1
                         error_msg = f"{reg['id']}/{source['label']}: {e}"

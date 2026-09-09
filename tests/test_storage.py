@@ -14,6 +14,8 @@ from collector.storage import (
     record_run_complete,
     record_source_error,
     reset_source_errors,
+    record_source_empty_run,
+    reset_source_empty_runs,
     check_db_integrity,
 )
 from mcpserver.queries import get_recent
@@ -360,3 +362,66 @@ def test_record_run_complete_db_integrity_defaults_to_none(tmp_path):
     with engine.connect() as conn:
         row = conn.execute(text("SELECT db_integrity_ok FROM runs WHERE run_id = :id"), {"id": run_id}).fetchone()
     assert row[0] is None
+
+
+def test_record_source_empty_run_increments_independently_of_failures(tmp_path):
+    # A stall (successful fetch, zero items) is not a fetch error - the two
+    # counters must move independently.
+    engine = init_db(str(tmp_path / "test.db"))
+    record_source_empty_run(engine, "esma", "all_news")
+    record_source_empty_run(engine, "esma", "all_news")
+    record_source_empty_run(engine, "esma", "all_news")
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT consecutive_empty_runs, consecutive_failures FROM source_errors "
+                 "WHERE regulator_id='esma' AND source_label='all_news'")
+        ).fetchone()
+    assert row[0] == 3
+    assert row[1] == 0
+
+
+def test_reset_source_empty_runs_zeroes_the_counter(tmp_path):
+    engine = init_db(str(tmp_path / "test.db"))
+    record_source_empty_run(engine, "esma", "all_news")
+    record_source_empty_run(engine, "esma", "all_news")
+    reset_source_empty_runs(engine, "esma", "all_news")
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT consecutive_empty_runs FROM source_errors WHERE regulator_id='esma' AND source_label='all_news'")
+        ).fetchone()
+    assert row[0] == 0
+
+
+def test_record_source_empty_run_does_not_reset_existing_failure_count(tmp_path):
+    # record_source_error and record_source_empty_run share one row keyed
+    # on (regulator_id, source_label) - one must not clobber the other's
+    # counter on that row.
+    engine = init_db(str(tmp_path / "test.db"))
+    record_source_error(engine, "esma", "all_news", "timeout")
+    record_source_error(engine, "esma", "all_news", "timeout")
+    record_source_empty_run(engine, "esma", "all_news")
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT consecutive_failures, consecutive_empty_runs FROM source_errors "
+                 "WHERE regulator_id='esma' AND source_label='all_news'")
+        ).fetchone()
+    assert row[0] == 2
+    assert row[1] == 1
+
+
+def test_init_db_adds_consecutive_empty_runs_column_to_pre_existing_db(tmp_path):
+    from sqlalchemy import create_engine, text as sa_text
+    db_path = str(tmp_path / "legacy_source_errors.db")
+    legacy_engine = create_engine(f"sqlite:///{db_path}")
+    with legacy_engine.connect() as conn:
+        conn.execute(sa_text(
+            "CREATE TABLE source_errors (id INTEGER PRIMARY KEY, regulator_id TEXT, source_label TEXT, "
+            "consecutive_failures INTEGER, last_error TEXT, last_attempt_at TEXT)"
+        ))
+        conn.commit()
+    legacy_engine.dispose()
+
+    engine = init_db(db_path)
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(sa_text("PRAGMA table_info(source_errors)")).fetchall()]
+    assert "consecutive_empty_runs" in cols

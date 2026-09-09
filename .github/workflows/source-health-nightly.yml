@@ -1,0 +1,39 @@
+name: source-health-nightly
+
+"on":
+  schedule:
+    # 03:00 UTC daily - well clear of the collector's own default 06:00 UTC run.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check-sources:
+    runs-on: ubuntu-latest
+    # FlareSolverr so cloudflare_protected sources are checked live too,
+    # not silently skipped - same image docker-compose.yml uses.
+    services:
+      flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        ports:
+          - 8191:8191
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r collector/requirements.txt
+
+      - name: Run source health check
+        env:
+          REGULATORS_PATH: config/regulators.yaml
+          FLARESOLVERR_URL: http://localhost:8191
+          USER_AGENT: "regradar/2.0 (+https://github.com/klinikal/regradar)"
+          GH_TOKEN: ${{ github.token }}
+        run: python -m scripts.source_health
