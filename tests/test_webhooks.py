@@ -18,6 +18,7 @@ from regradar.taxonomy import build_taxonomy
 from regradar.profiles import load_activities
 from regradar.webhooks import (
     WebhookConfigError,
+    _deliver_with_retry,
     dispatch_all,
     load_subscribers,
     sign_payload,
@@ -230,3 +231,36 @@ def test_dispatch_no_config_file_is_noop(tmp_path):
     taxonomy, activities = _taxonomy_and_activities()
     # Should not raise even though nothing is configured.
     dispatch_all(engine, str(tmp_path / "missing-webhooks.yaml"), taxonomy, activities, "config/profiles")
+
+
+def test_load_subscribers_malformed_yaml_raises_config_error(tmp_path):
+    path = tmp_path / "webhooks.yaml"
+    path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(str(path))
+
+
+def test_dispatch_malformed_yaml_logs_error_and_does_not_raise(tmp_path, caplog):
+    engine = _engine()
+    taxonomy, activities = _taxonomy_and_activities()
+    path = tmp_path / "webhooks.yaml"
+    path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+
+    with caplog.at_level("ERROR"):
+        dispatch_all(engine, str(path), taxonomy, activities, "config/profiles")  # must not raise
+
+    assert str(path) in caplog.text
+
+
+def test_backoff_delays_double_between_retries():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    sleeps = []
+    ok = _deliver_with_retry(
+        client, "https://hooks.example/x", b"{}", "sha256=x",
+        max_retries=4, backoff_seconds=2, sleep_fn=sleeps.append,
+    )
+    assert ok is False
+    assert sleeps == [2, 4, 8]

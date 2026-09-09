@@ -43,8 +43,11 @@ def load_subscribers(path: str) -> list[dict]:
     """
     if not os.path.exists(path):
         return []
-    with open(path) as f:
-        data = yaml.safe_load(f)
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise WebhookConfigError(f"{path}: invalid YAML - {e}")
     if data is None:
         return []
     if not isinstance(data, list):
@@ -76,9 +79,11 @@ def sign_payload(body: bytes, secret: str) -> str:
 
 
 def _deliver_with_retry(client: httpx.Client, url: str, body: bytes, signature: str,
-                         max_retries: int, backoff_seconds: int) -> bool:
+                         max_retries: int, backoff_seconds: int, sleep_fn=time.sleep) -> bool:
     """POSTs `body` with retry and doubling backoff. Returns True on a 2xx
-    response, False once max_retries attempts are exhausted."""
+    response, False once max_retries attempts are exhausted. `sleep_fn` is
+    injectable for tests that need to assert the backoff actually doubles
+    without a real sleep."""
     delay = backoff_seconds
     for attempt in range(1, max_retries + 1):
         try:
@@ -92,7 +97,7 @@ def _deliver_with_retry(client: httpx.Client, url: str, body: bytes, signature: 
         except httpx.HTTPError as e:
             logger.warning("Webhook POST to %s failed (attempt %d/%d): %s", url, attempt, max_retries, e)
         if attempt < max_retries:
-            time.sleep(delay)
+            sleep_fn(delay)
             delay *= 2
     return False
 

@@ -58,3 +58,38 @@ def test_run_collection_locked_dispatches_webhooks_after_run_collection(tmp_path
 
     mock_run.assert_called_once()
     mock_dispatch.assert_called_once()
+
+
+def test_dispatch_webhooks_malformed_yaml_logs_error_and_does_not_raise(tmp_path, caplog):
+    from regradar.taxonomy import build_taxonomy
+    engine, _ = _make_engine()
+    webhooks_path = tmp_path / "webhooks.yaml"
+    webhooks_path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+    cfg = _cfg(str(webhooks_path))
+    cfg["activities_path"] = "config/activities.yaml"
+    cfg["profiles_dir"] = "config/profiles"
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+
+    with caplog.at_level("ERROR"):
+        _dispatch_webhooks(engine, cfg, taxonomy)  # must not raise
+
+    assert str(webhooks_path) in caplog.text
+
+
+def test_run_collection_locked_survives_malformed_webhooks_yaml(tmp_path):
+    # A YAML syntax error in config/webhooks.yaml must never crash a
+    # scheduled collection run - only webhook delivery is skipped.
+    from regradar.taxonomy import build_taxonomy
+    engine, db_path = _make_engine()
+    lock_path = str(tmp_path / ".collector.lock")
+    webhooks_path = tmp_path / "webhooks.yaml"
+    webhooks_path.write_text("- profile: eu-casp\n  url: [unterminated\n")
+    cfg = _cfg(str(webhooks_path))
+    cfg["activities_path"] = "config/activities.yaml"
+    cfg["profiles_dir"] = "config/profiles"
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+
+    with patch("collector.main.run_collection") as mock_run:
+        run_collection_locked(engine, [], cfg, lock_path, taxonomy=taxonomy)  # must not raise
+
+    mock_run.assert_called_once()
