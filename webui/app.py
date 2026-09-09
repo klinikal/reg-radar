@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
@@ -30,7 +31,24 @@ logging.basicConfig(
 
 _HERE = os.path.dirname(__file__)
 
-app = FastAPI(title="regradar")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Loads taxonomy and activities once at startup so a broken
+    config/taxonomy.yaml, jurisdictions.yaml or activities.yaml kills the
+    process at boot. Loading them lazily inside a request handler meant
+    load_and_exit_on_error()'s sys.exit surfaced as a per-request 500 on a
+    server that stayed up. Request handlers keep calling get_taxonomy()/
+    get_activities(), which now only ever return the already-loaded
+    objects (and still load on demand when the lifespan never ran - a
+    TestClient not used as a context manager, which is how the tests
+    inject their own config paths)."""
+    get_taxonomy()
+    get_activities()
+    yield
+
+
+app = FastAPI(title="regradar", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
