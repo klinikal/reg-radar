@@ -18,7 +18,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from collector.fetcher import _extract_pdf_text
+from collector.adapters.http import extract_pdf_text as _extract_pdf_text
 from collector.storage import init_db, update_item_body
 from regradar.document import convert_body
 

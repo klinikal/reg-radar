@@ -29,7 +29,7 @@ def main(argv=None) -> int:
     parser.add_argument("--source", help="source label (with --regulator)")
     parser.add_argument("--all", action="store_true", help="capture every enabled source")
     parser.add_argument("--dry-run", action="store_true", help="fetch and validate but do not write fixture files")
-    parser.add_argument("--config", default=None, help="path to regulators.yaml (default: config/regulators.yaml)")
+    parser.add_argument("--config", default=None, help="path to the regulators config file or directory (default: config/regulators)")
     args = parser.parse_args(argv)
 
     if not args.all and not (args.regulator and args.source):
@@ -47,7 +47,7 @@ def main(argv=None) -> int:
             if reg["id"] == args.regulator and source["label"] == args.source
         ]
         if not targets:
-            parser.error(f"no enabled source {args.regulator}/{args.source} found in {args.config or 'config/regulators.yaml'}")
+            parser.error(f"no enabled source {args.regulator}/{args.source} found in {args.config or 'config/regulators'}")
 
     captured = 0
     failed: list[tuple[str, str, str]] = []

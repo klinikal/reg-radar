@@ -12,9 +12,10 @@ import os
 import subprocess
 from pathlib import Path
 
-import yaml
-
-from collector.fetcher import _fetch_bytes, _fetch_html, _parse_page_watch, _parse_rss, _parse_scrape
+from collector.adapters.base import FetchContext
+from collector.adapters.registry import get as get_adapter
+from collector.main import load_regulators as _load_regulators_split
+from collector.pipeline import process_raw_documents
 from collector.schema import Item
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,8 @@ ISSUE_LABEL = "source-health"
 
 
 def load_regulators(path: str | None = None) -> list[dict]:
-    path = path or os.getenv("REGULATORS_PATH", "config/regulators.yaml")
-    with open(path) as f:
-        return yaml.safe_load(f)
+    path = path or os.getenv("REGULATORS_PATH", "config/regulators")
+    return _load_regulators_split(path)
 
 
 def iter_enabled_sources(regulators: list[dict]):
@@ -51,7 +51,11 @@ def iter_enabled_sources(regulators: list[dict]):
 
 
 def fixture_extension(source_type: str) -> str:
-    return "xml" if source_type in ("rss", "atom") else "html"
+    if source_type in ("rss", "atom", "sitemap"):
+        return "xml"
+    if source_type == "json_api":
+        return "json"
+    return "html"
 
 
 def fixture_path(regulator_id: str, source: dict) -> Path:
@@ -60,58 +64,54 @@ def fixture_path(regulator_id: str, source: dict) -> Path:
 
 
 def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
-    """Fetches a source's raw response exactly as collector.fetcher.fetch_source
-    does (same _fetch_html/_fetch_bytes calls, same FlareSolverr wiring and
-    throttling), but returns the raw bytes instead of parsed Items - fixture
-    capture and the nightly live check both need the response itself, not
-    just what the parser makes of it."""
-    user_agent = cfg.get("user_agent", "regradar/2.0")
-    timeout = int(cfg.get("timeout", 30))
-    retries = int(cfg.get("retries", 3))
+    """Fetches a source's raw response through its registered adapter's own
+    HTTP fetch (collector/adapters/<type>.py), but returns the raw bytes
+    instead of parsed RawDocuments - fixture capture and the nightly live
+    check both need the response itself, not just what the parser makes of
+    it."""
     source_type = source.get("type", "rss")
-    url = source["url"]
-    cloudflare_protected = regulator.get("cloudflare_protected", False)
-    flaresolverr_url = cfg.get("flaresolverr_url") if cloudflare_protected else None
-
-    if source_type in ("rss", "atom"):
-        content = _fetch_bytes(url, user_agent, timeout, retries, flaresolverr_url=flaresolverr_url)
-    elif source_type == "scrape":
-        expected_selector = source.get("scrape", {}).get("item_selector")
-        html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url, expected_selector)
-        content = html.encode() if html is not None else None
-    elif source_type == "page_watch":
-        watch_selector = source.get("watch_selector")
-        html = _fetch_html(url, user_agent, timeout, retries, flaresolverr_url, watch_selector)
-        content = html.encode() if html is not None else None
-    else:
+    adapter = get_adapter(source_type)
+    if adapter is None:
         raise ValueError(f"unknown source type '{source_type}'")
 
-    if content is None:
-        raise RuntimeError(f"failed to fetch {url}")
-    return content
+    ctx = FetchContext(
+        user_agent=cfg.get("user_agent", "regradar/2.0"),
+        timeout=int(cfg.get("timeout", 30)),
+        retries=int(cfg.get("retries", 3)),
+        flaresolverr_url=cfg.get("flaresolverr_url") if regulator.get("cloudflare_protected", False) else None,
+        regulator_id=regulator["id"],
+    )
+    content = adapter.fetch_raw(source, ctx)
+    return content.encode("utf-8") if isinstance(content, str) else content
 
 
 def parse_fixture(source: dict, regulator_id: str, content: bytes, fetch_pdf: bool = True) -> list[Item]:
-    """Runs the existing parser for source['type'] against raw fixture/live
-    content - the same functions the collector itself calls.
+    """Runs the registered adapter's parse() against raw fixture/live
+    content, then the shared pipeline - the same code path the collector
+    itself uses (docs/issues/08-source-adapter-framework-registry-split.md).
 
     fetch_pdf=False forces off a scrape source's extract_pdf_text - that
-    option makes _parse_scrape fetch each matched item's URL over the
+    option makes the scrape adapter fetch each matched item's URL over the
     network, which the offline fixture contract test must never do. The
     live nightly check (check_source) wants the real, network-fetching
     behaviour, so it leaves this at the default True.
     """
     source_type = source.get("type", "rss")
+    adapter = get_adapter(source_type)
+    if adapter is None:
+        raise ValueError(f"unknown source type '{source_type}'")
+
     if source_type in ("rss", "atom"):
-        return _parse_rss(content, source, regulator_id)
-    text_content = content.decode("utf-8", errors="replace")
-    if source_type == "scrape":
-        if not fetch_pdf and source.get("scrape", {}).get("extract_pdf_text"):
+        raw_docs = adapter.parse(content, source, regulator_id)
+    else:
+        text_content = content.decode("utf-8", errors="replace")
+        if source_type == "scrape" and not fetch_pdf and source.get("scrape", {}).get("extract_pdf_text"):
             source = {**source, "scrape": {**source["scrape"], "extract_pdf_text": False}}
-        return _parse_scrape(text_content, source, regulator_id)
-    if source_type == "page_watch":
-        return _parse_page_watch(text_content, source, regulator_id)
-    raise ValueError(f"unknown source type '{source_type}'")
+        if source_type == "scrape":
+            raw_docs = adapter.parse(text_content, source, regulator_id, {})
+        else:
+            raw_docs = adapter.parse(text_content, source, regulator_id)
+    return process_raw_documents(raw_docs, source, regulator_id)
 
 
 def assert_contract(items: list[Item]) -> None:

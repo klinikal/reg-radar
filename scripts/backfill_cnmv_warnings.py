@@ -6,8 +6,8 @@ archive behind it (~5 pages / ~77 documents as of 2026-07-02 - much smaller
 than the ESMA/FCA backfills, safe to just run directly rather than treating
 it as a big separate decision).
 
-Reads the source URL/selectors from config/regulators.yaml (the es-cnmv
-entry, warnings_unregistered source) rather than duplicating them here.
+Reads the source URL/selectors from config/regulators/ (the es-cnmv entry,
+warnings_unregistered source) rather than duplicating them here.
 
 Run inside the collector container:
 
@@ -23,9 +23,9 @@ import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
-import yaml
 
 from collector.fetcher import fetch_source
+from collector.main import load_regulators
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -39,9 +39,8 @@ SOURCE_LABEL = "warnings_unregistered"
 
 
 def _load_source() -> dict:
-    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators.yaml")
-    with open(regulators_path) as f:
-        regulators = yaml.safe_load(f)
+    regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+    regulators = load_regulators(regulators_path)
     reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
     return next(s for s in reg["sources"] if s["label"] == SOURCE_LABEL)
 
