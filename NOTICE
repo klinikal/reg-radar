@@ -1,0 +1,49 @@
+RegRadar - reuse terms by regulator
+====================================
+
+This file is a starting inventory of what is known about the reuse terms
+for each regulator's published content collected into RegRadar, one row
+per regulator currently enabled in config/regulators/*.yaml. It is NOT a
+legal sign-off - "known" rows cite the exact page checked and quote the
+operative sentence; everything else is marked "unclear" because no
+reuse/copyright statement was found (or checked) for that regulator, not
+because reuse is known to be forbidden. See config/dataset_exclusions.yaml
+for the (currently empty) list of regulators dropped from the published
+dataset, and README.md's "Published dataset" section for how this file is
+used.
+
+Format: <regulator_id>: <status> - <note>
+
+esma: known - EU institution. Legal notice (https://www.esma.europa.eu/legal-notice, checked 2026-09-09): "Reproduction of all information on this site (ESMA Library) is authorised except as otherwise stated, provided the source is acknowledged." No named licence (e.g. Creative Commons) is cited - this is ESMA's own reuse policy, not a reference to EU Decision 2011/833/EU.
+eba: known - EU institution. Legal notice (https://www.eba.europa.eu/legal-notice, checked 2026-09-09): "Reproduction of all EBA material on this site is authorised, provided the source is acknowledged, save where otherwise stated." Own reuse policy, no named licence cited.
+eiopa: known - EU institution. Legal notice (https://www.eiopa.europa.eu/legal-notice_en, checked 2026-09-09): "Reproduction of information and documents from the Authority's website is authorised without prior permission, provided that the user acknowledges the Authority as the source." Own reuse policy, no named licence cited.
+amla: unclear - new EU authority (Anti-Money Laundering Authority); no legal notice / reuse policy page checked yet.
+uk-fca: unclear - FCA's legal page (https://www.fca.org.uk/legal, checked 2026-09-09) states the Open Government Licence v3.0 applies to Handbook content and to certain FCA/Bank of England/PRA statistical outputs and the Data section's numerical datasets - it does not state OGL applies to general news, warnings, consultation papers or other publications, which is what this collector fetches from the FCA. Treated as unclear for the collected content pending a check of the FCA's general website terms and conditions page (not found at the URLs tried).
+at-fma: unclear - no reuse policy page checked.
+be-fsma: unclear - no reuse policy page checked.
+bg-fsc: unclear - no reuse policy page checked.
+cy-cysec: unclear - no reuse policy page checked.
+cz-cnb: unclear - no reuse policy page checked.
+de-bafin: unclear - no reuse policy page checked.
+dk-dfsa: unclear - no reuse policy page checked.
+ee-fi: unclear - no reuse policy page checked.
+es-cnmv: unclear - no reuse policy page checked.
+es-bde: unclear - no reuse policy page checked.
+fi-finfsa: unclear - no reuse policy page checked.
+fr-amf: unclear - no reuse policy page checked.
+gr-hcmc: unclear - no reuse policy page checked.
+hr-hanfa: unclear - no reuse policy page checked.
+hu-mnb: unclear - no reuse policy page checked.
+ie-cbi: unclear - no reuse policy page checked.
+is-cb: unclear - no reuse policy page checked.
+lt-lb: unclear - no reuse policy page checked.
+lu-cssf: unclear - no reuse policy page checked.
+mt-mfsa: unclear - no reuse policy page checked.
+mt-fiau: unclear - no reuse policy page checked.
+nl-afm: unclear - no reuse policy page checked.
+nl-dnb: unclear - no reuse policy page checked.
+no-finanstilsynet: unclear - no reuse policy page checked.
+pl-knf: unclear - no reuse policy page checked.
+ro-asf: unclear - no reuse policy page checked.
+se-fi: unclear - no reuse policy page checked.
+sk-nbs: unclear - no reuse policy page checked.
