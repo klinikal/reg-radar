@@ -64,6 +64,39 @@ def test_api_items_unknown_profile_returns_400(tmp_path, monkeypatch):
     assert resp.status_code == 400
 
 
+def test_api_items_absolute_path_profile_rejected_without_leaking_content(tmp_path, monkeypatch):
+    # Regression: the `profile` param must never be treated as a filesystem
+    # path on the (unauthenticated) web surface - only MCP tools/CLI get
+    # that. A shipped-template-name allowlist rejects this before any file
+    # is ever opened, so the response carries no file content either way.
+    client, engine, _ = _client(tmp_path, monkeypatch)
+    _seed(engine)
+
+    resp = client.get("/api/items", params={"profile": "/etc/passwd"})
+    assert resp.status_code == 400
+    assert "root:" not in resp.text
+    assert "/etc/passwd" not in resp.text
+
+
+def test_api_items_path_traversal_profile_rejected_without_leaking_content(tmp_path, monkeypatch):
+    client, engine, _ = _client(tmp_path, monkeypatch)
+    _seed(engine)
+
+    resp = client.get("/api/items", params={"profile": "../../etc/passwd"})
+    assert resp.status_code == 400
+    assert "root:" not in resp.text
+    assert "../../etc/passwd" not in resp.text
+
+
+def test_api_items_shipped_template_name_still_works(tmp_path, monkeypatch):
+    client, engine, _ = _client(tmp_path, monkeypatch)
+    _seed(engine)
+
+    resp = client.get("/api/items", params={"profile": "eu-casp"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+
+
 def test_api_months_profile_param_filters(tmp_path, monkeypatch):
     client, engine, _ = _client(tmp_path, monkeypatch)
     _seed(engine)

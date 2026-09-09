@@ -107,6 +107,19 @@ def test_include_unclassified_false_still_includes_item_with_matching_instrument
     assert [r["id"] for r in results] == ["i1"]
 
 
+def test_zero_instruments_and_include_unclassified_false_matches_nothing(tmp_path):
+    engine = _engine()
+    taxonomy = _taxonomy()
+    activities = _activities()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("esma", "i1"))
+    p = tmp_path / "empty.yaml"
+    p.write_text("name: empty\njurisdictions: [eu]\ninclude_unclassified: false\n")  # no activities/instruments
+    expanded = expand_profile(load_profile(str(p), taxonomy, activities), taxonomy, activities)
+
+    assert search_items(engine, "", profile=expanded) == []
+
+
 def test_omitting_profile_leaves_existing_behaviour_unchanged():
     engine = _engine()
     _seed_esma_and_bafin(engine)

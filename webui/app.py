@@ -77,16 +77,23 @@ def get_activities():
 
 
 def _resolve_profile(profile: str):
-    """Turns the `profile` query param (a shipped template name or a path)
-    into a regradar.profiles.ExpandedProfile, or None if not set. Raises
-    HTTPException(400) on an unknown profile rather than a 500, since this
-    is user-supplied query-string input."""
+    """Turns the `profile` query param into a regradar.profiles.ExpandedProfile,
+    or None if not set. Unlike the MCP tools/CLI, `profile` here is
+    unauthenticated user input over HTTP, and
+    regradar.profiles.load_profile treats any name that isn't a shipped
+    template as a literal filesystem path to open - so the web surface
+    only ever accepts a name from list_shipped_profiles(), never passing
+    arbitrary input through to load_profile. Anything else (an absolute
+    path, "../" traversal, or just an unknown name) gets a generic 400
+    that never echoes the input or any file content."""
     if not profile:
         return None
+    if profile not in list_shipped_profiles(PROFILES_DIR):
+        raise HTTPException(status_code=400, detail="unknown profile")
     try:
         return get_expanded_profile(profile, get_taxonomy(), get_activities(), profiles_dir=PROFILES_DIR)
-    except ProfileError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ProfileError:
+        raise HTTPException(status_code=400, detail="unknown profile")
 
 
 def _regulator_ids_for_jurisdictions(jurisdictions: list[str], regulators: list[dict]) -> list[str] | None:

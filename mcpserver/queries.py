@@ -279,6 +279,14 @@ def _profile_filter_conditions(expanded, prefix: str = "") -> tuple[list[str], d
     conditions = []
     params: dict = {}
 
+    # Deliberately not calling _jurisdiction_filter_conditions() here: that
+    # helper expands ancestors from a raw jurisdiction list itself, but
+    # expanded.jurisdiction_ids is already the fully-expanded (ancestors +
+    # descendants) set from expand_profile() - re-running ancestor
+    # expansion over an already-closed set would be harmless but pointless,
+    # and would need a taxonomy object this function doesn't otherwise
+    # take. Same "regulator_id IN (SELECT ... WHERE LOWER(jurisdiction)
+    # IN (...))" shape, just against a pre-computed set.
     if expanded.jurisdiction_ids:
         placeholders = []
         for i, j in enumerate(sorted(expanded.jurisdiction_ids)):
