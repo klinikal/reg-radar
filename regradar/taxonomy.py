@@ -96,6 +96,15 @@ class Taxonomy:
         _walk(jurisdiction_id)
         return result
 
+    def descendants(self, jurisdiction_id: str) -> list:
+        """Every jurisdiction id for which `jurisdiction_id` is an ancestor
+        (the reverse of ancestors()) - used by profile expansion's `<id>/*`
+        wildcard (architecture doc §5.3). Built by walking ancestors() for
+        every known jurisdiction rather than maintaining a second reverse
+        graph; the jurisdiction table is small and this only runs at
+        profile-expansion time, not per query."""
+        return [jid for jid in self._jurisdictions if jurisdiction_id in self.ancestors(jid)]
+
 
 def _load_yaml(path: str):
     try:
