@@ -93,3 +93,19 @@ def test_run_collection_locked_survives_malformed_webhooks_yaml(tmp_path):
         run_collection_locked(engine, [], cfg, lock_path, taxonomy=taxonomy)  # must not raise
 
     mock_run.assert_called_once()
+
+
+def test_run_collection_locked_survives_a_raising_webhook_dispatch(tmp_path, caplog):
+    """An outbound-delivery failure is not a collection failure - it must
+    not propagate out and make `--once` exit non-zero on a run that
+    collected fine (same contract as digest scheduling)."""
+    engine, _db_path = _make_engine()
+    lock_path = str(tmp_path / ".collector.lock")
+    cfg = _cfg(str(tmp_path / "missing.yaml"))
+
+    with patch("collector.main.run_collection"), \
+            patch("collector.main._dispatch_webhooks", side_effect=RuntimeError("subscriber exploded")):
+        with caplog.at_level("ERROR"):
+            run_collection_locked(engine, [], cfg, lock_path)  # must not raise
+
+    assert "Webhook dispatch raised unexpectedly" in caplog.text

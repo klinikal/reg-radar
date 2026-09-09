@@ -336,7 +336,13 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
         return
     try:
         run_collection(engine, regulators, cfg, taxonomy=taxonomy, rules_engine=rules_engine)
-        _dispatch_webhooks(engine, cfg, taxonomy)
+        try:
+            _dispatch_webhooks(engine, cfg, taxonomy)
+        except Exception:
+            # Same contract as _schedule_digests: an outbound-delivery
+            # problem is not a collection failure, and must not make
+            # `--once` exit non-zero on a run that collected fine.
+            logger.exception("Webhook dispatch raised unexpectedly - continuing")
     finally:
         _release_lock(lock_file)
 

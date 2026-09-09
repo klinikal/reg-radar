@@ -33,7 +33,7 @@ from sqlalchemy import create_engine
 
 from collector.storage import get_digest_cursor, set_digest_cursor
 from mcpserver.queries import get_changes
-from regradar.profiles import get_expanded_profile, load_activities
+from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS, get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 
 logger = logging.getLogger(__name__)
@@ -178,9 +178,10 @@ def render_markdown(profile_name: str, items: list[dict]) -> str:
             lines.append("")
             lines.append(f"### {regulator}")
             for item in reg_items:
-                doc_type = _label_str(item.get("labels"), "document_type") or "unclassified"
-                instrument = _label_str(item.get("labels"), "instrument")
-                meta = f"document_type: {doc_type}" + (f", instrument: {instrument}" if instrument else "")
+                doc_type = _label_str(item.get("labels"), DOCUMENT_TYPE_AXIS) or "unclassified"
+                instrument = _label_str(item.get("labels"), INSTRUMENT_AXIS)
+                meta = f"{DOCUMENT_TYPE_AXIS}: {doc_type}" + (
+                    f", {INSTRUMENT_AXIS}: {instrument}" if instrument else "")
                 snippet = _snippet(item.get("body_md", ""))
                 lines.append(f"- **{item.get('title', '')}** ({meta})")
                 if snippet:
@@ -206,9 +207,10 @@ def render_html(profile_name: str, items: list[dict]) -> str:
             parts.append(f"<h3>{esc(regulator)}</h3>")
             parts.append('<ul style="padding-left: 1.2em;">')
             for item in reg_items:
-                doc_type = _label_str(item.get("labels"), "document_type") or "unclassified"
-                instrument = _label_str(item.get("labels"), "instrument")
-                meta = f"document_type: {doc_type}" + (f", instrument: {instrument}" if instrument else "")
+                doc_type = _label_str(item.get("labels"), DOCUMENT_TYPE_AXIS) or "unclassified"
+                instrument = _label_str(item.get("labels"), INSTRUMENT_AXIS)
+                meta = f"{DOCUMENT_TYPE_AXIS}: {doc_type}" + (
+                    f", {INSTRUMENT_AXIS}: {instrument}" if instrument else "")
                 snippet = _snippet(item.get("body_md", ""))
                 url = item.get("source_url", "")
                 parts.append(

@@ -340,6 +340,8 @@ def test_webhook_channel_signature_validates_the_same_way_issue_8_does():
 class _FakeSMTP:
     sent = []
 
+    starttls_contexts = []
+
     def __init__(self, host, port, timeout=None):
         self.host = host
         self.port = port
@@ -352,8 +354,9 @@ class _FakeSMTP:
     def __exit__(self, *exc):
         return False
 
-    def starttls(self):
+    def starttls(self, context=None):
         self.starttls_called = True
+        _FakeSMTP.starttls_contexts.append(context)
 
     def login(self, user, password):
         self.login_args = (user, password)
@@ -368,6 +371,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     from regradar.delivery.email import send_email
 
     _FakeSMTP.sent = []
+    _FakeSMTP.starttls_contexts = []
     monkeypatch.setattr(smtplib, "SMTP", _FakeSMTP)
     cfg = {
         "host": "smtp.example.org", "port": 587, "user": "bot", "password": "pw",
@@ -377,6 +381,12 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     ok = send_email("dest@example.org", "RegRadar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
 
     assert ok is True
+    # STARTTLS must verify the certificate and hostname, not just encrypt.
+    import ssl
+    context = _FakeSMTP.starttls_contexts[0]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
     assert len(_FakeSMTP.sent) == 1
     from_addr, to_addrs, msg_str = _FakeSMTP.sent[0]
     assert from_addr == "ops@example.org"
