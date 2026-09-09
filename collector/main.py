@@ -43,6 +43,7 @@ def load_config():
         "taxonomy_path": os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
         "jurisdictions_path": os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
         "webhooks_path": os.getenv("WEBHOOKS_PATH", "/app/config/webhooks.yaml"),
+        "digests_path": os.getenv("DIGESTS_PATH", "/app/config/digests.yaml"),
         "activities_path": os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"),
         "profiles_dir": os.getenv("PROFILES_DIR", "/app/config/profiles"),
     }
@@ -390,6 +391,10 @@ def main():
         args=[engine, regulators, cfg, lock_path, taxonomy, rules_engine],
     )
     try:
+        _schedule_digests(scheduler, engine, cfg, taxonomy)
+    except Exception:
+        logger.exception("Digest scheduling raised unexpectedly - continuing without it")
+    try:
         scheduler.start()
     except KeyboardInterrupt:
         scheduler.shutdown()
@@ -418,6 +423,55 @@ def _dispatch_webhooks(engine, cfg: dict, taxonomy) -> None:
         logger.error("Webhook dispatch: could not load activities from %s: %s - skipping", activities_path, e)
         return
     dispatch_all(engine, webhooks_path, taxonomy, activities, cfg.get("profiles_dir", "/app/config/profiles"))
+
+
+def _schedule_digests(scheduler: BlockingScheduler, engine, cfg: dict, taxonomy) -> None:
+    """Adds one APScheduler cron job per config/digests.yaml entry, each
+    calling the same code path as `regradar digest --send --name <name>`
+    (issue #13's ruling: no second scheduling mechanism - reuse the
+    collector's own scheduler, independent of its own SCHEDULE). A missing
+    digests.yaml is a no-op - digests are opt-in, matching webhooks.yaml's
+    own precedent; an invalid one is logged and skipped entirely rather
+    than raised, so a bad config file never crashes the collector. `regradar
+    digest --send` can also be run from an external cron instead of this
+    scheduler - see the README's Digests section.
+    """
+    digests_path = cfg.get("digests_path", "/app/config/digests.yaml")
+    if not os.path.exists(digests_path):
+        return
+    if taxonomy is None:
+        logger.warning("Digest config found at %s but taxonomy failed to load - skipping digest scheduling", digests_path)
+        return
+
+    from regradar.digest import DigestConfigError, load_digests, send_digest
+    from regradar.profiles import load_activities
+
+    try:
+        digests = load_digests(digests_path)
+    except DigestConfigError as e:
+        logger.error("Digest config error: %s - skipping digest scheduling", e)
+        return
+
+    activities_path = cfg.get("activities_path", "/app/config/activities.yaml")
+    try:
+        activities = load_activities(activities_path, taxonomy)
+    except Exception as e:
+        logger.error("Digest scheduling: could not load activities from %s: %s - skipping", activities_path, e)
+        return
+
+    for entry in digests:
+        try:
+            trigger = CronTrigger.from_crontab(entry["schedule"])
+        except ValueError as e:
+            logger.error("Digest '%s': invalid schedule %r (%s) - skipping", entry["name"], entry["schedule"], e)
+            continue
+        scheduler.add_job(
+            send_digest,
+            trigger,
+            args=[engine, entry, taxonomy, activities, cfg.get("profiles_dir", "/app/config/profiles")],
+            id=f"digest:{entry['name']}",
+        )
+        logger.info("Scheduled digest '%s' with cron: %s", entry["name"], entry["schedule"])
 
 
 if __name__ == "__main__":
