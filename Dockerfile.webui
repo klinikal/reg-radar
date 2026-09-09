@@ -5,6 +5,12 @@ WORKDIR /app
 COPY webui/requirements.txt ./webui/requirements.txt
 RUN pip install --no-cache-dir -r webui/requirements.txt
 
+# regradar/ (installed below) imports collector.* modules (storage,
+# pipeline, main), so their runtime deps must be installed too - except
+# playwright, which is collector-image-only (see Dockerfile.collector).
+COPY collector/requirements.txt ./collector/requirements.txt
+RUN grep -v '^playwright' collector/requirements.txt | pip install --no-cache-dir -r /dev/stdin
+
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/
 COPY webui/ ./webui/

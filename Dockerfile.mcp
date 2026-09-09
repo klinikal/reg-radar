@@ -5,6 +5,12 @@ WORKDIR /app
 COPY mcpserver/requirements.txt ./mcpserver/requirements.txt
 RUN pip install --no-cache-dir -r mcpserver/requirements.txt
 
+# regradar/ (installed below) imports collector.* modules (storage,
+# pipeline, main), so their runtime deps must be installed too - except
+# playwright, which is collector-image-only (see Dockerfile.collector).
+COPY collector/requirements.txt ./collector/requirements.txt
+RUN grep -v '^playwright' collector/requirements.txt | pip install --no-cache-dir -r /dev/stdin
+
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/
 COPY regradar/ ./regradar/
