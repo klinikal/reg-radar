@@ -10,6 +10,7 @@ from sqlalchemy.exc import OperationalError
 
 from regradar.classification import winning_classification_rows
 from regradar.document import build_frontmatter, frontmatter_to_json_safe
+from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
 
 
 def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
-                  content_tags=None, jurisdictions=None, labels=None, taxonomy=None,
+                  content_tags=None, jurisdictions=None, labels=None, taxonomy=None, profile=None,
                   date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
@@ -151,6 +152,10 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
             label_conditions, label_params = _labels_filter_conditions(labels)
             conditions.extend(label_conditions)
             params.update(label_params)
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         if date_from:
             conditions.append("published_at >= :date_from")
             params["date_from"] = date_from
@@ -256,6 +261,78 @@ def _labels_filter_conditions(labels, prefix: str = "") -> tuple[list[str], dict
     return conditions, params
 
 
+def _profile_filter_conditions(expanded, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds the WHERE conditions for one expanded profile (architecture
+    doc §5.3 step 3), shared by every query function that accepts a
+    `profile` parameter. `expanded` is a regradar.profiles.ExpandedProfile -
+    the union/intersection/exclusion is already computed once by
+    expand_profile(); this only turns those sets into SQL.
+
+    Instrument matching is "intersects instrument_ids OR has no live
+    instrument label and include_unclassified is true" - the "no live
+    label" branch is its own `NOT IN (SELECT item_id FROM item_labels
+    WHERE axis=...)` condition, never a non-matching LIKE, so it can never
+    be conflated with a genuine mismatch (docs/issues/05-*.md design
+    notes). If neither branch applies (no instruments selected in the
+    profile and include_unclassified is false), nothing can match.
+    """
+    conditions = []
+    params: dict = {}
+
+    if expanded.jurisdiction_ids:
+        placeholders = []
+        for i, j in enumerate(sorted(expanded.jurisdiction_ids)):
+            key = f"{prefix}pjur_{i}"
+            placeholders.append(f":{key}")
+            params[key] = j
+        conditions.append(
+            "regulator_id IN (SELECT id FROM regulators WHERE LOWER(jurisdiction) IN "
+            f"({', '.join(placeholders)}))"
+        )
+
+    instrument_branches = []
+    if expanded.instrument_ids or expanded.include_unclassified:
+        axis_key = f"{prefix}pinst_axis"
+        params[axis_key] = INSTRUMENT_AXIS
+        if expanded.instrument_ids:
+            placeholders = []
+            for i, inst in enumerate(sorted(expanded.instrument_ids)):
+                key = f"{prefix}pinst_{i}"
+                placeholders.append(f":{key}")
+                params[key] = inst
+            instrument_branches.append(
+                f"id IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key} AND value IN ({', '.join(placeholders)}))"
+            )
+        if expanded.include_unclassified:
+            instrument_branches.append(f"id NOT IN (SELECT item_id FROM item_labels WHERE axis=:{axis_key})")
+    conditions.append("(" + " OR ".join(instrument_branches) + ")" if instrument_branches else "1=0")
+
+    if expanded.document_types:
+        dt_conditions, dt_params = _labels_filter_conditions(
+            {DOCUMENT_TYPE_AXIS: sorted(expanded.document_types)}, prefix=f"{prefix}pdt_"
+        )
+        conditions.extend(dt_conditions)
+        params.update(dt_params)
+
+    if expanded.regulators:
+        placeholders = []
+        for i, r in enumerate(sorted(expanded.regulators)):
+            key = f"{prefix}preg_{i}"
+            placeholders.append(f":{key}")
+            params[key] = r
+        conditions.append(f"regulator_id IN ({', '.join(placeholders)})")
+
+    if expanded.languages:
+        placeholders = []
+        for i, lang in enumerate(sorted(expanded.languages)):
+            key = f"{prefix}plang_{i}"
+            placeholders.append(f":{key}")
+            params[key] = lang
+        conditions.append(f"language IN ({', '.join(placeholders)})")
+
+    return conditions, params
+
+
 def _extend_date_to(date_to: str) -> str:
     # A plain "YYYY-MM-DD" is a lexicographic prefix of that day's
     # timestamped rows, so a naive <= comparison would exclude them
@@ -265,7 +342,8 @@ def _extend_date_to(date_to: str) -> str:
 
 
 def search_items_advanced(engine, query: str = "", exact: bool = False, regulator_ids=None,
-                           date_from=None, date_to=None, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
+                           date_from=None, date_to=None, profile=None,
+                           limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
     """List-view search: multi-term AND with quoted-phrase/exact-match support,
     multi-regulator OR, paginated.
 
@@ -293,6 +371,10 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
         if date_to:
             conditions.append("published_at <= :date_to")
             params["date_to"] = _extend_date_to(date_to)
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         with engine.connect() as conn:
             total = conn.execute(text(f"SELECT COUNT(*) FROM items {where}"), params).scalar()
@@ -315,16 +397,20 @@ def search_items_advanced(engine, query: str = "", exact: bool = False, regulato
         return _run(use_fts=False)
 
 
-def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids=None) -> list[dict]:
+def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids=None, profile=None) -> list[dict]:
     """Item counts grouped by publish month (YYYY-MM), for a month-picker sidebar.
 
-    Applies the same search/regulator filters as search_items_advanced but
-    deliberately ignores any date filter, so every month remains clickable
+    Applies the same search/regulator/profile filters as search_items_advanced
+    but deliberately ignores any date filter, so every month remains clickable
     regardless of the currently selected date range.
     """
     def _run(use_fts: bool):
         conditions, params = _search_conditions(query, exact, regulator_ids, use_fts=use_fts)
         conditions.append("published_at IS NOT NULL")
+        if profile is not None:
+            profile_conditions, profile_params = _profile_filter_conditions(profile)
+            conditions.extend(profile_conditions)
+            params.update(profile_params)
         where = "WHERE " + " AND ".join(conditions)
         sql = f"""
             SELECT strftime('%Y-%m', published_at) as month, COUNT(*) as count
@@ -343,7 +429,8 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
         return _run(use_fts=False)
 
 
-def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None, language=None) -> list[dict]:
+def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None,
+                language=None, profile=None) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
@@ -359,6 +446,10 @@ def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tag
     tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
     conditions.extend(tag_conditions)
     params.update(tag_params)
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     sql = f"""
@@ -500,7 +591,7 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
     return [_row_to_dict(r, keys) for r in rows]
 
 
-def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> list[dict]:
+def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50, profile=None) -> list[dict]:
     try:
         days = max(0, min(int(days), 365))
     except (TypeError, ValueError):
@@ -522,6 +613,10 @@ def get_warnings(engine, days: int = 30, regulator_id=None, limit: int = 50) -> 
     if regulator_id:
         conditions.append("regulator_id = :regulator_id")
         params["regulator_id"] = regulator_id
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
 
     where = " AND ".join(conditions)
     sql = f"""
@@ -577,7 +672,7 @@ def list_labels(engine, taxonomy) -> dict:
     return result
 
 
-def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
+def get_items_since(engine, since: str, limit: int = 100, profile=None) -> list[dict]:
     """Returns items with fetched_at strictly after `since`, oldest first -
     the natural polling primitive ("everything new since my last check").
     `since` should be a fetched_at value as returned by this or other tools
@@ -596,17 +691,24 @@ def get_items_since(engine, since: str, limit: int = 100) -> list[dict]:
     except ValueError:
         raise ValueError(f"could not parse 'since' timestamp: {since!r}")
     cutoff = _format_dt(since_dt)
-    sql = """
+    conditions = ["fetched_at > :cutoff"]
+    params = {"cutoff": cutoff, "limit": limit}
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+    where = " AND ".join(conditions)
+    sql = f"""
         SELECT id, regulator_id, source_label, title, url, published_at,
                fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags
-        FROM items WHERE fetched_at > :cutoff
+        FROM items WHERE {where}
         ORDER BY fetched_at ASC
         LIMIT :limit
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
             "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags"]
     with engine.connect() as conn:
-        rows = conn.execute(text(sql), {"cutoff": cutoff, "limit": limit}).fetchall()
+        rows = conn.execute(text(sql), params).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
 
 
