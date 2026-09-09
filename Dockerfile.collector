@@ -13,6 +13,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
 RUN playwright install --with-deps chromium
 
 COPY collector/ ./collector/
+COPY mcpserver/ ./mcpserver/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 COPY regradar/ ./regradar/
