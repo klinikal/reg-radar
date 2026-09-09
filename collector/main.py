@@ -18,6 +18,8 @@ from collector.storage import (
     reset_source_errors,
     upsert_regulator,
 )
+from regradar.classification import write_classification
+from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -35,6 +37,8 @@ def load_config():
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,
         "alerts_path": os.getenv("ALERTS_PATH", "/app/config/alerts.yaml"),
+        "taxonomy_path": os.getenv("TAXONOMY_PATH", "/app/config/taxonomy.yaml"),
+        "jurisdictions_path": os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
     }
 
 
@@ -58,7 +62,26 @@ def load_regulators(config_path: str) -> list[dict]:
     return data
 
 
-def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[dict] = None):
+def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: dict) -> None:
+    """Writes each of a source's configured `labels` (regulators.yaml
+    sources[].labels, architecture doc §4.3) as a `by: source_default`
+    classification for a newly-inserted item. confidence is 1.0 for
+    document_type on a single-purpose feed, 0.6 for instruments - a feed
+    named "crypto circulars" is strong evidence, not proof (§4.3)."""
+    for axis, axis_value in (source_labels or {}).items():
+        confidence = 1.0 if axis == "document_type" else 0.6
+        values = axis_value if isinstance(axis_value, list) else [axis_value]
+        for value in values:
+            try:
+                write_classification(
+                    engine, taxonomy, item_id, axis, value,
+                    by="source_default", confidence=confidence, classifier_id="collector",
+                )
+            except ValueError as e:
+                logger.warning("Skipping invalid source default label for item %s: %s", item_id, e)
+
+
+def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[dict] = None, taxonomy=None):
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
@@ -119,6 +142,8 @@ def run_collection(engine, regulators: list[dict], cfg: dict, alert_rules: list[
                                     item.content_tags = sorted(set(item.content_tags) | set(matched_tags))
                             if insert_item(engine, item):
                                 total_new += 1
+                                if taxonomy is not None:
+                                    _apply_source_label_defaults(engine, taxonomy, item.id, source.get("labels"))
                         # fetch_source() returns [] both when a fetch genuinely
                         # fails (network error, blocked, etc.) and when it
                         # succeeds but the parser finds nothing - those look
@@ -206,7 +231,7 @@ def _release_lock(lock_file) -> None:
     lock_file.close()
 
 
-def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list[dict] = None):
+def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, alert_rules: list[dict] = None, taxonomy=None):
     """run_collection(), but skips entirely (rather than overlapping) if
     another collection run already holds the lock - a long FlareSolverr-
     heavy run (MFSA's ~10+ enabled categories at an 8s minimum interval
@@ -222,7 +247,7 @@ def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: 
         )
         return
     try:
-        run_collection(engine, regulators, cfg, alert_rules=alert_rules)
+        run_collection(engine, regulators, cfg, alert_rules=alert_rules, taxonomy=taxonomy)
     finally:
         _release_lock(lock_file)
 
@@ -237,6 +262,11 @@ def main():
     logger.info("Loading regulators from %s", config_path)
     regulators = load_regulators(config_path)
 
+    logger.info("Loading taxonomy from %s and %s", cfg["taxonomy_path"], cfg["jurisdictions_path"])
+    taxonomy = load_and_exit_on_error(
+        cfg["taxonomy_path"], cfg["jurisdictions_path"], regulators=regulators, regulators_path=config_path,
+    )
+
     for reg in regulators:
         upsert_regulator(engine, {
             k: reg.get(k)
@@ -250,7 +280,7 @@ def main():
 
     if "--once" in sys.argv:
         logger.info("Running single collection pass")
-        run_collection_locked(engine, regulators, cfg, lock_path, alert_rules=alert_rules)
+        run_collection_locked(engine, regulators, cfg, lock_path, alert_rules=alert_rules, taxonomy=taxonomy)
         return
 
     from apscheduler.events import EVENT_JOB_ERROR
@@ -269,7 +299,7 @@ def main():
     scheduler.add_job(
         run_collection_locked,
         CronTrigger.from_crontab(schedule),
-        args=[engine, regulators, cfg, lock_path, alert_rules],
+        args=[engine, regulators, cfg, lock_path, alert_rules, taxonomy],
     )
     try:
         scheduler.start()
