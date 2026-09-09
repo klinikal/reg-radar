@@ -2,7 +2,7 @@ import tempfile
 
 from ruamel.yaml import YAML
 
-from scripts.migrate_regulator_labels import decide_labels, migrate_regulators, _map_jurisdiction
+from scripts.migrate_regulator_labels import decide_labels, migrate_regulators, run, _map_jurisdiction
 
 
 def _yaml():
@@ -115,3 +115,53 @@ def test_migrate_regulators_gives_every_source_a_labels_key_even_when_empty():
     source = data[0]["sources"][0]
     assert "tags" not in source
     assert dict(source["labels"]) == {}
+
+
+def test_migrate_regulators_second_pass_leaves_already_migrated_source_untouched():
+    yaml = _yaml()
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+        f.write("""\
+- id: esma
+  name: ESMA
+  jurisdiction: EU
+  sources:
+    - type: scrape
+      url: https://example.com/warnings
+      label: warnings
+      tags: [casp, mica, warnings]
+""")
+        path = f.name
+
+    with open(path) as f:
+        data = yaml.load(f)
+    migrate_regulators(data)
+    source = data[0]["sources"][0]
+    assert dict(source["labels"]) == {"document_type": "warning"}
+
+    # A second pass over the already-migrated structure must not recompute
+    # `labels` from a now-absent `tags` key and silently wipe it out.
+    migrate_regulators(data)
+    assert dict(data[0]["sources"][0]["labels"]) == {"document_type": "warning"}
+
+
+def test_run_is_idempotent_a_second_run_changes_nothing_on_disk(tmp_path):
+    src = tmp_path / "regulators.yaml"
+    src.write_text("""\
+- id: esma
+  name: ESMA
+  jurisdiction: EU
+  sources:
+    - type: scrape
+      url: https://example.com/warnings
+      label: warnings
+      tags: [casp, mica, warnings]
+""")
+
+    run(str(src), str(tmp_path / "nonexistent.db"), dry_run=False)
+    first_pass_content = src.read_text()
+
+    run(str(src), str(tmp_path / "nonexistent.db"), dry_run=False)
+    second_pass_content = src.read_text()
+
+    assert second_pass_content == first_pass_content
+    assert "document_type: warning" in second_pass_content

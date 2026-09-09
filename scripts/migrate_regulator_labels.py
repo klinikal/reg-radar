@@ -51,17 +51,18 @@ _DOCUMENT_TYPE_PRIORITY = [
     ("press_releases", "press_release"),
     ("news", "press_release"),
 ]
-_DOCUMENT_TYPE_CONFIDENCE = 1.0
 
 # Explicit allowlist of (regulator_id, source_label) sources confirmed
 # single-purpose by inspecting their label/url (not just their blanket
-# tags) - see the task report for how this list was derived.
+# tags) - see the task report for how this list was derived. Confidence
+# for these labels is not decided here - it's read from each axis's
+# source_default_confidence in taxonomy.yaml when the collector/reclassify
+# actually write a classification (regradar/taxonomy.py).
 _SINGLE_PURPOSE_INSTRUMENTS = {
     ("esma", "mica_hub_page"): ["mica"],
     ("mt-mfsa", "circulars_crypto_assets_circulars"): ["mica"],
     ("nl-dnb", "crypto_service_providers"): ["mica"],
 }
-_INSTRUMENT_CONFIDENCE = 0.6
 
 
 def _map_jurisdiction(raw: str) -> str:
@@ -95,11 +96,25 @@ def decide_labels(regulator_id: str, source: dict) -> tuple[dict, str]:
 def migrate_regulators(data: list) -> list:
     """Mutates `data` (a ruamel round-tripped structure) in place: renames
     tags->labels per decide_labels() and lower-cases jurisdiction. Returns
-    the printable decision table as a list of row dicts."""
+    the printable decision table as a list of row dicts.
+
+    Idempotent: a source that already has `labels` and no `tags` (i.e. was
+    migrated by a prior run) is left completely untouched and reported as
+    "already migrated" - re-running must never recompute an empty `labels`
+    from a `tags` key that no longer exists and silently wipe out a real
+    decision from the first run."""
     table = []
     for reg in data:
         reg["jurisdiction"] = _map_jurisdiction(reg["jurisdiction"])
         for source in reg.get("sources", []):
+            if "tags" not in source and "labels" in source:
+                table.append({
+                    "regulator_id": reg["id"], "source_label": source.get("label"),
+                    "old_tags": [], "new_labels": dict(source["labels"]),
+                    "reason": "already migrated - skipped",
+                })
+                continue
+
             old_tags = list(source.get("tags", []) or [])
             labels, reason = decide_labels(reg["id"], source)
 
@@ -122,6 +137,10 @@ def migrate_regulators(data: list) -> list:
                 "reason": reason,
             })
     return table
+
+
+def _has_any_tags(data: list) -> bool:
+    return any("tags" in source for reg in data for source in reg.get("sources", []))
 
 
 def _print_table(table: list) -> None:
@@ -172,6 +191,10 @@ def run(regulators_path: str, db_path: str, dry_run: bool) -> None:
 
     with open(regulators_path) as f:
         data = yaml.load(f)
+
+    if not _has_any_tags(data):
+        logger.info("%s has no `tags` keys left - already migrated, nothing to do", regulators_path)
+        return
 
     table = migrate_regulators(data)
     _print_table(table)
