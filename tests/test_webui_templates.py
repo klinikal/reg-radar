@@ -12,8 +12,10 @@ def _render_index(regulators):
         request=None,
         q="", exact=False, date_from="", date_to="",
         regulator_id=[], regulators=regulators, regulator_names={},
+        jurisdiction=[], jurisdiction_options=[], profile="", profile_options=[],
         months=[], items=[], total=0, page=1, total_pages=1,
         filter_qs="", filter_qs_no_date="", filter_qs_no_regulator="",
+        filter_qs_no_jurisdiction="",
     )
 
 

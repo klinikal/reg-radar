@@ -14,6 +14,7 @@ from collector.keyword_alerts import load_alert_rules, write_alert_rules
 from collector.storage import init_db
 from mcpserver.queries import get_item, get_month_facets, list_regulators, search_items_advanced
 from regradar.classification import remove_classification, write_classification
+from regradar.profiles import ProfileError, get_expanded_profile, list_shipped_profiles, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 
 logging.basicConfig(
@@ -46,6 +47,8 @@ JURISDICTION_NAMES = {
 
 _engine = None
 _taxonomy = None
+_activities = None
+PROFILES_DIR = os.getenv("PROFILES_DIR", "/app/config/profiles")
 
 
 def get_engine():
@@ -64,6 +67,33 @@ def get_taxonomy():
             os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
         )
     return _taxonomy
+
+
+def get_activities():
+    global _activities
+    if _activities is None:
+        _activities = load_activities(os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"), get_taxonomy())
+    return _activities
+
+
+def _resolve_profile(profile: str):
+    """Turns the `profile` query param into a regradar.profiles.ExpandedProfile,
+    or None if not set. Unlike the MCP tools/CLI, `profile` here is
+    unauthenticated user input over HTTP, and
+    regradar.profiles.load_profile treats any name that isn't a shipped
+    template as a literal filesystem path to open - so the web surface
+    only ever accepts a name from list_shipped_profiles(), never passing
+    arbitrary input through to load_profile. Anything else (an absolute
+    path, "../" traversal, or just an unknown name) gets a generic 400
+    that never echoes the input or any file content."""
+    if not profile:
+        return None
+    if profile not in list_shipped_profiles(PROFILES_DIR):
+        raise HTTPException(status_code=400, detail="unknown profile")
+    try:
+        return get_expanded_profile(profile, get_taxonomy(), get_activities(), profiles_dir=PROFILES_DIR)
+    except ProfileError:
+        raise HTTPException(status_code=400, detail="unknown profile")
 
 
 def _regulator_ids_for_jurisdictions(jurisdictions: list[str], regulators: list[dict]) -> list[str] | None:
@@ -114,7 +144,7 @@ def _with_search_fields(regulator: dict) -> dict:
     return regulator
 
 
-def _search(q, exact, regulator_ids, date_from, date_to, page):
+def _search(q, exact, regulator_ids, date_from, date_to, page, profile=None):
     offset = (page - 1) * PAGE_SIZE
     items, total = search_items_advanced(
         get_engine(),
@@ -123,6 +153,7 @@ def _search(q, exact, regulator_ids, date_from, date_to, page):
         regulator_ids=regulator_ids or None,
         date_from=date_from or None,
         date_to=date_to or None,
+        profile=profile,
         limit=PAGE_SIZE,
         offset=offset,
     )
@@ -144,6 +175,7 @@ def index(
     jurisdiction: list[str] = Query([]),
     date_from: str = "",
     date_to: str = "",
+    profile: str = "",
     page: int = Query(1, ge=1),
 ):
     regulators = [_with_search_fields(r) for r in list_regulators(get_engine())]
@@ -158,11 +190,13 @@ def index(
             else jurisdiction_regulator_ids
         )
 
-    items, total = _search(q, exact, effective_regulator_ids, date_from, date_to, page)
+    expanded_profile = _resolve_profile(profile)
+    items, total = _search(q, exact, effective_regulator_ids, date_from, date_to, page, profile=expanded_profile)
     items = [_with_tags(i) for i in items]
     total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    months = get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=effective_regulator_ids or None)
+    months = get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=effective_regulator_ids or None,
+                               profile=expanded_profile)
     for m in months:
         m["date_from"], m["date_to"] = _month_bounds(m["month"])
         m["active"] = date_from == m["date_from"] and date_to == m["date_to"]
@@ -173,9 +207,12 @@ def index(
     used_jurisdictions = sorted({(r.get("jurisdiction") or "").lower() for r in regulators} - {""})
     jurisdiction_options = [{"id": j, "name": taxonomy.jurisdiction_name(j)} for j in used_jurisdictions]
 
+    profile_options = list_shipped_profiles(PROFILES_DIR)
+
     def qs(**overrides):
         base = {"q": q, "exact": "true" if exact else "", "regulator_id": regulator_id,
-                "jurisdiction": jurisdiction, "date_from": date_from, "date_to": date_to}
+                "jurisdiction": jurisdiction, "date_from": date_from, "date_to": date_to,
+                "profile": profile}
         base.update(overrides)
         return urlencode({k: v for k, v in base.items() if v}, doseq=True)
 
@@ -192,6 +229,7 @@ def index(
             "regulators": regulators,
             "regulator_names": regulator_names,
             "jurisdiction_options": jurisdiction_options,
+            "profile_options": profile_options,
             "total": total,
             "page": page,
             "total_pages": total_pages,
@@ -207,6 +245,7 @@ def index(
             "jurisdiction": jurisdiction,
             "date_from": date_from,
             "date_to": date_to,
+            "profile": profile,
         },
     )
 
@@ -302,15 +341,17 @@ def api_items(
     regulator_id: list[str] = Query([]),
     date_from: str = "",
     date_to: str = "",
+    profile: str = "",
     page: int = Query(1, ge=1),
 ):
-    items, total = _search(q, exact, regulator_id, date_from, date_to, page)
+    items, total = _search(q, exact, regulator_id, date_from, date_to, page, profile=_resolve_profile(profile))
     return {"items": items, "total": total, "page": page, "page_size": PAGE_SIZE}
 
 
 @app.get("/api/months")
-def api_months(q: str = "", exact: bool = False, regulator_id: list[str] = Query([])):
-    return {"months": get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=regulator_id or None)}
+def api_months(q: str = "", exact: bool = False, regulator_id: list[str] = Query([]), profile: str = ""):
+    return {"months": get_month_facets(get_engine(), query=q, exact=exact, regulator_ids=regulator_id or None,
+                                        profile=_resolve_profile(profile))}
 
 
 @app.get("/api/items/{item_id}")

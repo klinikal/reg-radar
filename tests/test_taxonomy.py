@@ -137,6 +137,27 @@ def test_ancestors_two_level_chain_returns_both_levels(tmp_path):
     assert t2.ancestors("c") == ["b", "a"]
 
 
+def test_descendants_returns_every_jurisdiction_with_it_as_an_ancestor(tmp_path):
+    t = _build(tmp_path)
+    assert t.descendants("eu") == ["fr"]  # VALID_JURISDICTIONS: eu, fr (parent eu), gb (no parents)
+
+
+def test_descendants_of_a_leaf_jurisdiction_is_empty(tmp_path):
+    t = _build(tmp_path)
+    assert t.descendants("fr") == []
+    assert t.descendants("gb") == []
+
+
+def test_descendants_transitive_through_a_multi_level_chain():
+    t = Taxonomy(1, {}, {
+        "a": {"parents": []},
+        "b": {"parents": ["a"]},
+        "c": {"parents": ["b"]},
+    })
+    assert set(t.descendants("a")) == {"b", "c"}
+    assert t.descendants("c") == []
+
+
 def test_missing_taxonomy_file_raises_taxonomy_error(tmp_path):
     jpath = _write(tmp_path, "jurisdictions.yaml", VALID_JURISDICTIONS)
     with pytest.raises(TaxonomyError, match="file not found"):
