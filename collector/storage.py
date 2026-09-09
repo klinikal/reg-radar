@@ -77,6 +77,12 @@ class SourceErrorRow(Base):
     consecutive_failures = Column(Integer, default=0)
     last_error = Column(Text)
     last_attempt_at = Column(DateTime)
+    # A successful fetch that yields zero items despite the site returning
+    # 200 OK - the "selector drift" case a redesign causes: the page still
+    # loads fine, it just no longer matches anything. consecutive_failures
+    # doesn't catch this (no exception is raised), so it needs its own
+    # counter, reset only when a fetch actually yields >=1 item.
+    consecutive_empty_runs = Column(Integer, default=0)
 
 
 class ItemChunkRow(Base):
@@ -112,6 +118,7 @@ def init_db(db_path: str):
         _ensure_column(conn, "items", "source_tags", "TEXT")
         _ensure_column(conn, "items", "content_tags", "TEXT")
         _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
+        _ensure_column(conn, "source_errors", "consecutive_empty_runs", "INTEGER DEFAULT 0")
     Base.metadata.create_all(engine)
     return engine
 
@@ -246,6 +253,51 @@ def reset_source_errors(engine, regulator_id: str, source_label: str) -> None:
         session.execute(
             text(
                 "UPDATE source_errors SET consecutive_failures=0 "
+                "WHERE regulator_id=:r AND source_label=:s"
+            ),
+            {"r": regulator_id, "s": source_label}
+        )
+        session.commit()
+
+
+def record_source_empty_run(engine, regulator_id: str, source_label: str) -> None:
+    """Increments consecutive_empty_runs for a source that fetched
+    successfully but yielded zero items - the "200 OK, wrong content"
+    selector-drift case reset_source_errors alone never catches, since no
+    exception was raised. Mirrors record_source_error's upsert shape."""
+    with Session(engine) as session:
+        row = session.execute(
+            text("SELECT id, consecutive_empty_runs FROM source_errors WHERE regulator_id=:r AND source_label=:s"),
+            {"r": regulator_id, "s": source_label}
+        ).fetchone()
+        if row:
+            session.execute(
+                text(
+                    "UPDATE source_errors SET consecutive_empty_runs=:c, last_attempt_at=:t "
+                    "WHERE regulator_id=:r AND source_label=:s"
+                ),
+                {
+                    "c": (row[1] or 0) + 1,
+                    "t": datetime.now(timezone.utc),
+                    "r": regulator_id,
+                    "s": source_label,
+                }
+            )
+        else:
+            session.add(SourceErrorRow(
+                regulator_id=regulator_id,
+                source_label=source_label,
+                consecutive_empty_runs=1,
+                last_attempt_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def reset_source_empty_runs(engine, regulator_id: str, source_label: str) -> None:
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "UPDATE source_errors SET consecutive_empty_runs=0 "
                 "WHERE regulator_id=:r AND source_label=:s"
             ),
             {"r": regulator_id, "s": source_label}
