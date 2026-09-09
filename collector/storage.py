@@ -553,11 +553,15 @@ def get_digest_cursor(engine, name: str) -> str | None:
 
 class SyncStateRow(Base):
     """A small generic key/value store for one-off sync bookkeeping that
-    doesn't warrant its own table - currently just the collector's own
-    change-stream cursor, set by `regradar import-dataset` (regradar/
-    dataset.py) to the published dataset's `generated_at` so the next
-    collection run only picks up items newer than the snapshot it just
-    loaded. Distinct from `webhook_subscriptions`, which is keyed per
+    doesn't warrant its own table - currently just the change-stream cursor
+    `regradar import-dataset` (regradar/dataset.py) records for the
+    published dataset's `generated_at`.
+
+    It marks where the imported snapshot ends; it does NOT filter what the
+    collector fetches. A collection run reads whatever is on each source's
+    current feed pages either way. Readers: get_health()'s `dataset_import`,
+    `regradar export`'s fallback `--since`, and anyone passing it to
+    get_changes(). Distinct from `webhook_subscriptions`, which is keyed per
     outbound subscriber rather than per inbound sync source.
     """
     __tablename__ = "sync_state"
