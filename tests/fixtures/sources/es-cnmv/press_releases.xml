@@ -1,0 +1,583 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" version="2.0">
+  <Channel>
+    <title>CNMV - Notas de prensa.</title>
+    <link>https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx</link>
+    <description>Notas de prensa.</description>
+    <generator>CNMV RSS</generator>
+    <language>es</language>
+    <ttl>15</ttl>
+    <image>
+      <Title>Comisión nacional del mercado de valores</Title>
+      <Link>http://www.cnmv.es</Link>
+      <Url>http://www.cnmv.es/images/cnmv_logo.gif</Url>
+    </image>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260831121500]]></guid>
+      <pubDate>Mon, 31 Aug 2026 10:15:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260803110800]]></guid>
+      <pubDate>Mon, 03 Aug 2026 09:08:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV considera que la estabilidad financiera de los mercados españoles es sólida, pero los riesgos tecnológicos y de implantación de la Inteligencia Artificial requieren seguimiento</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260730120000]]></guid>
+      <pubDate>Thu, 30 Jul 2026 10:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260727132500]]></guid>
+      <pubDate>Mon, 27 Jul 2026 11:25:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV revisa la publicidad de gestoras con ayuda de Inteligencia Artificial</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260727110000]]></guid>
+      <pubDate>Mon, 27 Jul 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV autoriza la opa de exclusión de cotización de Ercros, S.A. formulada por Bondalti Iberica, S.L.U.</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260722174900]]></guid>
+      <pubDate>Wed, 22 Jul 2026 15:49:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV abre a consulta pública el proyecto de Circular sobre los informes financieros semestrales a remitir por las empresas cotizadas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260720124000]]></guid>
+      <pubDate>Mon, 20 Jul 2026 10:40:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260720113000]]></guid>
+      <pubDate>Mon, 20 Jul 2026 09:30:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Los chiringuitos (financieros) no son para el verano</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260714120400]]></guid>
+      <pubDate>Tue, 14 Jul 2026 10:04:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260713114500]]></guid>
+      <pubDate>Mon, 13 Jul 2026 09:45:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV inicia la consulta pública de un proyecto de circular para simplificar la normativa de gestoras de fondos y empresas de servicios de inversión</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260713110000]]></guid>
+      <pubDate>Mon, 13 Jul 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La Memoria de Reclamaciones y Consultas de la CNMV avala la efectividad de la resolución extrajudicial de las reclamaciones de inversores</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260707122100]]></guid>
+      <pubDate>Tue, 07 Jul 2026 10:21:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260706110000]]></guid>
+      <pubDate>Mon, 06 Jul 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV actualiza su Reglamento de Régimen Interior</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260703091100]]></guid>
+      <pubDate>Fri, 03 Jul 2026 07:11:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV habilita un buzón para recibir propuestas de simplificación de sus actuaciones supervisoras</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260701140000]]></guid>
+      <pubDate>Wed, 01 Jul 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260629131500]]></guid>
+      <pubDate>Mon, 29 Jun 2026 11:15:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>ESMA insta a los proveedores de servicios de criptoactivos no autorizados a cerrar de forma ordenada, al tiempo que protegen los intereses de los clientes, ante el fin del periodo transitorio  de MiCA</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260623172000]]></guid>
+      <pubDate>Tue, 23 Jun 2026 15:20:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260622102300]]></guid>
+      <pubDate>Mon, 22 Jun 2026 08:23:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica una guía práctica sobre el punto de acceso único europeo (ESAP) para entidades</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260616140700]]></guid>
+      <pubDate>Tue, 16 Jun 2026 12:07:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260615123000]]></guid>
+      <pubDate>Mon, 15 Jun 2026 10:30:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Comunicado de la CNMV sobre el fin del periodo transitorio del reglamento MiCA el 30 de junio</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260615095400]]></guid>
+      <pubDate>Mon, 15 Jun 2026 07:54:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260608122000]]></guid>
+      <pubDate>Mon, 08 Jun 2026 10:20:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV  publica su boletín con las tendencias más recientes de los mercados y tres artículos</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260603144000]]></guid>
+      <pubDate>Wed, 03 Jun 2026 12:40:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260601164200]]></guid>
+      <pubDate>Mon, 01 Jun 2026 14:42:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Consulta pública de la Guia Técnica de gestoras de vehículos cerrados</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260529121200]]></guid>
+      <pubDate>Fri, 29 May 2026 10:12:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica una guía para que los “finfluencers”  actúen con responsabilidad</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260525125200]]></guid>
+      <pubDate>Mon, 25 May 2026 10:52:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260525114000]]></guid>
+      <pubDate>Mon, 25 May 2026 09:40:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Nueve de cada diez empresas de mayor capitalización alcanzan el 40 por ciento de consejeras antes del plazo marcado por la ley</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260518141000]]></guid>
+      <pubDate>Mon, 18 May 2026 12:10:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260518140000]]></guid>
+      <pubDate>Mon, 18 May 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Apertura del plazo de recepción de expresiones de interés para propuesta de terna de administración concursal de Tubos Reunidos, S.A.</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260514143100]]></guid>
+      <pubDate>Thu, 14 May 2026 12:31:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica su Informe Anual de 2025</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260513124300]]></guid>
+      <pubDate>Wed, 13 May 2026 10:43:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV recibió 218 comunicaciones de operaciones sospechosas de constituir abuso de mercado en 2025</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260512110000]]></guid>
+      <pubDate>Tue, 12 May 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260511155300]]></guid>
+      <pubDate>Mon, 11 May 2026 13:53:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV difunde el segundo comunicado de ESMA sobre la implementación de cambios previstos en la Listing act en materia de folletos</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260511124400]]></guid>
+      <pubDate>Mon, 11 May 2026 10:44:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>ESMA difunde las conclusiones de la supervisión sobre la integración de las preferencias de sostenibilidad en la idoneidad y en el gobierno de productos</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260511094000]]></guid>
+      <pubDate>Mon, 11 May 2026 07:40:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Javier Hernandez López, nuevo director del Departamento de Estudios y Estadísticas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260506122500]]></guid>
+      <pubDate>Wed, 06 May 2026 10:25:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260504112800]]></guid>
+      <pubDate>Mon, 04 May 2026 09:28:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica una guía para que los inversores se relacionen con los ‘finfluencers’ con más seguridad</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260429103000]]></guid>
+      <pubDate>Wed, 29 Apr 2026 08:30:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260427151600]]></guid>
+      <pubDate>Mon, 27 Apr 2026 13:16:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260420124200]]></guid>
+      <pubDate>Mon, 20 Apr 2026 10:42:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260413135100]]></guid>
+      <pubDate>Mon, 13 Apr 2026 11:51:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Un estudio detecta que el uso de la inteligencia artificial sin supervisión humana en decisiones de inversión presenta fallos, errores y alucinaciones</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260413105400]]></guid>
+      <pubDate>Mon, 13 Apr 2026 08:54:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV revisa la actividad de los “finfluencers”</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260409115000]]></guid>
+      <pubDate>Thu, 09 Apr 2026 09:50:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV ha publicado la Guía sobre “Persuasión digital para inversores”</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260406134500]]></guid>
+      <pubDate>Mon, 06 Apr 2026 11:45:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260330150300]]></guid>
+      <pubDate>Mon, 30 Mar 2026 13:03:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV adopta las directrices europeas sobre los criterios para evaluar los conocimientos y competencias del personal que informa y asesora a los inversores en criptoactivos</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260330121000]]></guid>
+      <pubDate>Mon, 30 Mar 2026 10:10:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV y el Consejo General del Notariado renuevan su acuerdo para compartir información de las bases de datos notariales</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260326163200]]></guid>
+      <pubDate>Thu, 26 Mar 2026 15:32:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Los supervisores europeos de fondos de inversión se reúnen en Barcelona</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260324140700]]></guid>
+      <pubDate>Tue, 24 Mar 2026 13:07:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260323162200]]></guid>
+      <pubDate>Mon, 23 Mar 2026 15:22:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>El programa Salvados gana el premio de periodismo Antonio Moreno Espejo por un reportaje sobre chiringuitos financieros</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260319122000]]></guid>
+      <pubDate>Thu, 19 Mar 2026 11:20:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica el informe anual de supervisión de la información de sostenibilidad de las empresas cotizadas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260317123000]]></guid>
+      <pubDate>Tue, 17 Mar 2026 11:30:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260316150900]]></guid>
+      <pubDate>Mon, 16 Mar 2026 14:09:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica el Informe de supervisión de las cuentas anuales de las empresas cotizadas de 2024</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260311103800]]></guid>
+      <pubDate>Wed, 11 Mar 2026 09:38:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260310153700]]></guid>
+      <pubDate>Tue, 10 Mar 2026 14:37:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260302162000]]></guid>
+      <pubDate>Mon, 02 Mar 2026 15:20:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica el artículo sobre la fragmentación del mercado de acciones premiado con el premio Foro de Finanzas 2025</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260227130800]]></guid>
+      <pubDate>Fri, 27 Feb 2026 12:08:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV autoriza el diferimiento en la publicación del volumen de las operaciones sobre deuda soberana española conforme al artículo 11(3) de MiFIR </Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260226131000]]></guid>
+      <pubDate>Thu, 26 Feb 2026 12:10:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV presenta su Plan de Actividades de 2026</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260225114000]]></guid>
+      <pubDate>Wed, 25 Feb 2026 10:40:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260223154700]]></guid>
+      <pubDate>Mon, 23 Feb 2026 14:47:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>ESMA aclara cambios en la normativa de folletos introducida por la “Listing Act”</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260219132800]]></guid>
+      <pubDate>Thu, 19 Feb 2026 12:28:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260216121000]]></guid>
+      <pubDate>Mon, 16 Feb 2026 11:10:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV habilita una sección en su web sobre novedades regulatorias que afectan a emisores cotizados en Sistemas Multilaterales de Negociación</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260213124300]]></guid>
+      <pubDate>Fri, 13 Feb 2026 11:43:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica preguntas frecuentes sobre el Reglamento de resiliencia operativa digital (DORA)</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260212144500]]></guid>
+      <pubDate>Thu, 12 Feb 2026 13:45:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV autoriza la oferta pública voluntaria de adquisición de acciones de Ercros, S.A. formulada por Bondalti Iberica, S.L.U. </Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260210121500]]></guid>
+      <pubDate>Tue, 10 Feb 2026 11:15:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>San Valentín: Cómo protegerse de las estafas amorosas online</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260210113300]]></guid>
+      <pubDate>Tue, 10 Feb 2026 10:33:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260209152200]]></guid>
+      <pubDate>Mon, 09 Feb 2026 14:22:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Los grupos de trabajo de seguimiento de las recomendaciones de la OCDE para revitalizar los mercados de valores españoles identifican seis actuaciones prioritarias</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260209122000]]></guid>
+      <pubDate>Mon, 09 Feb 2026 11:20:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Apertura del plazo de recepción de expresiones de interés para la propuesta de administración concursal de la entidad Liwe Española, S.A.</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260204183500]]></guid>
+      <pubDate>Wed, 04 Feb 2026 17:35:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica un informe sobre el estado de los activos digitales </Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260203090000]]></guid>
+      <pubDate>Tue, 03 Feb 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260202150900]]></guid>
+      <pubDate>Mon, 02 Feb 2026 14:09:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV publica su nota de estabilidad financiera con los principales datos de cierre de mercados y una evaluación de los riesgos más importantes</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260130120900]]></guid>
+      <pubDate>Fri, 30 Jan 2026 11:09:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV autoriza la oferta pública obligatoria de adquisición de acciones de Aedas Homes, S.A. formulada por Grupo Neinor</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260128181000]]></guid>
+      <pubDate>Wed, 28 Jan 2026 17:10:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260126152700]]></guid>
+      <pubDate>Mon, 26 Jan 2026 14:27:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV revisa la información de costes que las entidades de servicios de inversión ofrecen a sus clientes</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260121134400]]></guid>
+      <pubDate>Wed, 21 Jan 2026 12:44:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La Comisión Europea renueva a Helena Viñes como presidenta  de la Plataforma de Finanzas Sostenibles</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260121125000]]></guid>
+      <pubDate>Wed, 21 Jan 2026 11:50:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260119140300]]></guid>
+      <pubDate>Mon, 19 Jan 2026 13:03:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>El Plan de Educación Financiera y el Ministerio de Educación refuerzan su compromiso para mejorar las competencias financieras de la ciudadanía</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260116093000]]></guid>
+      <pubDate>Fri, 16 Jan 2026 08:30:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Designado el jurado de la novena edición del Premio de periodismo Antonio Moreno Espejo</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260114090000]]></guid>
+      <pubDate>Wed, 14 Jan 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV lanza una nueva oferta de empleo con 32 plazas de empleo fijo y de calidad</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260113092300]]></guid>
+      <pubDate>Tue, 13 Jan 2026 08:23:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>Advertencias de la CNMV de entidades no registradas</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=5]]></link>
+      <guid isPermaLink="false"><![CDATA[20260112130000]]></guid>
+      <pubDate>Mon, 12 Jan 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+    <item>
+      <Title>La CNMV y los supervisores europeos difunden consejos para que los finfluencers hagan una  promoción responsable</Title>
+      <link><![CDATA[https://www.cnmv.es/Portal/AlDia/NotasPrensa.aspx?tipo=1]]></link>
+      <guid isPermaLink="false"><![CDATA[20260108100500]]></guid>
+      <pubDate>Thu, 08 Jan 2026 09:05:00 GMT</pubDate>
+      <description><![CDATA[<p><b></b> </p>]]></description>
+    </item>
+  </Channel>
+</rss>
