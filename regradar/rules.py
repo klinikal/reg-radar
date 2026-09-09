@@ -149,17 +149,17 @@ class RulesEngine:
 
     def score(self, title: str, body: str) -> dict:
         """Returns {(axis, value): confidence} for every (axis, value) whose
-        combined score (max across every rule targeting that pair - an
-        explicit rule and its alias-derived counterpart don't stack beyond
-        either one's own cap) reaches min_confidence."""
+        combined score reaches min_confidence. Scores sum per (axis, value)
+        across every rule targeting that pair - an explicit rule plus its
+        alias-derived counterpart stack - capped at 1.0 (architecture doc
+        §4.3: "Scores sum per (axis, value), capped at 1.0")."""
         totals: dict = {}
         for rule in self.rules:
             s = _score_rule(rule, title, body)
             if s <= 0:
                 continue
             key = (rule.axis, rule.value)
-            if s > totals.get(key, 0.0):
-                totals[key] = s
+            totals[key] = min(1.0, totals.get(key, 0.0) + s)
         return {k: v for k, v in totals.items() if v >= self.min_confidence}
 
 

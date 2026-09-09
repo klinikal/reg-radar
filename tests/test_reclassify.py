@@ -211,7 +211,7 @@ def test_by_rule_writes_rule_classification_for_matching_items(tmp_path):
         row = conn.execute(sa_text(
             "SELECT axis, value, by, confidence FROM classifications WHERE item_id='i1' AND superseded_at IS NULL"
         )).fetchone()
-    assert tuple(row) == ("instrument", "mica", "rule", 0.9)
+    assert tuple(row) == ("instrument", "mica", "rule", 1.0)  # explicit rule (0.9) + alias rule (0.7) sum, capped
 
 
 def test_by_rule_writes_nothing_for_non_matching_items(tmp_path):

@@ -171,11 +171,10 @@ def test_alias_rule_matches_at_implicit_weight(tmp_path):
     assert scores[("instrument", "mica")] == 0.7
 
 
-def test_explicit_and_alias_rule_for_same_value_do_not_stack_beyond_either_cap(tmp_path):
+def test_explicit_and_alias_rule_for_same_value_sum_and_cap_at_one(tmp_path):
     # An explicit rule scoring 0.9 for "mica" plus the 0.7 alias-derived rule
-    # both matching should not sum past what a single rule alone would give -
-    # RulesEngine.score() merges by max, not by sum, across rules targeting
-    # the same (axis, value).
+    # both matching sum to 1.6, capped at 1.0 (architecture doc §4.3:
+    # "Scores sum per (axis, value), capped at 1.0").
     path = _write_rules(tmp_path, (
         "rules:\n"
         "  - axis: instrument\n"
@@ -185,7 +184,26 @@ def test_explicit_and_alias_rule_for_same_value_do_not_stack_beyond_either_cap(t
     ))
     engine = RulesEngine.load(path, _taxonomy())
     scores = engine.score("MiCA update", "")
-    assert scores[("instrument", "mica")] == 0.9
+    assert scores[("instrument", "mica")] == 1.0
+
+
+def test_two_sub_threshold_rules_for_the_same_value_sum_above_threshold(tmp_path):
+    # Neither rule alone reaches the default min_confidence (0.5), but their
+    # sum (0.3 + 0.4 = 0.7) does.
+    path = _write_rules(tmp_path, (
+        "rules:\n"
+        "  - axis: document_type\n"
+        "    value: consultation\n"
+        "    match: [{pattern: 'consultation', weight: 0.3, flags: i}]\n"
+        "    fields: [title]\n"
+        "  - axis: document_type\n"
+        "    value: consultation\n"
+        "    match: [{pattern: 'quarterly', weight: 0.4, flags: i}]\n"
+        "    fields: [title]\n"
+    ))
+    engine = RulesEngine.load(path, _taxonomy())
+    scores = engine.score("Quarterly consultation paper", "")
+    assert scores[("document_type", "consultation")] == pytest.approx(0.7)
 
 
 # --- classifier_id ---

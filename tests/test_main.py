@@ -502,7 +502,7 @@ def test_run_collection_writes_rule_labels_for_matching_items(tmp_path, monkeypa
         row = conn.execute(sa_text(
             "SELECT axis, value, by, confidence FROM classifications WHERE item_id='fixed-test-id' AND by='rule'"
         )).fetchone()
-    assert row == ("instrument", "mica", "rule", 0.9)
+    assert row == ("instrument", "mica", "rule", 1.0)  # explicit rule (0.9) + alias rule (0.7) sum, capped
 
 
 def test_run_collection_without_rules_engine_writes_no_rule_labels(tmp_path, monkeypatch):
