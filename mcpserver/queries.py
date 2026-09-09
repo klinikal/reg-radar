@@ -7,6 +7,8 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from regradar.document import build_frontmatter
+
 logger = logging.getLogger(__name__)
 
 
@@ -328,18 +330,43 @@ def list_regulators(engine) -> list[dict]:
 
 
 def get_item(engine, item_id: str) -> dict | None:
+    """Returns the item, including `body_md` (the Markdown body alongside
+    the existing `raw_content`) and a `document` object holding the same
+    frontmatter fields a rendered file would have (section 3.2) - built
+    from whatever `labels`/artefact data exists for this item, which is
+    empty until the classification and artefact-writing paths populate it.
+    """
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags, raw_content
+               fetched_at, updated_at, date_inferred, language, content_snippet, source_type,
+               source_tags, content_tags, raw_content, body_md, extractor
         FROM items WHERE id = :id
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags", "raw_content"]
+            "fetched_at", "updated_at", "date_inferred", "language", "content_snippet", "source_type",
+            "source_tags", "content_tags", "raw_content", "body_md", "extractor"]
     with engine.connect() as conn:
         row = conn.execute(text(sql), {"id": item_id}).fetchone()
-    if row is None:
-        return None
-    return _row_to_dict(row, keys)
+        if row is None:
+            return None
+        item = _row_to_dict(row, keys)
+        reg_row = conn.execute(
+            text("SELECT name, full_name, jurisdiction FROM regulators WHERE id = :id"),
+            {"id": item["regulator_id"]},
+        ).fetchone()
+        artefact_row = conn.execute(
+            text("SELECT path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id = :id"),
+            {"id": item_id},
+        ).fetchone()
+
+    doc_item = dict(item)
+    if reg_row is not None:
+        reg = dict(reg_row._mapping)
+        doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
+        doc_item["jurisdiction"] = reg.get("jurisdiction")
+    artefact = dict(artefact_row._mapping) if artefact_row is not None else None
+    item["document"] = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+    return item
 
 
 def get_run_log(engine, limit: int = 10) -> list[dict]:
