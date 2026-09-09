@@ -512,3 +512,39 @@ def record_webhook_delivery(engine, subscriber_id: str, url: str, status: str, d
             delivered_at=datetime.now(timezone.utc),
         ))
         session.commit()
+
+
+class DigestStateRow(Base):
+    """One row per configured digest (config/digests.yaml `name`), tracking
+    the same "advance only after full success" cursor semantics as
+    WebhookSubscriptionRow above (issue #13's ruling: reuse the webhook
+    cursor mechanism rather than a second one). `last_sent_at` is for
+    operator visibility only - `last_sent_cursor` is what a missed or
+    resumed run actually reads to catch up exactly."""
+    __tablename__ = "digest_state"
+
+    name = Column(String, primary_key=True)
+    last_sent_cursor = Column(String, nullable=True)
+    last_sent_at = Column(DateTime, nullable=True)
+
+
+def get_digest_cursor(engine, name: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT last_sent_cursor FROM digest_state WHERE name = :name"),
+            {"name": name},
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_digest_cursor(engine, name: str, cursor: str) -> None:
+    with Session(engine) as session:
+        row = session.get(DigestStateRow, name)
+        if row:
+            row.last_sent_cursor = cursor
+            row.last_sent_at = datetime.now(timezone.utc)
+        else:
+            session.add(DigestStateRow(
+                name=name, last_sent_cursor=cursor, last_sent_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
