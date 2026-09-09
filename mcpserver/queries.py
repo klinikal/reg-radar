@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from regradar.classification import winning_classification_rows
 from regradar.document import build_frontmatter, frontmatter_to_json_safe
 from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS
+from regradar.changes import decode_cursor, encode_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -766,3 +767,143 @@ def get_health(engine) -> dict:
         db_integrity = "ok" if integrity_flag else "corrupted"
     return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
             "stalled_sources": stalled_sources}
+
+
+_CHANGES_COLUMNS = [
+    "id", "regulator_id", "source_label", "title", "url", "published_at",
+    "fetched_at", "updated_at", "date_inferred", "language", "source_type", "labels", "body_md",
+]
+_CHANGES_SELECT = """
+    SELECT id, regulator_id, source_label, title, url, published_at,
+           fetched_at, COALESCE(updated_at, fetched_at) as updated_at,
+           date_inferred, language, source_type, labels, body_md
+    FROM items
+"""
+
+
+def _documents_for_items(conn, items: list[dict], include_body: bool = False) -> list[dict]:
+    """Shared by get_changes() and get_latest_changes(): turns raw
+    _CHANGES_SELECT item dicts (as returned by _row_to_dict) into
+    frontmatter-shaped documents (architecture doc section 3.2), the same
+    build via regradar.document that get_item() uses - without a taxonomy,
+    so jurisdiction_ancestors/label_provenance are omitted (this is the hot
+    polling path; get_item_tool still has full provenance).
+    """
+    reg_rows = conn.execute(text("SELECT id, name, full_name, jurisdiction FROM regulators")).fetchall()
+    regs = {r[0]: {"name": r[1], "full_name": r[2], "jurisdiction": r[3]} for r in reg_rows}
+
+    artefacts = {}
+    item_ids = [i["id"] for i in items]
+    if item_ids:
+        placeholders = ", ".join(f":aid_{i}" for i in range(len(item_ids)))
+        aparams = {f"aid_{i}": v for i, v in enumerate(item_ids)}
+        arows = conn.execute(
+            text(f"SELECT item_id, path, mime, sha256, bytes FROM item_artefacts WHERE item_id IN ({placeholders})"),
+            aparams,
+        ).fetchall()
+        artefacts = {r[0]: {"path": r[1], "mime": r[2], "sha256": r[3], "bytes": r[4]} for r in arows}
+
+    documents = []
+    for item in items:
+        reg = regs.get(item["regulator_id"], {})
+        doc_item = dict(item)
+        doc_item["regulator_name"] = reg.get("full_name") or reg.get("name") or item["regulator_id"]
+        doc_item["jurisdiction"] = reg.get("jurisdiction")
+        labels = json.loads(item["labels"]) if item.get("labels") else None
+        fm = build_frontmatter(doc_item, artefact=artefacts.get(item["id"]), labels=labels, label_provenance=None)
+        doc = frontmatter_to_json_safe(fm)
+        if include_body:
+            doc["body_md"] = item.get("body_md") or ""
+        documents.append(doc)
+    return documents
+
+
+def get_changes(engine, since: str | None = None, profile=None, limit: int = 100,
+                 include_body: bool = False) -> tuple[list[dict], str | None]:
+    """Everything that changed (architecture doc section 6): items with
+    (updated_at, id) after the opaque cursor `since` (from
+    regradar.changes.encode_cursor), oldest first, id as tiebreak on equal
+    timestamps. Unlike get_items_since(), which only sees fetched_at, this
+    also catches a reclassification or human correction that bumps
+    updated_at without a new fetch.
+
+    The cursor carries the database's own microsecond precision (not the
+    whole-second precision the rendered document's `updated_at` field
+    shows) - item ids are content hashes, not monotonic, so two items
+    updated in the same whole second (routine within one collection run)
+    would otherwise collide on the id tiebreak and one could be silently
+    skipped forever.
+
+    Returns (documents, next_cursor) - documents are frontmatter-shaped
+    (architecture doc section 3.2, the same shape get_item_tool's
+    `document` field has), next_cursor is the cursor of the last document
+    returned, or None if nothing matched (an empty result, or `since` is
+    already at the head of the stream).
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 100
+
+    conditions = []
+    params: dict = {"limit": limit}
+    if since:
+        since_dt, since_id = decode_cursor(since)
+        since_ts = _format_dt(since_dt)
+        conditions.append(
+            "(COALESCE(updated_at, fetched_at) > :since_ts OR "
+            "(COALESCE(updated_at, fetched_at) = :since_ts AND id > :since_id))"
+        )
+        params["since_ts"] = since_ts
+        params["since_id"] = since_id
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    sql = f"""
+        {_CHANGES_SELECT} {where}
+        ORDER BY COALESCE(updated_at, fetched_at) ASC, id ASC
+        LIMIT :limit
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
+        documents = _documents_for_items(conn, items, include_body=include_body)
+
+    next_cursor = None
+    if items:
+        last = items[-1]
+        next_cursor = encode_cursor(last["updated_at"], last["id"])
+    return documents, next_cursor
+
+
+def get_latest_changes(engine, profile=None, limit: int = 50) -> list[dict]:
+    """Most recently changed items (updated_at DESC), newest first -
+    frontmatter-shaped like get_changes(), but not cursor-paginated: this
+    is what GET /feeds/<profile>.atom needs (the newest N entries), which
+    get_changes()'s forward-from-a-cursor pagination isn't built for.
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+
+    conditions = []
+    params: dict = {"limit": limit}
+    if profile is not None:
+        profile_conditions, profile_params = _profile_filter_conditions(profile)
+        conditions.extend(profile_conditions)
+        params.update(profile_params)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    sql = f"""
+        {_CHANGES_SELECT} {where}
+        ORDER BY COALESCE(updated_at, fetched_at) DESC, id DESC
+        LIMIT :limit
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        items = [_row_to_dict(r, _CHANGES_COLUMNS) for r in rows]
+        return _documents_for_items(conn, items, include_body=False)
