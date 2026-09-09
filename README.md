@@ -84,25 +84,49 @@ Every item carries two separate tag lists, kept apart deliberately:
 
 Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliberately excluded from `source_tags` — they used to be stamped on nearly every item from a MiCA-relevant regulator regardless of content, which made them useless for filtering. If you want one of those as a real tag, add it as a keyword rule instead (see below) so it only lands on items that actually mention it.
 
+**Deprecated for one release:** `source_tags`/`content_tags` and the `tags`/`source_tags`/`content_tags` filter parameters keep working against the old columns, but every read path now logs a deprecation warning. Prefer the [classification store](#classification) below — it records *why* a label is there and who/what set it, not just a flat string.
+
+## Classification
+
+Items are classified along **axes** defined in `config/taxonomy.yaml` (currently `document_type`, single-valued, and `instrument`, multi-valued — the specific EU/UK regulation an item concerns). The vocabulary is config, not code: adding a value, or a whole new axis, is a config change, not a code change.
+
+Every classification is written with **provenance** — who or what said it, and how confident it was — to a `classifications` table (`by`: `source_default`, `rule`, `llm:<provider>/<model>`, `human:<name>`, or `import`; a confidence 0.0–1.0; the `taxonomy_version` at write time). Nothing is ever overwritten in place: a reclassification supersedes the old row and adds a new one, so history survives. A human correction (`by: human:*`) always wins over anything automated, permanently, for that axis — an automated reclassification pass can never silently undo one.
+
+`items.labels` is a materialised JSON summary of the current *effective* label per axis (computed by the same precedence logic on every write), kept in sync with a queryable `item_labels(item_id, axis, value)` side table used for filtering — see `search_items_tool`'s `labels` parameter below.
+
+**Jurisdictions** (`config/jurisdictions.yaml`) form a hierarchy — a regulator's jurisdiction has zero or more parents (e.g. every EU member state's parent is `eu`; EEA-EFTA states Norway and Iceland also list `eu` directly). A jurisdiction filter is expanded through its own ancestors before matching: requesting `fr` expands to `{fr, eu}`, so it returns both AMF (`fr`) and ESMA (`eu`) items — a country-level filter also surfaces the supranational regulator that covers it. Requesting `gb` (no parents) matches FCA only.
+
+Re-applying source defaults to existing items after a config change:
+
+```bash
+docker compose exec collector python -m regradar.reclassify reclassify --axis instrument --dry-run
+docker compose exec collector python -m regradar.reclassify reclassify --axis instrument
+```
+
+`--dry-run` reports what would change, including how many live rows on that axis carry an older `taxonomy_version` than the current config, without writing anything. Human corrections are never touched by this or any other automated path. (The rules engine and LLM classifier skill that also write through this same command are a follow-on.)
+
+**Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` in `regulators.yaml` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`); `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better. Both support `--dry-run`.
+
 ## MCP server
 
-The MCP server exposes eleven tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
+The MCP server exposes twelve tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
 
 | Tool | Description |
 |---|---|
-| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails), with AND semantics, quoted-phrase support, and `limit`/`offset` pagination. Filter by `tags` (source + content tags combined), or `source_tags`/`content_tags` individually — see [Tags](#tags) |
+| `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails), with AND semantics, quoted-phrase support, and `limit`/`offset` pagination. Filter by `jurisdictions` (expanded through ancestors) and `labels` (per-axis, e.g. `{"document_type": ["warning"]}`) — see [Classification](#classification). The deprecated `tags`/`source_tags`/`content_tags` filters still work against the old columns for one release |
 | `get_recent_tool` | Most recent N items with optional filters, same `tags`/`source_tags`/`content_tags` options as above |
 | `list_regulators_tool` | Full registry with live fetch status |
 | `get_item_tool` | Single item by ID, including raw content; optional `max_content_chars` to truncate large text and protect context windows |
 | `get_run_log_tool` | Recent collector run stats |
-| `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below |
+| `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below. Deprecated for one release: kept as an alias, prefer `search_items_tool(labels={"document_type": ["warning"]})` |
 | `count_items_tool` | Total count matching a search, without fetching rows — cheaper than `search_items_tool` when only the number matters |
 | `get_month_facets_tool` | Item counts grouped by publish month for a search, for a month-picker style view |
-| `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts — discover valid tag values before filtering by them |
+| `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts. Deprecated for one release: prefer `list_labels_tool` |
+| `list_labels_tool` | Every taxonomy axis (config-driven) with its distinct classified values and item counts — discover valid `labels` values for `search_items_tool` before guessing |
 | `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — the polling primitive for "everything new since my last check" |
 | `get_health_tool` | Most recent collector run's status, freshness, and database integrity (see [Backups & recovery](#backups--recovery)) — check this before trusting search results after a long gap |
 
-**On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
+**On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list. `labels={"document_type": ["warning"]}` reads the classification store instead — a superset that also catches warnings a rule or a human classified on a broad feed, not just items from a feed tagged `warnings` wholesale.
 
 Server endpoint: **`http://localhost:8000/mcp`**.
 
@@ -121,10 +145,10 @@ If you remap the port, also set `MCP_EXTRA_ALLOWED_HOSTS` in `.env` (e.g. `127.0
 
 A minimal, functional list/search/reader view — no build step, server-rendered HTML with a small amount of vanilla JS for filter UX — at **`http://localhost:8080`**:
 
-- **List view** shows collected items, most recent first, 50 per page with pagination. Filters: keyword search (auto-submits as you type), an exact-match toggle, a multi-select regulator panel (searchable by country, abbreviation, or full name, with per-regulator item counts, last-fetch date, and consecutive-failure warnings), and a date range filter. A **By month** sidebar shows publication-month facets for the current query/filter set.
+- **List view** shows collected items, most recent first, 50 per page with pagination. Filters: keyword search (auto-submits as you type), an exact-match toggle, a multi-select regulator panel (searchable by country, abbreviation, or full name, with per-regulator item counts, last-fetch date, and consecutive-failure warnings), a jurisdiction panel (expanded through ancestors, same semantics as `search_items_tool`'s `jurisdictions` — see [Classification](#classification)), and a date range filter. A **By month** sidebar shows publication-month facets for the current query/filter set.
 - **Search syntax:** unquoted words are AND-ed (`bafin fines` matches items containing both, in either order); `+` behaves the same as a space (`bafin+fines`); wrap a phrase in quotes for adjacency (`"administrative fines"` only matches that exact phrase, not the two words scattered separately); check "exact match" to treat the entire query box as one literal phrase. Search uses the same FTS5 index as the MCP server (title, snippet, and full scraped text).
-- **Reader view** (click any title) strips the item down to title, regulator, date, source and content tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source.
-- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, and `/api/months` — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
+- **Reader view** (click any title) strips the item down to title, regulator, date, source and content tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source. A minimal classification form lets you set `document_type` and add/remove `instrument` values by hand — it writes through the same `write_classification()` path as everything else, as a `human:*` correction that always wins over anything automated for that axis.
+- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, `/api/months`, and `POST /api/items/{id}/classifications` (body: `{"axis", "value", "by", "confidence"?, "classifier_id"?, "remove"?}` — the same write path the reader view's form uses; `by` should be `human:<name>` for a genuine human correction) — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
 
 This is intentionally plain — a functional first pass, not a finished design. The query/data layer (`mcpserver/queries.py`) is decoupled from presentation, so upgrading the look (or swapping in a JS frontend against the JSON API) later doesn't require touching how data is fetched or filtered.
 
@@ -181,6 +205,8 @@ Copy `.env.example` to `.env` and adjust:
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
 | `REGULATORS_PATH` | `/app/config/regulators.yaml` | Regulator registry file |
+| `TAXONOMY_PATH` | `/app/config/taxonomy.yaml` | Classification axis/value vocabulary — see [Classification](#classification) |
+| `JURISDICTIONS_PATH` | `/app/config/jurisdictions.yaml` | Jurisdiction hierarchy |
 | `ALERTS_PATH` | `/app/config/alerts.yaml` | Keyword-to-tag rules file (optional — see below) |
 | `FLARESOLVERR_URL` | `http://flaresolverr:8191` | FlareSolverr service URL; leave blank to disable (Cloudflare-protected sources are then skipped) |
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
