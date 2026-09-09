@@ -3,11 +3,14 @@ blanket-applied structural list) to `labels` (architecture doc §4.3), and
 lower-cases `jurisdiction` on both the regulators and their DB rows (`UK`
 becomes `gb` specifically - everything else is a straight lower-case).
 
-Rewrites config/regulators.yaml in place using ruamel.yaml's round-trip
-loader so comments and formatting survive - the `notes` fields are the
-documentation of why sources are configured as they are, and this is the
-one script in the repo allowed to depend on ruamel.yaml for that reason
-(see collector/requirements.txt).
+Rewrites the given --regulators-path file in place using ruamel.yaml's
+round-trip loader so comments and formatting survive - the `notes` fields
+are the documentation of why sources are configured as they are, and this
+is the one script in the repo allowed to depend on ruamel.yaml for that
+reason (see collector/requirements.txt). Predates the config/regulators/
+per-jurisdiction split - point it at one file at a time (e.g.
+config/regulators/mt.yaml); it's a completed migration, already-migrated
+files are a no-op.
 
 Mapping decisions (architecture doc §4.7):
 - `tags` containing "warnings"/"page_watch"/"press_releases"/"news" get a
@@ -212,7 +215,16 @@ def run(regulators_path: str, db_path: str, dry_run: bool) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Compute and print the decision table but write nothing")
-    parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators.yaml"))
+    # Registry-split note: this migration predates config/regulators/ (one
+    # file per jurisdiction) and only ever rewrites a single file in place -
+    # no directory-aware default is offered here (silently guessing one
+    # file out of 30+ would be wrong), so a stale REGULATORS_PATH env var
+    # left over from before the split doesn't get picked up here.
+    parser.add_argument(
+        "--regulators-path", required=True,
+        help="path to ONE regulators YAML file to migrate in place, e.g. config/regulators/mt.yaml "
+             "(this is a completed, one-off migration - already-migrated files are a no-op, not an error)",
+    )
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "data/regradar.db"))
     args = parser.parse_args()
     run(args.regulators_path, args.db_path, args.dry_run)

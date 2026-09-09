@@ -32,7 +32,7 @@ jobs:
 
       - name: Run source health check
         env:
-          REGULATORS_PATH: config/regulators.yaml
+          REGULATORS_PATH: config/regulators
           FLARESOLVERR_URL: http://localhost:8191
           USER_AGENT: "regradar/2.0 (+https://github.com/klinikal/regradar)"
           GH_TOKEN: ${{ github.token }}
