@@ -279,3 +279,63 @@ def supersede_axis(engine, item_id: str, axis: str, by: str | None = None) -> in
         result = conn.execute(text(f"UPDATE classifications SET superseded_at=:now WHERE {conditions}"), params)
         conn.commit()
         return result.rowcount
+
+
+MAX_BATCH_SIZE = 100
+
+
+def classify_batch(engine, taxonomy, classifications: list) -> dict:
+    """Batch write interface (docs/issues/04-rules-engine-write-interface
+    -llm-classifier-skill.md): validates every entry against the current
+    taxonomy before writing any of them, so one bad entry in a large batch
+    (e.g. an agent working through 100 unclassified items) never loses the
+    rest. Returns {"written": [item_id, ...], "errors": [{"index", "item_id",
+    "error"}, ...]} - `written` lists item_ids for entries that were
+    validated and written (each via write_classification(), so the same
+    provenance-supersession rules apply); `errors` covers every entry that
+    failed validation, by its position in the input list.
+
+    Each entry is a dict: {"item_id", "axis", "value", "by",
+    "confidence"?: float (default 1.0), "classifier_id"?: str}.
+
+    Raises ValueError if `classifications` has more than MAX_BATCH_SIZE (100)
+    entries - a caller-side mistake (e.g. dumping an unpaged query straight
+    in), not a per-entry validation problem, so it fails the whole call
+    rather than producing 100+ per-entry errors.
+    """
+    if len(classifications) > MAX_BATCH_SIZE:
+        raise ValueError(f"batch of {len(classifications)} exceeds the {MAX_BATCH_SIZE}-entry limit")
+
+    validated = []
+    errors = []
+    for i, entry in enumerate(classifications):
+        item_id = entry.get("item_id")
+        axis = entry.get("axis")
+        value = entry.get("value")
+        by = entry.get("by")
+        if not item_id or not axis or not value or not by:
+            errors.append({"index": i, "item_id": item_id, "error": "item_id, axis, value and by are all required"})
+            continue
+        if axis not in taxonomy.axes():
+            errors.append({"index": i, "item_id": item_id, "error": f"unknown axis {axis!r}"})
+            continue
+        if not taxonomy.is_valid(axis, value):
+            errors.append({"index": i, "item_id": item_id, "error": f"unknown value {value!r} for axis {axis!r}"})
+            continue
+        try:
+            confidence = float(entry.get("confidence", 1.0))
+        except (TypeError, ValueError):
+            errors.append({"index": i, "item_id": item_id, "error": "confidence must be a number"})
+            continue
+        if not (0.0 <= confidence <= 1.0):
+            errors.append({"index": i, "item_id": item_id, "error": "confidence must be between 0.0 and 1.0"})
+            continue
+        validated.append((item_id, axis, value, by, confidence, entry.get("classifier_id")))
+
+    written = []
+    for item_id, axis, value, by, confidence, classifier_id in validated:
+        write_classification(engine, taxonomy, item_id, axis, value, by=by, confidence=confidence,
+                              classifier_id=classifier_id)
+        written.append(item_id)
+
+    return {"written": written, "errors": errors}

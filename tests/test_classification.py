@@ -261,3 +261,63 @@ def test_import_classification_bypasses_validation_and_is_inert_for_unknown_valu
         ).scalar()
     # ...but the historical row itself is preserved.
     assert count == 1
+
+
+# --- classify_batch (docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md) ---
+
+def test_classify_batch_writes_valid_entries_and_reports_invalid():
+    from regradar.classification import classify_batch
+    engine = _engine()
+    _insert_item(engine, "i1")
+    _insert_item(engine, "i2")
+    taxonomy = _make_taxonomy()
+
+    result = classify_batch(engine, taxonomy, [
+        {"item_id": "i1", "axis": "document_type", "value": "warning", "by": "human:alice"},
+        {"item_id": "i2", "axis": "document_type", "value": "press_release", "by": "human:alice"},
+        {"item_id": "i1", "axis": "document_type", "value": "not-a-real-value", "by": "human:alice"},
+    ])
+
+    assert sorted(result["written"]) == ["i1", "i2"]
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["index"] == 2
+
+    with engine.connect() as conn:
+        from sqlalchemy import text as sa_text
+        rows = conn.execute(sa_text(
+            "SELECT item_id, value FROM classifications WHERE superseded_at IS NULL ORDER BY item_id"
+        )).fetchall()
+    assert [(r[0], r[1]) for r in rows] == [("i1", "warning"), ("i2", "press_release")]
+
+
+def test_classify_batch_rejects_missing_required_fields():
+    from regradar.classification import classify_batch
+    engine = _engine()
+    _insert_item(engine, "i1")
+    taxonomy = _make_taxonomy()
+
+    result = classify_batch(engine, taxonomy, [{"item_id": "i1", "axis": "document_type", "value": "warning"}])
+    assert result["written"] == []
+    assert "by" in result["errors"][0]["error"] or "required" in result["errors"][0]["error"]
+
+
+def test_classify_batch_rejects_out_of_range_confidence():
+    from regradar.classification import classify_batch
+    engine = _engine()
+    _insert_item(engine, "i1")
+    taxonomy = _make_taxonomy()
+
+    result = classify_batch(engine, taxonomy, [
+        {"item_id": "i1", "axis": "document_type", "value": "warning", "by": "human:alice", "confidence": 1.5},
+    ])
+    assert result["written"] == []
+    assert len(result["errors"]) == 1
+
+
+def test_classify_batch_over_max_size_raises():
+    from regradar.classification import MAX_BATCH_SIZE, classify_batch
+    engine = _engine()
+    taxonomy = _make_taxonomy()
+    entries = [{"item_id": "i", "axis": "document_type", "value": "warning", "by": "rule"}] * (MAX_BATCH_SIZE + 1)
+    with pytest.raises(ValueError):
+        classify_batch(engine, taxonomy, entries)
