@@ -1,0 +1,138 @@
+item_id,axis,expected_value,title,regulator_id
+ff26513c3bf48c23fbf9b59bf266ca6ad68c17b7695045785520e3dae5fe645e,document_type,warning,The FMA warns about offerings by Evolve Asia,at-fma
+55940be3ea16f3cdfc0f1239a9f66cf66f702c67b9a36d8f097072fcb69e49ad,document_type,enforcement,Announcement: FMA imposes sanction on Liechtensteinische Landesbank (Österreich) AG for breaches of organisational rules,at-fma
+8f277e57dc1e686a6eb82bfcf029801400c215099affe28e943f3a848fb88eaa,document_type,warning,FMA warns against offerings by GBM Global Inc. (“BitMart”),at-fma
+f413b918fa4354024a083fa6cd833e68235dcf9f8f093e1e9f8d957b38d5ee85,document_type,enforcement,Announcement: FMA imposes sanction against Pierer Industrie AG for breaches of the Börsegesetz 2018,at-fma
+38695cc9c8057383c030477c52a4ae3eb78fa4426ba95d8431065f872a9033a5,document_type,press_release,Press release on the reopening of trading in Banque nationale de Belgique/Nationale bank van België (BNB/NBB),be-fsma
+224e3c2eaabe6a2cd3e2ce9f16dbdba7e7e4e440f8ea322b203ce10e08191cd6,document_type,press_release,Press release on the suspension of trading in Banque nationale de Belgique/Nationale bank van België (BNB/NBB),be-fsma
+31ab8e4415557433afef1fe57529e411d7a142cf2ebf6ff8be0357030fc0f499,document_type,press_release,Newsletter for insurance intermediaries: assessment of the level of AML/CFT expertise and knowledge of AMLCOs,be-fsma
+31ab8e4415557433afef1fe57529e411d7a142cf2ebf6ff8be0357030fc0f499,instrument,amld,Newsletter for insurance intermediaries: assessment of the level of AML/CFT expertise and knowledge of AMLCOs,be-fsma
+0dc9052c3a4bc99780abf1bbf337b03e04a6d4e78677d4b67085ca90a37ddba0,document_type,warning,The FSMA warns the public once again against dubious WhatsApp groups,be-fsma
+32f259897e5be84fc9890c24ed594c0b7632ca4d94abb6f8bb14dbbfd540b7ee,document_type,warning,Fraudulent trading platforms: don’t trust fake press articles,be-fsma
+f2d379faba4fe4fbd381abd7404813afc3efab9cad669c066d142cfbc724c30a,document_type,warning,Warning regarding unregulated entities,cy-cysec
+f6f58195e97c275ec0907fbfd5097e4cc690a2fbdcf05754a372a55ced911175,document_type,press_release,Press Release - CySEC welcomes ESMA’s follow-up Peer Review Report on the supervision of cross-border activities of investment firms,cy-cysec
+8de6a8094e11e1a0fc67e317f46c29ad97f6de96e5e0c878c076efea94388908,document_type,enforcement,Dissolution and liquidation of THREE LIONS REAL ESTATE RAIF V.C.I.C. PUBLIC LTD,cy-cysec
+743fded1b9040903e50282d18307cb994b4feef362219b6731e7e7d9a47eb346,document_type,warning,Announcement on the end of the MiCA Regulation transitional period and warning to the public,cy-cysec
+743fded1b9040903e50282d18307cb994b4feef362219b6731e7e7d9a47eb346,instrument,mica,Announcement on the end of the MiCA Regulation transitional period and warning to the public,cy-cysec
+6c10293f136ebde5b556a4162fc65f2fd6ada9640f96f3e0213a0c39bec1e662,instrument,mica,MiCA: CNB grants crypto licences to 11 entities,cz-cnb
+cb3d7d0faaaf7b63f82b9f1544e4998be595a82efbb34f7c12edd7d1db7443f3,document_type,warning,msdplatform(.)com: Bafin warns consumers about website,de-bafin
+dffc7c04b8091d7704ca62a93a8ebe63270cca7577bde2d7c71d94a39e627623,document_type,enforcement,Publication of financial reports: Federal Office of Justice imposes disciplinary fine on H2 Core AG,de-bafin
+93bc75e104f28f8eeaca7b64948c705ba396bdb1faee95ab5ebe360d6dc3b68e,document_type,warning,rollincapital(.)com: Bafin warns consumers about website,de-bafin
+968a5a9164e11f48d881fa7a7ead4b46ad8d513bcbc434af0c8f36e0b9c4f901,document_type,warning,Operation Hope AI und Vexorylax: Bafin warns consumers about WhatsApp groups used in a case of identity fraud,de-bafin
+01f1cc9a2554f7f2c8604b17c42f62bacc167e5b741bed78f6ca63a1e9f77ef6,document_type,warning,rheinbridge(.)capital: Bafin warns about website,de-bafin
+1dfb16e326b218dc833ea1f890d82293746ead6116fca99d325eaddc6f80e28f,document_type,enforcement,pferdewetten.de AG: Bafin imposes administrative fine,de-bafin
+2c121f61aad7080d745b15fb80633853b4ba598ecbba2288e23729361e2f6771,document_type,enforcement,Effecta GmbH: Bafin imposes administrative fine,de-bafin
+be523678ba571fcce708beeb2a4556a1fbf857dc4ab1bcfe815fbaf029df62bb,document_type,enforcement,Companisto Trust Service XXXV UG (haftungsbeschränkt): Bafin imposes administrative fine,de-bafin
+237eedd08f30ba86ce0f510eb054c1f62e0bcf7a185fee900c8eb86796569761,document_type,enforcement,Galldium Immobilien Fünfte GmbH: Bafin prohibits the public offering of participation certificates issued by AMAGVIK Int. AG,de-bafin
+a32319a506ea39d84804c409bfc373c40240da53e19cc944d45427bf0c7cd06e,document_type,enforcement,Leo International Precision Health AG: Bafin imposes administrative fines,de-bafin
+42130f6a6879ede9780b46e04176ad2000382e0e1a947dc5113b4048af8096c4,document_type,enforcement,Violation of the Market Abuse Regulation: Bafin imposes administrative fines for market manipulation,de-bafin
+bc11ac5c7a16e6a37e325123df710b9f1906a57d2238f6d08628d68b474aa329,document_type,enforcement,a.i.s. AG: Bafin imposes administrative fine,de-bafin
+8e44c7fa906ed65def093621b8f8e2a66786125561cd145250c893e2ab6e2e5f,document_type,warning,Advertencias de la CNMV de entidades no registradas,es-cnmv
+023cc26af05c889edbcb0435076b3d23a07a704d6cd2f3182258db7ce5843452,document_type,warning,Warnings on unregistered institutions in international supervisors,es-cnmv
+1b7b6c57c8a3ded3d9586c1c0418d8490ba788a36283b1371507df02df92cd2d,document_type,warning,Warnings from CNMV on unregistered institutions,es-cnmv
+0c2b7343c408e930226e780dfb0e6720c01a22eb17c7837adcf94e7d32a61af7,document_type,speech,Consolidated financial statement of the Eurosystem as at 4 September 2026,es-bde
+87fd5e6b533ed6a5ab054cef4c0342bda36b9b1bc601e79120b4720bcd70d575,document_type,speech,Consolidated financial  statement of the Eurosystem as at 28 August 2026,es-bde
+ba0a5ff378be54051c6924d1b869c423acd1e4ea9059b40fca1fe02914cb4bcd,document_type,consultation,ESMA consults on disclosure requirements and updates guidelines and Q&As under the Prospectus Regulation,esma
+ba0a5ff378be54051c6924d1b869c423acd1e4ea9059b40fca1fe02914cb4bcd,instrument,prospectus_regulation,ESMA consults on disclosure requirements and updates guidelines and Q&As under the Prospectus Regulation,esma
+9ea611680bc45bd3bd449caebb3d9d2ad5698763b1a107695d7e19f5128edfdc,document_type,press_release,ESMA signs Memorandum of Understanding with the Securities and Exchange Board of India,esma
+1b47b12772f42fffc529cc7716ffa578f71e5482e76b2bd3015d345d5da7dcaa,document_type,consultation,ESMA consults on reporting framework for clearing activity at recognised third-country CCPs,esma
+c08c0edffc1e26691229923753b7feaf669511a213c1106eeb79a384c3ddebe0,document_type,final_guidance,Overview of changes made to the Prospectus Q&As,esma
+f5a92c2636117e374749ee31a10b3921cf40f0a8d0cab8b401d4a216893a9250,document_type,final_guidance,Final Report on the update to the RTS concerning key financial information in the summary of a prospectus,esma
+37be5d95047a5b78260a39be4311d5d625a43c02413b1c1aff14c7199b08ecf4,document_type,final_guidance,Final Report on the Guidelines on supplements which introduce new securities to a base prospectus,esma
+fff0ca4ad6d0c2c10c18fbba22c49076c8294e2ea553ccf165d87e0f3beabe49,document_type,consultation,Consultation Paper on the update to the Guidelines on disclosure requirements under the Prospectus Regulation,esma
+fff0ca4ad6d0c2c10c18fbba22c49076c8294e2ea553ccf165d87e0f3beabe49,instrument,prospectus_regulation,Consultation Paper on the update to the Guidelines on disclosure requirements under the Prospectus Regulation,esma
+75d6777859026478823bc35774cac0a19e22b2f6bc2edecd657d7f5c8fe1478a,document_type,speech,Statement on Significant benchmarks notified under Article 24(2) of the Benchmark Regulation - SIX Index AG,esma
+0043cec08e094220ec058faba1af226f376d0bcc7962a18fe1aac851b88f6817,document_type,press_release,Press Release: AMLA finalises common formats for FIU cooperation and reporting to the EPPO,amla
+3c2740d0c1fe61bc18f8ef7f3bb8f688142984fc80e8c5503f62d2afdcb663ef,document_type,press_release,Press Release: AMLA finalises standards for supervisory cooperation in direct supervision,amla
+ef9054140bbddaa5c7fc34901a534f14739b89ba957fe9f69fe72f7d2f6ba346,document_type,consultation,Consultation on the draft RTS on cross-border information exchange between Financial Intelligence Units,amla
+e791cbd877a2132159394fab273d5037a344daec4a84c3c1bcc34f049440372f,document_type,consultation,Consultation on the draft RTS on the assessment of the inherent and residual risk profile of obliged entities in the non-financial sector,amla
+b04706f18d0e580b9e42b44fd2ba50fbfef2542f80b12262b7b0eb7995233712,document_type,consultation,Consultation on the draft ITS on the format for reporting suspicions and providing transaction records,amla
+5a0ddeb1042407c928f595ba610af637564bd2aa666c5bbb596c20b5752d4409,document_type,consultation,Consultation on the draft Guidelines on ongoing monitoring of a business relationship,amla
+aebf4ff4b5a9db6c5a4f002aca44923037c0fe05fb9e9aacebc7903f28c4cb92,document_type,consultation,Consultation on the draft Guidelines on business-wide risk assessment,amla
+7b42c50c8c0686f5a67d905c2d128a8e1a74dc43de53e56c6262a70b26084c3e,document_type,consultation,Consultation on the draft RTS on group-wide minimum requirements and additional measures for subsidiaries and branches in third countries,amla
+5569ad22ba112cf92bd485dd13b055ae9dd7deae048ed1803cce5dcc9e50a06d,document_type,technical_standard,The EBA responds to the European Commission’s non-adoption of draft amending technical standards on prior permission,eba
+1c0adf821d28caaaca5097c28e750975929b363be631f906da1e631471ef4878,document_type,consultation,​The EBA consults on draft technical standards on institutions’ operational risk management,eba
+5ec2dbad9b12e0dc72316a95cb7353868325612092acfc11b32a147e650afbce,document_type,consultation,The EBA consults on revised technical standards for the reclassification of investment firms as credit institutions,eba
+59d6f9587af3bc458964dd2da2ac8d27f420a0a4a54a59dd94abe6cb51824d39,document_type,consultation,​The EBA consults on reporting framework for validation and monitoring of ISDA Standard Initial Margin Model,eba
+946371b2bf3bc141c738e839287703c25870b5a5fc5a93eab189242f267ac50e,document_type,warning,ESAs factsheets on crypto scams and AI-assisted online financial scams,eiopa
+51a458d2584e6217448fa56953655ea388d495b73c0bd5d80b3aff068324077a,document_type,warning,Warning to the travel insurance industry,eiopa
+67d75445a28cd09ad04a9dceab10754312f7b2e71aa53c91f9adc2f2c5911112,document_type,warning,The AMF warns retail investors about the growing number of scams involving fake news articles promoting the merits of pseudo get-rich-quick opportunities,fr-amf
+dbb36400729f512f3358948fb2219cd43737085a014137dbc33bcce142ebb0ba,document_type,warning,Crypto-assets: the Autorité des Marchés Financiers warns the public about the activities of several unauthorized entities,fr-amf
+4ce513a1dfb764aefa9dcbdaaa4d8bf4026fcd4b2b59681b13f6a61e676fd6b7,document_type,warning,The AMF and the ACPR warn the public against several entities offering in France investments in the unregulated foreign exchange market (Forex) and in crypto-assets derivatives without being authorized to do so,fr-amf
+cc4cd141b0a5f5afa20b5d59954a3b6594f5b7f526cf8dcf066e62156359ecab,document_type,warning,The AMF is warning the public against several entities proposing to invest in miscellaneous assets without being authorized to do so,fr-amf
+795b2836b78572fba44c5581c8557b104f3dd355c59d28a516271c9173ed5b8e,document_type,press_release,The AMF and ACPR Joint Unit publishes its 2025 annual report,fr-amf
+610d08df171b24691f107092b977da30e744e056ba712bd9b4bb55c8f2d6a712,document_type,enforcement,The AMF Enforcement Committee fines a financial investment advisor and its two directors for breaches of their professional obligations,fr-amf
+c4af84b7d5f654b78dab3df8eeb78003ee3015b413f4db1ccbd46b0cc472a48f,document_type,enforcement,The AMF Enforcement Committee has fined an asset management company and two of its directors for breaches of their professional obligations and cleared two other directors,fr-amf
+faf07071f48ecab0bc2c16d40545cc55679a843f07523d90bca5b00017841ceb,instrument,ucits,UCITS and AIF depositaries guide,fr-amf
+eb1cc93df6d04e276bacbb44ba136e8fb737a9858bf69ba131b9e2a2e2dfdb60,document_type,press_release,2025 AMF Annual Report,fr-amf
+819d92a46f8637ff20f1f4aae618f413474feed9d252546cedcfc203de2b53a6,document_type,final_guidance,ESMA's guidelines for the criteria on the assessment of knowledge and competence under the markets in crypto assets regulation - DOC-2026-03,fr-amf
+d0c0965c1b52a03e4d6d6d4742d52a61bc3700ad71c9fe14fe31b64124f8e3ad,document_type,final_guidance,"EBA guidelines on internal policies, procedures and controls to ensure implementation of restrictive measures - DOC-2025-02",fr-amf
+447d49a0ec9b19cfe2f744e18dd09dd8893fd77f1bf7dfd91935e7320ba3082f,document_type,consultation,AMF response to the European Commission’s consultation on the review of the Shareholder Rights Directive (SRD),fr-amf
+74bec74e5e9c739a40f70b945ba0dbf0b7a81bf32d7215aaef106b7a2c805079,document_type,warning,FCA decides to ban and fine Daniel Thomas over unauthorised pension transfer advice,uk-fca
+de960a895058d60e684ede03d807fe40fb6c8b1c2fcc3f993ce797bd15f9fa31,document_type,enforcement,FCA bans trio behind £35.5m scheme designed to bypass visa rules,uk-fca
+1e30099a80035b45f5fd67add05100cf56683941e12afaf8ade613ad4219eff3,document_type,warning,Consumers warned to beware of risky mini-bonds and loan notes,uk-fca
+98d8c308516a4f48c9203c425fba33f3b4eba7be3b5a75298a932b0e2d734542,document_type,warning,nevexglobal (clone of FCA Recognised fund) (new),uk-fca
+d73565af2dfc962956c9e1eeeefa1eb22e64fb149038ce60609ba36722bfc3a7,document_type,enforcement,Notice of Decision to Cancel 2026: HR Bank Limited[pdf],uk-fca
+06589a0cc8298dd25c12731795454391010718ac35b056678979f6e8c7291c13,document_type,enforcement,Decision Notice 2026: Daniel Philip Thomas[pdf],uk-fca
+a4b35e59400bb6c0566bb6426d167c5b1e107a922da5585fdd26796af914e653,document_type,enforcement,Decision Notice 2026: Anthony George[pdf],uk-fca
+f8025f2590294fb32f2cb3f2a5d09650b535da8104fdd4f874e6dde870299c56,document_type,enforcement,Final Notice 2026: JS Motors[pdf],uk-fca
+a2c75016b27522dd0a7af86cf1c600eb0a44269b8b8cae222af3b6bf1aedcda7,document_type,consultation,CP26/32: Quarterly consultation paper No. 53[pdf],uk-fca
+138044b221b4d643b08359d243b7dd5e057fdea375e27c6c1bf40ce2f79f1bc6,document_type,consultation,CP26/32: Quarterly consultation paper No. 53,uk-fca
+daeced2cd9c535976740d73927d5592b9a4493b3fa72f28cc64fb77077b42d07,document_type,press_release,Press Release HCMC Symposium 2026,gr-hcmc
+4bf11e5051f477632a631f5d9b5b080ea376494fd1ac6094f06fa4b9b22e112e,document_type,press_release,HCMC BoD's Press Release 1101/04 09 2026,gr-hcmc
+39ec4fe2d70d7d24c684279528e91f85515a8b60fdf0ddef358ac5fb47364ad1,document_type,press_release,HCMC BoD's Press Release 1100/02 09 2026,gr-hcmc
+54aafea90ebc3cefb35001b3602e015ee3c87525b70858ff6fac9bcde731256b,document_type,press_release,Press Release Signing of a Memorandum of Understanding between the Hellenic Capital Market Commission (HCMC) and the University of West Attica (UniWA),gr-hcmc
+22c0e9f9857315e3fb3bf07435575c2abab6435ad8708157d51a590868732377,document_type,press_release,HCMC BoD's Press Release 1097/30 07 2026,gr-hcmc
+d95ed4dcd4009726d4e5289d857c970b7fe2ac424c69646d17686accb398e84f,document_type,press_release,HCMC BoD's Press Release 1096/22.7.2026,gr-hcmc
+46cf0fce795b8f0f45a2c84980757dc7e03fe320e8ee6ffface8805ec5873c7c,document_type,press_release,Dubrovnik hosts international conference on the future of European capital markets,hr-hanfa
+d7f89629388bbafd5e1fc12d1d29799601372e45bab502abc0b0be6389fdbd8a,document_type,warning,Warning about the fraudulent website frozenspirety.info,hr-hanfa
+c66de2aef0b6916905c8fef97a19b10cc634a5ab6e4bc5d7e0551d0bdfee0cbb,document_type,warning,CFD Markets: Penalty of HUF 90 million for unauthorised intermediation,hu-mnb
+ee311150408eeff1104d6792ad0e59c165ed9eb5ebc4dae43acbd3b731efee11,document_type,press_release,Press release on the Monetary Council meeting of 26 January 2021,hu-mnb
+19fbe4947c3130fbd7981ce89094f0c5b4aa8a184930db379d15c23a21bbf5c6,document_type,technical_standard,EBA publishes final draft technical standards to identify investment firms’ risk takers and to specify the instruments used for the purposes of variable remuneration,hu-mnb
+734f08009954298e49fc20f33ed4552a83f40f20f759b6fac328fed34c5c0da8,document_type,technical_standard,ESAs publish final draft ITS on reporting templates for intra-group transactions and risk concentration under FICOD,hu-mnb
+c1f39eda3bc230d203aee97366955f4590596589d27b392026eb669cbd928631,document_type,press_release,EIOPA publishes annual report on the use of capital add-ons under Solvency II,hu-mnb
+fb868f43170fff427716fbe95afb2a58b2dcc05beb4fb21815b8f7652c3af5ee,document_type,speech,ESMA publishes statement on MiFIR open access and COVID-19,hu-mnb
+fb868f43170fff427716fbe95afb2a58b2dcc05beb4fb21815b8f7652c3af5ee,instrument,mifid2,ESMA publishes statement on MiFIR open access and COVID-19,hu-mnb
+59233f86872b267ca8e066d32a72e27d26c7f634308a235f1b84b45ccf46f8af,document_type,warning,Personal Financing - Central Bank of Ireland Issues Warning on Unauthorised Firm,ie-cbi
+91e4a010278d18c1c1f1516ea41159c14a369ec77a5e9b8fcadd56201b494433,document_type,warning,DAVY Unlimited (CLONE) - Central Bank of Ireland Issues Warning on Unauthorised Firm,ie-cbi
+67182c0bc36dcdea2eaa3f2d3bcd9626d4df9527b882200274a405d185d87b98,document_type,warning,Carrowmore Financial Services (CLONE) - Central Bank of Ireland Issues Warning on Unauthorised Firm,ie-cbi
+06ff7c80bf726c84042c313703d1222b34e4fa678a13286b18209fedff79cc2e,document_type,warning,Atlas Group AG (CLONE) - Central Bank of Ireland Issues Warning on Unauthorised Firm,ie-cbi
+e2b108983a5caf34ccac469e07ef84d5626561053f2a2fd472f854b4c93e9b6e,document_type,warning,Vinvory Capital - Central Bank of Ireland Issues Warning on Unauthorised Firm,ie-cbi
+adcae5a178d3ee5e118cef411f5d46e6cdcc99b70789c32a37d7f882d5abf42e,document_type,speech,Statement of the Monetary Policy Committee August 19 2026,is-cb
+73053ad53d42c00a37662948f49b9d0578a617241d98217c078291db748ed108,document_type,press_release,Webcast: Statement of the Monetary Policy Committee August 19th 2026,is-cb
+6f3c38363feb85d0e75ad50c2d88438cb3e30b227e1e88b8421b99b792adce41,document_type,warning,Warning concerning fraudulent activities by persons misusing the name of Quintet Private Bank (Europe) S.A.,lu-cssf
+d68030132ca44cc0fb9df13b0168bbf810915c2a92e1597ec27669324cfd47fa,document_type,warning,Warning concerning fraudulent activities by persons misusing the name of ADEPA ASSET MANAGEMENT S.A.,lu-cssf
+26584b3bced8102f5be8984f65bd9292b1c699b64931075087849d9b3cae7c0c,document_type,warning,Warning concerning fraudulent activities by persons misusing the name of DAC Investments S.à r.l.,lu-cssf
+46e088583f01abbc93c19b7cf5beeb68396b475dbd68fba4fcc39eeeb3e45fab,document_type,enforcement,Surrender of Licence by Meridon Funds SICAV plc,mt-mfsa
+e90b311aa2183794ed66f3011fbf3a324821dac8d61c09ff3b248b02d8ce528a,instrument,mifid2,ESMA Presents the Results of the Common Supervisory Action on MiFID II Sustainability Aspects,mt-mfsa
+805608632f20fb295a7e86cbe3df53025a34efd7d7fe54403a8837d19e11f686,document_type,speech,ESMA Issues Public Statement on the Application of National Product Intervention Measures on Binary Options to Event Contracts,mt-mfsa
+b7265d6c5ce2b35a557f50e7bcbc6b0010fb723800a7cf136465c96fbdffa78f,document_type,speech,Circular on ESMA Public Statement Identifying Derivatives within the Scope of CFDs National Product Intervention Measures,mt-mfsa
+7426c789235aecd7edf5b7bcee18b4cdcab7c0fa1c0a0d855025cf8635c170ef,instrument,mica,Circular to the Industry on the Authorisation Process for MiCA Applicants,mt-mfsa
+4f66c1ff75c05dbbe15a1b5ad319e04181fa8dc280981db1654531b80fb1cc98,instrument,mica,Circular on the Publication of the Markets in Crypto-Assets Act and Other Relevant Legal Instruments,mt-mfsa
+b3646c6e806214468a32ce788387d24b9c1b5cc87e78217cb6e0f3e593ca2332,instrument,dora,General Observations on Digital Operational Resilience in Authorisation Applications Received in 2025,mt-mfsa
+765cb4dc024a9e7199e3f872b0dd2bd11071e24fe934e335284fb12bdea84c90,document_type,final_guidance,MFSA Releases its Guidance Supporting the Development of Codes of Conduct by Financial Entities and TLPT Providers in Line with Regulation (EU) 2022/2554 for the carrying out of Threat-Led Penetration Testing,mt-mfsa
+d2ad83952556b4dc45eb4540b28450b21c95d6e31744f9f93dd84f4bf447efdf,document_type,register_update,Regulation (EU) 2022/2554 on Digital Operational Resilience for the Financial Sector – Register of Information Additional Data Quality Checks | Year 2026,mt-mfsa
+d2ad83952556b4dc45eb4540b28450b21c95d6e31744f9f93dd84f4bf447efdf,instrument,dora,Regulation (EU) 2022/2554 on Digital Operational Resilience for the Financial Sector – Register of Information Additional Data Quality Checks | Year 2026,mt-mfsa
+2cb169d985ef90c8dc094d0877c95284034369f525e998de144d2c868df0f5ef,document_type,press_release,Invitation to the MFSA Conference – FinTech 2030: Shaping the Next Era of Financial Services,mt-mfsa
+80f15f9526ec4c894245796d4283a00e413fa0a2f460c3d54ed4dec95c6a5b13,instrument,mifid2,Outcome-Based Supervision: Questionnaire issued by the Authority to firms which fall within the scope of Transaction Reporting Obligation Article 26 of Markets in Financial Instruments Regulation (EU) No 600/2014 (‘MiFIR’) and the accompanying Markets in Financial Instruments Directive 2014/65/EU (‘MiFID II’),mt-mfsa
+bb3fe5e084ec8b01f80cb4358a41dc438250ed45b75eac4c7dcc57b42b4c1e97,instrument,mica,VFA Licence and Transition to CASP under the Markets in Crypto-Assets Act (“MiCA Act”),mt-mfsa
+88ca1c8d0d926363f2b2451f0f9d2738599ecfb3d2063703c6423519913bbf33,document_type,enforcement,Surrender of Licence by CC Funds SICAV plc,mt-mfsa
+d9cb1e2584c0cf94066c6df89e5247b45db266fbd33645603d5b1fc00cc9b5b7,document_type,enforcement,Removal from List of NPIFs by Wenger Capital SICAV plc,mt-mfsa
+a1db029de3f7b8b3c857fc9526e1a91b39af75e5cd5e1b00bb878f62c5bb594f,document_type,enforcement,Surrender of Licence by Triton Capital Markets Ltd,mt-mfsa
+8c1dd1fd53affc9dfed04b247fbda6832f6ffc407cf41b62ae100b5dd3e5c1fb,document_type,enforcement,Removal from List of NAIFs by MDC Astrolabe SICAV plc,mt-mfsa
+34e4baafe5e23bb16754187dc1e19ea7cdaa201a6dff039aed2e29343d2e28a6,document_type,consultation,Feedback Statement on the Consultation Document on the Minimum Free Float Percentage,mt-mfsa
+867a4553ca8489b64d7804316948e47e823310d61cc39b70574bd56501db5c0f,document_type,final_guidance,"Feedback Statement on Revisiting the Capital Markets Rules applicable to the Institutional Financial Securities Market, including the Introduction of Specific Provisions on Sukuk",mt-mfsa
+3d88996068ef96990e662d9333010377908e269ac00b39b8eb6797a9071b816a,document_type,final_guidance,Feedback Statement on the Proposed Enhancement to the Company Service Providers Framework,mt-mfsa
+bbc6ea0d5ad743c330e9c012018c0339446696c4669ba6af84369f4bd87e09ea,document_type,final_guidance,Feedback Statement on the Proposed Legislative Framework and Capital Markets Rules pertaining to the Sponsors’ Regime,mt-mfsa
+2f567a0f29cd5ada50d17b29dbc035c3c49b0e93fed54651a3a608b3fd2989f7,document_type,final_guidance,Feedback Statement on the National Transposition of Directive (EU) 2024/1619 and Implementation of Regulation (EU) 2024/1623 – the Banking Package,mt-mfsa
+dfb10329ca8a6899c3e9e319962f8b43c305198be8b9cae8882198e2c9c11fad,document_type,consultation,Feedback Statement on the Consultation on the Proposed Amendments to the Insurance Rules and the Insurance Distribution Rules,mt-mfsa
+213ba04dd48f091fe437487a6c3350a4c75fb74825ba80629de7fc133493df4a,document_type,warning,The FIAU Supports the Launch of scamalert.mt,mt-fiau
+4c0cee5f9bbc72d6c43983dee20f3c57f7807c163b6527a4353b8482aefe9f91,instrument,amld,The FIAU Publishes AML/CFT Supervisory Plan for 2026–2027,mt-fiau
+de07416b458353fe20ba62501e69ca90c41c2baa4f766563f94ea36527793146,document_type,warning,The European Systemic Risk Board (ESRB) warns against frontier AI models,no-finanstilsynet
+c09dd2f926ec95715dc1be60e1d78d377d2e6eab4a36dd8b316903939b0d6e9f,document_type,press_release,Finanstilsynet’s annual report for 2025,no-finanstilsynet
+4153416fc5dbb522befce56573053f192f6f1a0736e13a7ce6ec5c00764976c3,document_type,press_release,International Conference on Finance – Navigating through uncertainty,pl-knf
+f38b3cb3d6a92ad8e635e5fb1333d372ec71b0965be921110ce27d3cc2c7d497,document_type,warning,ESRB warns of vulnerabilities in the financial system linked to frontier AI models,se-fi
+4f00245d7dd43d90601effff092f8f993f0befb189e9da8ce257b391bbee1554,document_type,enforcement,"Report: Prioritised risks related to money laundering, terrorism financing and international sanctions",se-fi
+c6cb6214a73409dcce5a45b3b7e405143131bf806895b11079a63580d2eca94b,document_type,enforcement,Ikano Bank receives a remark and an administrative fine,se-fi
+5cb4b0783b51bb15d3d570e04f30b8341fe0004a1df8b18bb1cdbdeed9047638,document_type,enforcement,Norion Bank receives a remark and an administrative fine,se-fi
+cbf1a6c44534fabae71c90b0162130fa654b941f18a0f4a421774de0eb8616f3,document_type,speech,Statement from the NBS Bank Board’s 15th meeting of 2026,sk-nbs
