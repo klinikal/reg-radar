@@ -10,9 +10,10 @@ Precedence is implemented once, in `effective_labels()`.
 """
 import json
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy import text
+
+from collector.storage import db_now
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ def _materialize_labels_conn(conn, taxonomy, item_id: str) -> dict:
         for r in rows
     ]
     labels = effective_labels(row_dicts, taxonomy)
-    now = datetime.now(timezone.utc)
+    now = db_now()
     conn.execute(
         text("UPDATE items SET labels = :labels, updated_at = :now WHERE id = :id"),
         {"labels": json.dumps(labels), "now": now, "id": item_id},
@@ -178,7 +179,7 @@ def _write_classification_row_conn(conn, taxonomy, item_id: str, axis: str, valu
     this assumes both are valid.
     """
     cardinality = taxonomy.cardinality(axis)
-    now = datetime.now(timezone.utc)
+    now = db_now()
     existing = conn.execute(
         text(
             "SELECT id, by, value FROM classifications "
@@ -245,7 +246,7 @@ def remove_classification(engine, taxonomy, item_id: str, axis: str, value: str,
     """Supersedes one live row (item_id, axis, value, by exact match).
     Returns True if a row was found and superseded. Used by the web UI's
     "remove instrument" control on a multi-valued axis."""
-    now = datetime.now(timezone.utc)
+    now = db_now()
     with engine.connect() as conn:
         result = conn.execute(
             text(
@@ -272,7 +273,7 @@ def import_classification(engine, item_id: str, axis: str, value: str, taxonomy_
     not supersede anything and does not materialise labels itself - call
     materialize_labels() once per item after importing all of its tags.
     """
-    now = datetime.now(timezone.utc)
+    now = db_now()
     with engine.connect() as conn:
         conn.execute(
             text(
@@ -294,7 +295,7 @@ def supersede_axis(engine, item_id: str, axis: str, by: str | None = None) -> in
     restricted to a specific `by` value. Human rows are never touched by
     any automated path (architecture doc §4.4). Returns the number of rows
     superseded. Used by `regradar reclassify`."""
-    now = datetime.now(timezone.utc)
+    now = db_now()
     conditions = "item_id=:i AND axis=:a AND superseded_at IS NULL AND by NOT LIKE 'human:%'"
     params = {"now": now, "i": item_id, "a": axis}
     if by:

@@ -186,6 +186,32 @@ def test_write_classification_materialises_items_labels_and_updated_at():
     assert updated_at is not None
 
 
+def test_write_classification_updated_at_matches_orm_insert_format():
+    """A raw text() UPDATE (materialize_labels' write path) must store
+    updated_at in exactly the shape insert_item's ORM write produces -
+    otherwise a classification write and a fresh insert sort differently
+    as strings, which is what broke the get_changes() cursor (see
+    tests/test_changes_query.py's _set_updated_at)."""
+    import re
+
+    from sqlalchemy import text as sa_text
+
+    engine = _engine()
+    _insert_item(engine)
+    taxonomy = _make_taxonomy()
+
+    shape = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$")
+    with engine.connect() as conn:
+        (inserted_updated_at,) = conn.execute(sa_text("SELECT updated_at FROM items WHERE id='i1'")).fetchone()
+    assert shape.match(inserted_updated_at), f"insert_item shape: {inserted_updated_at!r}"
+
+    write_classification(engine, taxonomy, "i1", "document_type", "warning", by="rule", confidence=0.9)
+
+    with engine.connect() as conn:
+        (reclassified_updated_at,) = conn.execute(sa_text("SELECT updated_at FROM items WHERE id='i1'")).fetchone()
+    assert shape.match(reclassified_updated_at), f"write_classification shape: {reclassified_updated_at!r}"
+
+
 def test_write_classification_single_valued_axis_supersedes_same_provenance():
     engine = _engine()
     _insert_item(engine)
