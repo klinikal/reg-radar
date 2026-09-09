@@ -80,6 +80,12 @@ def load_digests(path: str) -> list[dict]:
                     int(c.get("chat_id"))
                 except (TypeError, ValueError):
                     raise DigestConfigError(f"{path}: digest '{raw['name']}' telegram channel needs a numeric chat_id")
+            elif c["type"] == "email":
+                if not c.get("to"):
+                    raise DigestConfigError(f"{path}: digest '{raw['name']}' email channel needs 'to'")
+            elif c["type"] == "webhook":
+                if not c.get("url") or not c.get("secret_env"):
+                    raise DigestConfigError(f"{path}: digest '{raw['name']}' webhook channel needs 'url' and 'secret_env'")
         digests.append({
             "name": raw["name"],
             "profile": raw["profile"],
@@ -114,16 +120,34 @@ def _fetch_all_changes(engine, expanded_profile, since: str | None) -> tuple[lis
     regradar.classification (as opposed to freshly inserted) can end up
     with an items.updated_at value stored in a different text format than
     the one a cursor round-trips to, which otherwise makes such a row look
-    "after itself" indefinitely. This guard is defensive, not a fix for
-    that upstream formatting mismatch, which is out of this task's scope.
+    "after itself" indefinitely - the same row(s) then reappear on the
+    "stuck" page. That page's items are still included (dropping them
+    silently would be worse than a stuck cursor), deduplicated by id so an
+    item already added from an earlier page isn't shown twice, and an
+    ERROR is logged naming the cursor and item ids, so the digest is
+    visibly flagged as possibly incomplete rather than quietly short. This
+    guard is a safety net, not a fix for the upstream formatting mismatch
+    itself, which is being corrected on a separate branch.
     """
     all_items: list[dict] = []
+    seen_ids: set = set()
     cursor = since
     while True:
         items, next_cursor = get_changes(engine, since=cursor, profile=expanded_profile, limit=_PAGE_SIZE, include_body=True)
-        if not items or next_cursor == cursor:
+        if not items:
             break
-        all_items.extend(items)
+        stuck = next_cursor == cursor
+        for item in items:
+            if item.get("id") not in seen_ids:
+                seen_ids.add(item.get("id"))
+                all_items.append(item)
+        if stuck:
+            logger.error(
+                "get_changes did not advance past cursor %r for item(s) %s - stopping pagination early; "
+                "the digest may be missing items after this point",
+                cursor, [item.get("id") for item in items],
+            )
+            break
         cursor = next_cursor
     return all_items, cursor
 
@@ -284,7 +308,7 @@ def send_digest(engine, entry: dict, taxonomy, activities: dict, profiles_dir: s
 
 def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("digest", help="Render or send a profile digest (email/Telegram/webhook)")
-    parser.add_argument("--profile", help="Profile name or path (required with --preview; overrides the digests.yaml entry's profile with --send --name)")
+    parser.add_argument("--profile", help="Profile name or path (required with --preview; not used with --send, which reads each digest's profile from --digests-path)")
     parser.add_argument("--name", help="Digest name from --digests-path (required with --send)")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--preview", action="store_true", help="Render and print the digest; sends nothing")
