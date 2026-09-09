@@ -190,3 +190,69 @@ def test_generic_raw_document_with_no_content_falls_back_to_snippet_note():
     assert items[0].body_md == "> Full text not collected. See https://example.com/x."
     assert items[0].raw_bytes is None
     assert items[0].mime is None
+
+
+# --- classify() / rules_engine wiring (docs/issues/04-rules-engine-write
+# -interface-llm-classifier-skill.md: the pipeline's classify() hook is the
+# only place rule scoring runs; collector.main writes the result) ---
+
+def test_classify_is_a_noop_without_a_rules_engine():
+    from collector.pipeline import classify
+    from collector.schema import Item
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    item = Item(
+        id="x", regulator_id="esma", source_label="s", title="MiCA update", url="https://x",
+        published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="", source_type="rss",
+    )
+    raw = RawDocument(url="https://x", title="MiCA update", published_at=now)
+    classify(item, raw)  # rules_engine=None default
+    assert item.rule_labels == {}
+
+
+def test_classify_scores_item_when_rules_engine_given(tmp_path):
+    from collector.pipeline import classify
+    from collector.schema import Item
+    from regradar.rules import RulesEngine
+    from regradar.taxonomy import build_taxonomy
+    from datetime import datetime, timezone
+
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("rules: []\n")  # alias-derived rules alone are enough for "MiCA"
+    rules_engine = RulesEngine.load(str(rules_path), taxonomy)
+
+    now = datetime.now(timezone.utc)
+    item = Item(
+        id="x", regulator_id="esma", source_label="s", title="New MiCA guidance", url="https://x",
+        published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="", source_type="rss", raw_content="",
+    )
+    raw = RawDocument(url="https://x", title="New MiCA guidance", published_at=now)
+    classify(item, raw, rules_engine=rules_engine)
+    assert item.rule_labels == {("instrument", "mica"): 0.7}
+
+
+def test_process_raw_documents_threads_rules_engine_into_classify(tmp_path):
+    from regradar.rules import RulesEngine
+    from regradar.taxonomy import build_taxonomy
+
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("rules: []\n")
+    rules_engine = RulesEngine.load(str(rules_path), taxonomy)
+
+    source = {"type": "rss", "label": "all_news"}
+    raw_docs = [RawDocument(url="https://x/a", title="MiCA obligations", published_at=None, content_html="<p>MiCA text</p>")]
+    items = process_raw_documents(raw_docs, source, "esma", rules_engine=rules_engine)
+    # "MiCA" appears in both title and body_md, so the alias rule (fields:
+    # [title, body] by default) scores both and caps at 1.0.
+    assert items[0].rule_labels.get(("instrument", "mica")) == 1.0
+
+
+def test_process_raw_documents_without_rules_engine_leaves_rule_labels_empty():
+    source = {"type": "rss", "label": "all_news"}
+    raw_docs = [RawDocument(url="https://x/a", title="MiCA obligations", published_at=None, content_html="<p>MiCA text</p>")]
+    items = process_raw_documents(raw_docs, source, "esma")
+    assert items[0].rule_labels == {}

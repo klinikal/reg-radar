@@ -52,7 +52,7 @@ def test_run_collection_writes_source_default_classifications_on_insert():
     try:
         taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
 
-        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg, **kwargs):
             from collector.schema import Item, make_item_id
             now = datetime.now(timezone.utc)
             return [Item(
@@ -93,7 +93,7 @@ def test_run_collection_without_taxonomy_skips_classification_silently():
     or blow up - source defaults are simply not applied."""
     engine, db_path = _make_engine()
     try:
-        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg, **kwargs):
             from collector.schema import Item, make_item_id
             now = datetime.now(timezone.utc)
             return [Item(
@@ -139,7 +139,7 @@ axes:
 
     engine, db_path = _make_engine()
     try:
-        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg):
+        def fake_fetch(source, reg_id, flaresolverr_url, fetch_cfg, **kwargs):
             from collector.schema import Item, make_item_id
             now = datetime.now(timezone.utc)
             return [Item(

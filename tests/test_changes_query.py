@@ -158,3 +158,36 @@ def test_get_latest_changes_respects_limit():
         insert_item(engine, make_item(f"i{i}"))
     items = get_latest_changes(engine, limit=2)
     assert len(items) == 2
+
+
+def test_get_changes_picks_up_a_rule_classification_updated_at_bump():
+    """Integration between the rules engine (task 6) and the changes cursor
+    (task 8): a classify write for an existing item bumps items.updated_at
+    via materialize_labels(), so get_changes() (which orders/filters on
+    COALESCE(updated_at, fetched_at)) sees it as a change even though the
+    item itself was fetched long before and nothing about fetched_at moved."""
+    from regradar.classification import write_classification
+    from regradar.taxonomy import build_taxonomy
+
+    engine = setup_engine()
+    old = datetime.now(timezone.utc) - timedelta(days=30)
+    item = make_item("i1", days_ago=30)
+    insert_item(engine, item)
+    _set_updated_at(engine, "i1", old)
+
+    documents, cursor_before = get_changes(engine, since=None, limit=10)
+    assert cursor_before is not None
+    # Nothing else changes since this cursor - the next call should be empty.
+    documents_none, cursor_none = get_changes(engine, since=cursor_before, limit=10)
+    assert documents_none == []
+    assert cursor_none is None
+
+    taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+    write_classification(engine, taxonomy, "i1", "instrument", "mica", by="rule", confidence=0.9,
+                          classifier_id="test-classifier")
+
+    documents_after, cursor_after = get_changes(engine, since=cursor_before, limit=10)
+    assert [d["id"] for d in documents_after] == ["i1"]
+    assert documents_after[0]["labels"]["instrument"] == ["mica"]
+    assert cursor_after is not None
+    assert cursor_after != cursor_before

@@ -94,9 +94,9 @@ Selector drift (a regulator redesign keeps returning HTTP 200 with a parser matc
 Every item carries two separate tag lists, kept apart deliberately:
 
 - **`source_tags`** — structural, config-curated per feed in `config/regulators/` (e.g. `warnings`, `press_releases`, `news`, `publications`, `page_watch`). Set once when a source is configured, same for every item that feed produces.
-- **`content_tags`** — what the item is actually about, computed per item. Today this comes from the [keyword alerts](#keyword-alerts) config; nothing else populates it yet.
+- **`content_tags`** — a legacy, keyword-derived column. Nothing populates it going forward; use the [classification store](#classification) below (`labels`, populated by the [rules engine](#classification-rules)) instead.
 
-Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliberately excluded from `source_tags` — they used to be stamped on nearly every item from a MiCA-relevant regulator regardless of content, which made them useless for filtering. If you want one of those as a real tag, add it as a keyword rule instead (see below) so it only lands on items that actually mention it.
+Regulation-name labels (`casp`, `mica`, `aml`, `art`, `emt`, `dora`) are deliberately excluded from `source_tags` — they used to be stamped on nearly every item from a MiCA-relevant regulator regardless of content, which made them useless for filtering. If you want one of those as a real classification, add a [classification rule](#classification-rules) instead so it only lands on items that actually mention it.
 
 **Deprecated for one release:** `source_tags`/`content_tags` and the `tags`/`source_tags`/`content_tags` filter parameters keep working against the old columns, but every read path now logs a deprecation warning. Prefer the [classification store](#classification) below — it records *why* a label is there and who/what set it, not just a flat string.
 
@@ -117,9 +117,40 @@ docker compose exec collector python -m regradar.reclassify reclassify --axis in
 docker compose exec collector python -m regradar.reclassify reclassify --axis instrument
 ```
 
-`--dry-run` reports what would change, including how many live rows on that axis carry an older `taxonomy_version` than the current config, without writing anything. Human corrections are never touched by this or any other automated path. (The rules engine and LLM classifier skill that also write through this same command are a follow-on.)
+`--dry-run` reports what would change, including how many live rows on that axis carry an older `taxonomy_version` than the current config, without writing anything. Human corrections are never touched by this or any other automated path. `--by rule` rescores every item against `config/rules.yaml` instead of source defaults (see [Classification rules](#classification-rules)); `--by source_default` (the default) re-applies `regulators.yaml` source defaults as above.
 
-**Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`) - it predates the registry split and targets a single regulators file, so point it at one of the files under `config/regulators/` at a time; `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better. Both support `--dry-run`.
+**Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`) - it predates the registry split and targets a single regulators file, so point it at one of the files under `config/regulators/` at a time; `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better; `scripts/migrate_alerts_to_rules.py` converts the old `alerts.yaml` keyword rules into `rules.yaml` entries, printing any it can't map onto a taxonomy value for manual handling. All three support `--dry-run`.
+
+## Classification rules
+
+`config/rules.yaml` is a deterministic, weighted, regex-capable rules engine that runs on every newly-collected item (and via `regradar reclassify --by rule`), replacing v1's keyword-to-tag alerts. Each entry scores one (axis, value) pair:
+
+```yaml
+min_confidence: 0.5
+rules:
+  - axis: instrument
+    value: mica
+    match:
+      - pattern: "\\bMiCA(R)?\\b"
+        weight: 0.9
+      - pattern: "crypto-asset service provider"
+        weight: 0.6
+        flags: i
+    fields: [title, body]
+    title_multiplier: 1.5
+```
+
+For each field in `fields`, each pattern contributes its `weight` once if it matches at all in that field (not multiplied by match count), times `title_multiplier` on the title field; contributions sum across all of a rule's patterns and fields, capped at 1.0. A rule writes a `by: rule` classification (`classifier_id` = sha256 of `rules.yaml` + the taxonomy version) when the score reaches the file's top-level `min_confidence` (default 0.5 - separate from each axis's `min_confidence` in `taxonomy.yaml`, which controls what counts as an *effective* label, not what gets written to the store at all).
+
+**Alias lists in `config/taxonomy.yaml` compile into implicit rules automatically**, at weight 0.7, word-boundary matched, case-insensitive, over both title and body - most instruments need no entry in `rules.yaml` at all; add one only for wording an alias doesn't catch.
+
+Manage rules from the browser at **`http://localhost:8080/rules`** (`/alerts` redirects here) — list, add, and delete rules, validated against `config/taxonomy.yaml` on save. Or edit `config/rules.yaml` by hand; either way, changes take effect on the next collection run (no restart needed) or immediately via `regradar reclassify --axis <a> --by rule`.
+
+`scripts/eval_classifier.py` compares live `by: rule` (and, when present, `by: llm:*`) rows against a hand-labelled sample at `tests/fixtures/classification/gold.csv`, printing precision/recall per axis and per value — confidence from a rule or an LLM is not proof of accuracy, this is how drift gets caught.
+
+## Classifying via an agent
+
+`skills/regradar-classifier/SKILL.md` instructs any MCP-connected agent to pull unclassified items via `get_unclassified_tool`, read `get_taxonomy_tool`, and write labels back via `classify_items_tool` with `by: "llm:<provider>/<model>"` and a self-reported confidence — no API keys or provider lock-in in this repo; the agent reading the skill *is* the classifier. `get_taxonomy_tool()` returns every axis/value/alias so an agent never needs filesystem access to `config/taxonomy.yaml`. See the skill file for the full worked examples and judgment calls (consultation vs. feedback statement, when an instrument mention counts as "substantive," etc.).
 
 ## Profiles
 
@@ -149,7 +180,7 @@ Profiles are parsed and expanded once per process and cached — editing a profi
 
 ## MCP server
 
-The MCP server exposes thirteen tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
+The MCP server exposes seventeen tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
 
 | Tool | Description |
 |---|---|
@@ -165,6 +196,10 @@ The MCP server exposes thirteen tools over streamable HTTP, returning structured
 | `list_labels_tool` | Every taxonomy axis (config-driven) with its distinct classified values and item counts — discover valid `labels` values for `search_items_tool` before guessing |
 | `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — also takes `profile`. Deprecated: only sees newly collected items, not a reclassification or human correction — prefer `get_changes_tool` |
 | `get_health_tool` | Most recent collector run's status, freshness, database integrity (see [Backups & recovery](#backups--recovery)), and `stalled_sources` (see [Source health](#source-health)) — check this before trusting search results after a long gap |
+| `get_taxonomy_tool` | Every taxonomy axis/value/alias/version — the source of truth for valid `labels`/classification values, no filesystem access needed |
+| `get_unclassified_tool` | Items with no live classification on a given axis, oldest first, with `title`/`body_md`/`regulator`/`jurisdiction`/other-axis `labels` — the classification backlog, paged; `include_low_confidence` also surfaces items whose only row on that axis never reached the effective-label threshold |
+| `classify_item_tool` | Writes one classification (any `by` value) and returns the item's new effective labels — see [Classification](#classification) |
+| `classify_items_tool` | Writes up to 100 classifications in one call; validates every entry before writing any, so one bad entry doesn't cost the rest of the batch — returns written item ids plus per-entry errors |
 | `get_changes_tool` | Everything that changed since an opaque cursor — the sync primitive (see [Export and sync](#export-and-sync)); replaces `get_items_since_tool` |
 
 **On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list. `labels={"document_type": ["warning"]}` reads the classification store instead — a superset that also catches warnings a rule or a human classified on a broad feed, not just items from a feed tagged `warnings` wholesale.
@@ -189,7 +224,7 @@ A minimal, functional list/search/reader view — no build step, server-rendered
 - **List view** shows collected items, most recent first, 50 per page with pagination. Filters: keyword search (auto-submits as you type), an exact-match toggle, a multi-select regulator panel (searchable by country, abbreviation, or full name, with per-regulator item counts, last-fetch date, and consecutive-failure warnings), a jurisdiction panel (expanded through ancestors, same semantics as `search_items_tool`'s `jurisdictions` — see [Classification](#classification)), a date range filter, and a **profile picker** (shipped templates from `config/profiles/*.yaml` — see [Profiles](#profiles)). A **By month** sidebar shows publication-month facets for the current query/filter set.
 - **Search syntax:** unquoted words are AND-ed (`bafin fines` matches items containing both, in either order); `+` behaves the same as a space (`bafin+fines`); wrap a phrase in quotes for adjacency (`"administrative fines"` only matches that exact phrase, not the two words scattered separately); check "exact match" to treat the entire query box as one literal phrase. Search uses the same FTS5 index as the MCP server (title, snippet, and full scraped text).
 - **Reader view** (click any title) strips the item down to title, regulator, date, source and content tags, a link to the original source, and cleaned body text — full scraped text where available, otherwise the RSS snippet with a note saying so and a link out to the source. A minimal classification form lets you set `document_type` and add/remove `instrument` values by hand — it writes through the same `write_classification()` path as everything else, as a `human:*` correction that always wins over anything automated for that axis.
-- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, `/api/months` (both `/api/items` and `/api/months` accept `profile`), `/api/changes` (see [Export and sync](#export-and-sync)), and `POST /api/items/{id}/classifications` (body: `{"axis", "value", "by", "confidence"?, "classifier_id"?, "remove"?}` — the same write path the reader view's form uses; `by` should be `human:<name>` for a genuine human correction) — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
+- **JSON API** at `/api/items`, `/api/items/{id}`, `/api/regulators`, `/api/months` (both `/api/items` and `/api/months` accept `profile`), `/api/unclassified?axis=<a>` (mirrors `get_unclassified_tool`), `/api/changes` (see [Export and sync](#export-and-sync)), and `POST /api/items/{id}/classifications` (body: `{"axis", "value", "by", "confidence"?, "classifier_id"?, "remove"?}` — the same write path the reader view's form uses; `by` should be `human:<name>` for a genuine human correction) — same query logic as the HTML views, same filters, exists so a future frontend (or a script) doesn't have to scrape the HTML or duplicate query logic. The webui service reads the SQLite database directly (via the same query module the MCP server uses), so it works independently of whether the `mcp` container happens to be up.
 
 This is intentionally plain — a functional first pass, not a finished design. The query/data layer (`mcpserver/queries.py`) is decoupled from presentation, so upgrading the look (or swapping in a JS frontend against the JSON API) later doesn't require touching how data is fetched or filtered.
 
@@ -217,10 +252,11 @@ claude mcp add --transport http regradar http://localhost:8000/mcp
 
 ## Skills
 
-`skills/` contains two plain-markdown instruction documents — not a Claude-specific format, just structured guidance any agent (or human) can read and follow:
+`skills/` contains plain-markdown instruction documents — not a Claude-specific format, just structured guidance any agent (or human) can read and follow:
 
 - **[`regradar-operator`](skills/regradar-operator/SKILL.md)** — how to run, query, and navigate regradar: checking whether the stack is up, the MCP tool reference, and how to weight relevance using the operator's context (see below).
 - **[`regradar-onboarding`](skills/regradar-onboarding/SKILL.md)** — a guided interview that generates your private operator context (see next section).
+- **[`regradar-classifier`](skills/regradar-classifier/SKILL.md)** — works the classification backlog via `get_unclassified_tool`/`classify_items_tool`, with worked examples for `document_type` and `instrument` (see [Classifying via an agent](#classifying-via-an-agent)).
 
 If your agent harness has a native skill/tool-loading mechanism (e.g. Claude Code's `Skill` system), point it there. Otherwise, paste the file contents into your system prompt or custom instructions, or just tell your agent to read the file and follow it.
 
@@ -250,7 +286,7 @@ Copy `.env.example` to `.env` and adjust:
 | `JURISDICTIONS_PATH` | `/app/config/jurisdictions.yaml` | Jurisdiction hierarchy |
 | `ACTIVITIES_PATH` | `/app/config/activities.yaml` | Activity-to-instrument mapping — see [Profiles](#profiles) |
 | `PROFILES_DIR` | `/app/config/profiles` | Directory of shipped profile templates |
-| `ALERTS_PATH` | `/app/config/alerts.yaml` | Keyword-to-tag rules file (optional — see below) |
+| `RULES_PATH` | `/app/config/rules.yaml` | Classification rules engine config — see [Classification rules](#classification-rules) |
 | `FLARESOLVERR_URL` | `http://flaresolverr:8191` | FlareSolverr service URL; leave blank to disable (Cloudflare-protected sources are then skipped) |
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
 | `FLARESOLVERR_MAX_RETRIES` | `3` | Retry attempts per FlareSolverr fetch |
@@ -325,15 +361,7 @@ docker compose up -d
 ```
 Confirm the migration worked: `count_items_tool` should return the same number of items before and after.
 
-### Keyword alerts
-
-`config/alerts.yaml` holds optional keyword-to-tag rules — a lightweight, self-hosted "Google Alerts" layer. On each collection run, newly fetched items are scanned (case-insensitive substring match against title + content); matches get added to that item's `content_tags` (see [Tags](#tags) above).
-
-Manage rules from the browser at **`http://localhost:8080/alerts`** — view, add, and delete rules without editing the file directly. Or edit `config/alerts.yaml` by hand; either way, changes take effect on the next collection run (no restart needed).
-
-The file is optional — delete it, point `ALERTS_PATH` elsewhere, or leave it empty and keyword tagging is simply disabled; collection is unaffected. Example rules ship by default (`MiCA` → `mica`, `travel rule` → `travel-rule`, etc.). Edit freely for your entity's watchlist.
-
-Keyword tags feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery. Email and Telegram digests are not implemented yet.
+See [Classification rules](#classification-rules) above for the rules engine that replaced the old keyword-alerts feature; classified labels feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery. Email and Telegram digests are not implemented yet.
 
 ## Contributing
 

@@ -10,10 +10,12 @@ from sqlalchemy.pool import NullPool
 from mcpserver.queries import (
     get_health,
     get_item,
+    get_item_labels,
     get_items_since,
     get_month_facets,
     get_recent,
     get_run_log,
+    get_unclassified,
     get_warnings,
     list_labels,
     list_regulators,
@@ -21,6 +23,7 @@ from mcpserver.queries import (
     search_items,
     search_items_advanced,
 )
+from regradar.classification import classify_batch, write_classification
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 from mcpserver.queries import get_changes
@@ -367,6 +370,109 @@ def get_health_tool() -> dict:
     selectors need updating.
     """
     return _safe("get_health_tool", get_health, get_engine())
+
+
+_write_engine = None
+
+
+def get_write_engine():
+    """A separate, read-write engine for the classification write interface
+    (architecture doc §4.5) - get_engine() above opens the database
+    read-only (mode=ro) deliberately, so writes need their own connection,
+    same as collector.storage.init_db (which also ensures the schema exists
+    - matching webui/app.py's get_engine())."""
+    global _write_engine
+    if _write_engine is None:
+        from collector.storage import init_db
+        _write_engine = init_db(os.getenv("DB_PATH", "/app/data/regradar.db"))
+    return _write_engine
+
+
+@mcp.tool()
+def get_taxonomy_tool() -> dict:
+    """Returns the current taxonomy (config/taxonomy.yaml, architecture doc
+    §4.1): every axis with its cardinality, and every value with its id,
+    name, and aliases, plus the taxonomy version recorded on every
+    classification row. Call this before classify_item_tool/
+    classify_items_tool so an agent never needs filesystem access to the
+    config to know what axes/values are valid.
+    """
+    taxonomy = get_taxonomy()
+    return {
+        "version": taxonomy.version(),
+        "axes": [
+            {
+                "id": axis,
+                "cardinality": taxonomy.cardinality(axis),
+                "min_confidence": taxonomy.min_confidence(axis),
+                "values": [
+                    {"id": v.id, "name": v.name, "aliases": v.aliases, "jurisdiction": v.jurisdiction}
+                    for v in taxonomy.axis_values(axis)
+                ],
+            }
+            for axis in taxonomy.axes()
+        ],
+    }
+
+
+@mcp.tool()
+def get_unclassified_tool(axis: str, limit: int = 50, offset: int = 0, regulator_id: str | None = None,
+                           since: str | None = None, include_low_confidence: bool = False) -> list[dict]:
+    """Returns items with no live classification row on `axis`, oldest
+    published first, so an agent (see skills/regradar-classifier/SKILL.md)
+    can page through the backlog for one axis at a time. Each item includes
+    `title`, `body_md` (truncated to 6000 characters), `regulator`,
+    `jurisdiction`, and `labels` (this item's current classifications on
+    every OTHER axis, for context).
+
+    limit defaults to 50, max 200. `regulator_id` and `since` (a fetched_at
+    value) narrow the backlog. `include_low_confidence=True` also returns
+    items that have a live row on this axis but whose confidence never
+    reached the axis's effective-label threshold - these show no label to a
+    user even though something has already scored them, so they are
+    effectively still unclassified too.
+    """
+    return _safe("get_unclassified_tool", get_unclassified, get_engine(), axis=axis, limit=limit, offset=offset,
+                 regulator_id=regulator_id, since=since, include_low_confidence=include_low_confidence)
+
+
+@mcp.tool()
+def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence: float = 1.0,
+                        classifier_id: str | None = None) -> dict:
+    """Writes one classification (architecture doc §4.5) and returns the
+    item's new effective labels.
+
+    `axis`/`value` must be valid per get_taxonomy_tool. `by` records
+    provenance - use `llm:<provider>/<model>` for an agent-driven
+    classification (see skills/regradar-classifier/SKILL.md), e.g.
+    "llm:anthropic/claude-sonnet-5". `confidence` is 0.0-1.0 and
+    self-reported - prefer leaving an axis unset over guessing below 0.5.
+    Writing the same (item, axis, value, by) again is a no-op; writing a
+    different value for the same (item, axis, by) on a single-valued axis
+    supersedes the prior one rather than accumulating.
+    """
+    def _write():
+        write_classification(get_write_engine(), get_taxonomy(), item_id, axis, value, by=by,
+                              confidence=confidence, classifier_id=classifier_id)
+        return {"item_id": item_id, "labels": get_item_labels(get_write_engine(), item_id)}
+    return _safe("classify_item_tool", _write)
+
+
+@mcp.tool()
+def classify_items_tool(classifications: list[dict]) -> dict:
+    """Writes up to 100 classifications in one call (architecture doc §4.5).
+    Every entry is validated against the current taxonomy before anything is
+    written, so one bad entry never costs the rest of the batch - see
+    classify_item_tool for the fields each entry takes (item_id/axis/value/
+    by required, confidence/classifier_id optional).
+
+    Returns {"written": [...item ids...], "errors": [{"index", "item_id",
+    "error"}, ...]} - `errors` names exactly which input entries failed and
+    why, by their position in the `classifications` list you passed in.
+    Raises if the batch has more than 100 entries; page get_unclassified_tool
+    instead of sending more than that in one call.
+    """
+    return _safe("classify_items_tool", classify_batch, get_write_engine(), get_taxonomy(), classifications)
 
 
 @mcp.tool()

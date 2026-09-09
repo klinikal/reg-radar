@@ -123,6 +123,35 @@ def _flatten(labels: dict):
             yield axis, value
 
 
+def _materialize_labels_conn(conn, taxonomy, item_id: str) -> dict:
+    """Core of materialize_labels() - runs entirely on the given open
+    connection, no commit. Shared by materialize_labels() (its own
+    connection, commits itself) and classify_batch() (one connection/
+    transaction for the whole batch, per architecture doc §4.5's
+    transactional write interface)."""
+    rows = conn.execute(
+        text("SELECT axis, value, by, confidence, superseded_at FROM classifications WHERE item_id = :id"),
+        {"id": item_id},
+    ).fetchall()
+    row_dicts = [
+        {"axis": r[0], "value": r[1], "by": r[2], "confidence": r[3], "superseded_at": r[4]}
+        for r in rows
+    ]
+    labels = effective_labels(row_dicts, taxonomy)
+    now = datetime.now(timezone.utc)
+    conn.execute(
+        text("UPDATE items SET labels = :labels, updated_at = :now WHERE id = :id"),
+        {"labels": json.dumps(labels), "now": now, "id": item_id},
+    )
+    conn.execute(text("DELETE FROM item_labels WHERE item_id = :id"), {"id": item_id})
+    for axis, value in _flatten(labels):
+        conn.execute(
+            text("INSERT OR IGNORE INTO item_labels (item_id, axis, value) VALUES (:i, :a, :v)"),
+            {"i": item_id, "a": axis, "v": value},
+        )
+    return labels
+
+
 def materialize_labels(engine, taxonomy, item_id: str) -> dict:
     """Recomputes effective_labels() for one item from its full
     classification history and writes items.labels (JSON) /
@@ -131,29 +160,59 @@ def materialize_labels(engine, taxonomy, item_id: str) -> dict:
     docs/issues/03-*.md's "Design notes" and the measurement in the task
     report)."""
     with engine.connect() as conn:
-        rows = conn.execute(
-            text("SELECT axis, value, by, confidence, superseded_at FROM classifications WHERE item_id = :id"),
-            {"id": item_id},
-        ).fetchall()
-    row_dicts = [
-        {"axis": r[0], "value": r[1], "by": r[2], "confidence": r[3], "superseded_at": r[4]}
-        for r in rows
-    ]
-    labels = effective_labels(row_dicts, taxonomy)
-    now = datetime.now(timezone.utc)
-    with engine.connect() as conn:
-        conn.execute(
-            text("UPDATE items SET labels = :labels, updated_at = :now WHERE id = :id"),
-            {"labels": json.dumps(labels), "now": now, "id": item_id},
-        )
-        conn.execute(text("DELETE FROM item_labels WHERE item_id = :id"), {"id": item_id})
-        for axis, value in _flatten(labels):
-            conn.execute(
-                text("INSERT OR IGNORE INTO item_labels (item_id, axis, value) VALUES (:i, :a, :v)"),
-                {"i": item_id, "a": axis, "v": value},
-            )
+        labels = _materialize_labels_conn(conn, taxonomy, item_id)
         conn.commit()
     return labels
+
+
+def _write_classification_row_conn(conn, taxonomy, item_id: str, axis: str, value: str, by: str,
+                                    confidence: float, classifier_id: str | None) -> bool:
+    """Core of write_classification() - appends the row (or supersedes a
+    prior same-provenance one) entirely on the given open connection, no
+    commit and no materialize call. Returns False if an identical live row
+    already covered this (nothing to write), True otherwise. Shared by
+    write_classification() (its own connection, commits itself) and
+    classify_batch() (one connection/transaction for the whole batch).
+
+    Caller must have already validated axis/value against the taxonomy -
+    this assumes both are valid.
+    """
+    cardinality = taxonomy.cardinality(axis)
+    now = datetime.now(timezone.utc)
+    existing = conn.execute(
+        text(
+            "SELECT id, by, value FROM classifications "
+            "WHERE item_id=:i AND axis=:a AND superseded_at IS NULL"
+        ),
+        {"i": item_id, "a": axis},
+    ).fetchall()
+
+    for row_id, existing_by, existing_value in existing:
+        same_provenance = (is_human(existing_by) and is_human(by)) or existing_by == by
+        if not same_provenance:
+            continue
+        if existing_value == value:
+            return False  # identical live row already covers this
+        if cardinality == "one":
+            conn.execute(
+                text("UPDATE classifications SET superseded_at=:now WHERE id=:id"),
+                {"now": now, "id": row_id},
+            )
+
+    conn.execute(
+        text(
+            "INSERT INTO classifications (item_id, axis, value, by, confidence, "
+            "taxonomy_version, classifier_id, created_at, superseded_at) "
+            "VALUES (:item_id, :axis, :value, :by, :confidence, :taxonomy_version, "
+            ":classifier_id, :created_at, NULL)"
+        ),
+        {
+            "item_id": item_id, "axis": axis, "value": value, "by": by,
+            "confidence": confidence, "taxonomy_version": taxonomy.version(),
+            "classifier_id": classifier_id, "created_at": now,
+        },
+    )
+    return True
 
 
 def write_classification(engine, taxonomy, item_id: str, axis: str, value: str, by: str,
@@ -174,46 +233,12 @@ def write_classification(engine, taxonomy, item_id: str, axis: str, value: str, 
     if not taxonomy.is_valid(axis, value):
         raise ValueError(f"unknown value {value!r} for axis {axis!r}")
 
-    cardinality = taxonomy.cardinality(axis)
-    now = datetime.now(timezone.utc)
     with engine.connect() as conn:
-        existing = conn.execute(
-            text(
-                "SELECT id, by, value FROM classifications "
-                "WHERE item_id=:i AND axis=:a AND superseded_at IS NULL"
-            ),
-            {"i": item_id, "a": axis},
-        ).fetchall()
-
-        for row_id, existing_by, existing_value in existing:
-            same_provenance = (is_human(existing_by) and is_human(by)) or existing_by == by
-            if not same_provenance:
-                continue
-            if existing_value == value:
-                conn.commit()
-                return  # identical live row already covers this
-            if cardinality == "one":
-                conn.execute(
-                    text("UPDATE classifications SET superseded_at=:now WHERE id=:id"),
-                    {"now": now, "id": row_id},
-                )
-
-        conn.execute(
-            text(
-                "INSERT INTO classifications (item_id, axis, value, by, confidence, "
-                "taxonomy_version, classifier_id, created_at, superseded_at) "
-                "VALUES (:item_id, :axis, :value, :by, :confidence, :taxonomy_version, "
-                ":classifier_id, :created_at, NULL)"
-            ),
-            {
-                "item_id": item_id, "axis": axis, "value": value, "by": by,
-                "confidence": confidence, "taxonomy_version": taxonomy.version(),
-                "classifier_id": classifier_id, "created_at": now,
-            },
-        )
+        changed = _write_classification_row_conn(conn, taxonomy, item_id, axis, value, by, confidence, classifier_id)
         conn.commit()
 
-    materialize_labels(engine, taxonomy, item_id)
+    if changed:
+        materialize_labels(engine, taxonomy, item_id)
 
 
 def remove_classification(engine, taxonomy, item_id: str, axis: str, value: str, by: str) -> bool:
@@ -279,3 +304,83 @@ def supersede_axis(engine, item_id: str, axis: str, by: str | None = None) -> in
         result = conn.execute(text(f"UPDATE classifications SET superseded_at=:now WHERE {conditions}"), params)
         conn.commit()
         return result.rowcount
+
+
+MAX_BATCH_SIZE = 100
+
+
+def classify_batch(engine, taxonomy, classifications: list) -> dict:
+    """Batch write interface (docs/issues/04-rules-engine-write-interface
+    -llm-classifier-skill.md): validates every entry against the current
+    taxonomy before writing any of them, so one bad entry in a large batch
+    (e.g. an agent working through 100 unclassified items) never loses the
+    rest. Returns {"written": [item_id, ...], "errors": [{"index", "item_id",
+    "error"}, ...]} - `written` lists item_ids for entries that were
+    validated and written (each via write_classification(), so the same
+    provenance-supersession rules apply); `errors` covers every entry that
+    failed validation, by its position in the input list.
+
+    Each entry is a dict: {"item_id", "axis", "value", "by",
+    "confidence"?: float (default 1.0), "classifier_id"?: str}.
+
+    Raises ValueError if `classifications` has more than MAX_BATCH_SIZE (100)
+    entries - a caller-side mistake (e.g. dumping an unpaged query straight
+    in), not a per-entry validation problem, so it fails the whole call
+    rather than producing 100+ per-entry errors.
+
+    Transactional per architecture doc §4.5: every valid entry is written
+    (row insert/supersede plus its item's materialize_labels()) inside ONE
+    connection/transaction - if a write fails partway through, the whole
+    transaction rolls back and NONE of the batch's rows are written, rather
+    than leaving a partial batch committed. Validation happens entirely
+    before this transaction opens, so a bad *value* never reaches it (that's
+    reported per-entry in `errors`, not a rollback case).
+    """
+    if len(classifications) > MAX_BATCH_SIZE:
+        raise ValueError(f"batch of {len(classifications)} exceeds the {MAX_BATCH_SIZE}-entry limit")
+
+    validated = []
+    errors = []
+    for i, entry in enumerate(classifications):
+        item_id = entry.get("item_id")
+        axis = entry.get("axis")
+        value = entry.get("value")
+        by = entry.get("by")
+        if not item_id or not axis or not value or not by:
+            errors.append({"index": i, "item_id": item_id, "error": "item_id, axis, value and by are all required"})
+            continue
+        if axis not in taxonomy.axes():
+            errors.append({"index": i, "item_id": item_id, "error": f"unknown axis {axis!r}"})
+            continue
+        if not taxonomy.is_valid(axis, value):
+            errors.append({"index": i, "item_id": item_id, "error": f"unknown value {value!r} for axis {axis!r}"})
+            continue
+        try:
+            confidence = float(entry.get("confidence", 1.0))
+        except (TypeError, ValueError):
+            errors.append({"index": i, "item_id": item_id, "error": "confidence must be a number"})
+            continue
+        if not (0.0 <= confidence <= 1.0):
+            errors.append({"index": i, "item_id": item_id, "error": "confidence must be between 0.0 and 1.0"})
+            continue
+        validated.append((item_id, axis, value, by, confidence, entry.get("classifier_id")))
+
+    written = []
+    if validated:
+        # engine.begin(): one transaction for the whole batch - commits once
+        # at the end of the `with` block, or rolls back everything if any
+        # write below raises (a DB-level failure, not a validation one -
+        # those are already filtered into `errors` above).
+        with engine.begin() as conn:
+            changed_item_ids = []
+            for item_id, axis, value, by, confidence, classifier_id in validated:
+                changed = _write_classification_row_conn(
+                    conn, taxonomy, item_id, axis, value, by, confidence, classifier_id
+                )
+                written.append(item_id)
+                if changed:
+                    changed_item_ids.append(item_id)
+            for item_id in dict.fromkeys(changed_item_ids):  # de-duped, order-preserved
+                _materialize_labels_conn(conn, taxonomy, item_id)
+
+    return {"written": written, "errors": errors}

@@ -137,75 +137,169 @@ def test_index_renders_source_and_content_tags_separately(monkeypatch, tmp_path)
     assert "mica" in resp.text
 
 
-def test_alerts_view_lists_current_rules(monkeypatch, tmp_path):
+def test_alerts_redirects_to_rules(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import webui.app as app_module
-
-    alerts_path = tmp_path / "alerts.yaml"
-    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n')
-    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
-
-    client = TestClient(app_module.app)
-    resp = client.get("/alerts")
-    assert resp.status_code == 200
-    assert "MiCA" in resp.text
-    assert "mica" in resp.text
-
-
-def test_alerts_add_appends_rule_and_redirects(monkeypatch, tmp_path):
-    from fastapi.testclient import TestClient
-    import webui.app as app_module
-    from collector.keyword_alerts import load_alert_rules
-
-    alerts_path = tmp_path / "alerts.yaml"
-    alerts_path.write_text("")
-    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
 
     client = TestClient(app_module.app, follow_redirects=False)
-    resp = client.post("/alerts", data={"keyword": "DORA", "tag": "dora-ops"})
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/alerts"
-    assert {"keyword": "DORA", "tag": "dora-ops"} in load_alert_rules(str(alerts_path))
+    resp = client.get("/alerts")
+    assert resp.status_code == 308
+    assert resp.headers["location"] == "/rules"
 
 
-def test_alerts_add_rejects_blank_keyword_or_tag(monkeypatch, tmp_path):
+def test_rules_view_lists_current_rules(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import webui.app as app_module
 
-    alerts_path = tmp_path / "alerts.yaml"
-    alerts_path.write_text("")
-    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text(
+        "min_confidence: 0.5\n"
+        "rules:\n"
+        "  - axis: instrument\n"
+        "    value: mica\n"
+        "    match:\n"
+        "      - pattern: MiCA\n"
+        "        weight: 0.9\n"
+        "    fields: [title, body]\n"
+    )
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
 
     client = TestClient(app_module.app)
-    resp = client.post("/alerts", data={"keyword": "  ", "tag": "dora-ops"})
+    resp = client.get("/rules")
+    assert resp.status_code == 200
+    assert "instrument" in resp.text
+    assert "mica" in resp.text
+    assert "MiCA" in resp.text
+
+
+def test_rules_add_appends_rule_and_redirects(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from regradar.rules import load_raw_rules
+
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app, follow_redirects=False)
+    resp = client.post("/rules", data={
+        "axis": "instrument", "value": "dora", "pattern": "DORA", "weight": "0.9",
+        "flags": "i", "fields": ["title", "body"], "title_multiplier": "1.0",
+    })
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/rules"
+    _, rules = load_raw_rules(str(rules_path))
+    assert rules == [{
+        "axis": "instrument", "value": "dora", "match": [{"pattern": "DORA", "weight": 0.9, "flags": "i"}],
+        "fields": ["title", "body"], "title_multiplier": 1.0,
+    }]
+
+
+def test_rules_add_rejects_unknown_axis_or_value(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app)
+    resp = client.post("/rules", data={"axis": "instrument", "value": "not-a-real-value", "pattern": "x"})
     assert resp.status_code == 400
 
 
-def test_alerts_delete_removes_rule_by_index(monkeypatch, tmp_path):
+def test_rules_add_rejects_blank_pattern(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import webui.app as app_module
-    from collector.keyword_alerts import load_alert_rules
 
-    alerts_path = tmp_path / "alerts.yaml"
-    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n- keyword: "MiFID"\n  tag: mifid\n')
-    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
 
-    client = TestClient(app_module.app, follow_redirects=False)
-    resp = client.post("/alerts/0/delete")
-    assert resp.status_code == 303
-    assert load_alert_rules(str(alerts_path)) == [{"keyword": "MiFID", "tag": "mifid"}]
+    client = TestClient(app_module.app)
+    resp = client.post("/rules", data={"axis": "instrument", "value": "mica", "pattern": "   "})
+    assert resp.status_code == 400
 
 
-def test_alerts_delete_out_of_range_index_is_a_no_op(monkeypatch, tmp_path):
+def test_rules_delete_removes_rule_by_index(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import webui.app as app_module
-    from collector.keyword_alerts import load_alert_rules
+    from regradar.rules import load_raw_rules
 
-    alerts_path = tmp_path / "alerts.yaml"
-    alerts_path.write_text('- keyword: "MiCA"\n  tag: mica\n')
-    monkeypatch.setattr(app_module, "ALERTS_PATH", str(alerts_path))
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text(
+        "min_confidence: 0.5\n"
+        "rules:\n"
+        "  - axis: instrument\n    value: mica\n    match: [{pattern: MiCA, weight: 0.9}]\n    fields: [title]\n"
+        "  - axis: instrument\n    value: mifid2\n    match: [{pattern: MiFID, weight: 0.9}]\n    fields: [title]\n"
+    )
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
 
     client = TestClient(app_module.app, follow_redirects=False)
-    resp = client.post("/alerts/5/delete")
+    resp = client.post("/rules/0/delete")
     assert resp.status_code == 303
-    assert load_alert_rules(str(alerts_path)) == [{"keyword": "MiCA", "tag": "mica"}]
+    _, rules = load_raw_rules(str(rules_path))
+    assert len(rules) == 1
+    assert rules[0]["value"] == "mifid2"
+
+
+def test_rules_delete_out_of_range_index_is_a_no_op(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from regradar.rules import load_raw_rules
+
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text(
+        "min_confidence: 0.5\n"
+        "rules:\n  - axis: instrument\n    value: mica\n    match: [{pattern: MiCA, weight: 0.9}]\n    fields: [title]\n"
+    )
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app, follow_redirects=False)
+    resp = client.post("/rules/5/delete")
+    assert resp.status_code == 303
+    _, rules = load_raw_rules(str(rules_path))
+    assert len(rules) == 1
+
+
+def test_api_unclassified_returns_items_with_no_live_row(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+    from collector.storage import init_db, insert_item
+    from collector.schema import Item, make_item_id
+    from datetime import datetime, timezone
+
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._engine = None
+    app_module._taxonomy = None
+    engine = app_module.get_engine()
+    now = datetime.now(timezone.utc)
+    insert_item(engine, Item(
+        id=make_item_id("esma", "https://x/unclassified", now), regulator_id="esma", source_label="all_news",
+        title="An unclassified item", url="https://x/unclassified", published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="a", source_type="rss",
+    ))
+
+    client = TestClient(app_module.app)
+    resp = client.get("/api/unclassified", params={"axis": "document_type"})
+    assert resp.status_code == 200
+    ids = [i["id"] for i in resp.json()["items"]]
+    assert make_item_id("esma", "https://x/unclassified", now) in ids
+
+
+def test_rules_add_rejects_invalid_regex(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app)
+    resp = client.post("/rules", data={"axis": "instrument", "value": "mica", "pattern": "(unclosed"})
+    assert resp.status_code == 400

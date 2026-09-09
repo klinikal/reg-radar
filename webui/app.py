@@ -2,6 +2,7 @@ import calendar
 import json
 import logging
 import os
+import re
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
@@ -13,11 +14,11 @@ from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 from fastapi.responses import Response
 
-from collector.keyword_alerts import load_alert_rules, write_alert_rules
 from collector.storage import init_db
-from mcpserver.queries import get_item, get_month_facets, list_regulators, search_items_advanced
+from mcpserver.queries import get_item, get_month_facets, get_unclassified, list_regulators, search_items_advanced
 from regradar.classification import remove_classification, write_classification
 from regradar.profiles import ProfileError, get_expanded_profile, list_shipped_profiles, load_activities
+from regradar.rules import load_raw_rules, write_raw_rules
 from regradar.taxonomy import load_and_exit_on_error
 from mcpserver.queries import get_changes, get_latest_changes
 from regradar.changes import CursorError
@@ -34,7 +35,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name=
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
 PAGE_SIZE = 50
-ALERTS_PATH = os.getenv("ALERTS_PATH", "/app/config/alerts.yaml")
+RULES_PATH = os.getenv("RULES_PATH", "/app/config/rules.yaml")
 FEED_MAX_ITEMS = int(os.getenv("FEED_MAX_ITEMS", "50"))
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 
@@ -312,31 +313,69 @@ def item_classify(item_id: str, axis: str = Form(...), value: str = Form(...), a
     return RedirectResponse(f"/item/{item_id}", status_code=303)
 
 
-@app.get("/alerts", response_class=HTMLResponse)
-def alerts_view(request: Request):
-    rules = load_alert_rules(ALERTS_PATH)
-    return templates.TemplateResponse("alerts.html", {"request": request, "rules": rules})
+@app.get("/alerts")
+def alerts_view():
+    # Renamed to /rules and rebuilt on config/rules.yaml (architecture doc
+    # §4.3) - this issue owns the migration; see scripts/migrate_alerts_to_rules.py.
+    return RedirectResponse("/rules", status_code=308)
 
 
-@app.post("/alerts")
-def alerts_add(keyword: str = Form(...), tag: str = Form(...)):
-    keyword = keyword.strip()
-    tag = tag.strip()
-    if not keyword or not tag:
-        raise HTTPException(status_code=400, detail="keyword and tag are both required")
-    rules = load_alert_rules(ALERTS_PATH)
-    rules.append({"keyword": keyword, "tag": tag})
-    write_alert_rules(ALERTS_PATH, rules)
-    return RedirectResponse("/alerts", status_code=303)
+@app.get("/rules", response_class=HTMLResponse)
+def rules_view(request: Request):
+    taxonomy = get_taxonomy()
+    min_confidence, rules = load_raw_rules(RULES_PATH)
+    axis_values = {axis: [v.id for v in taxonomy.axis_values(axis)] for axis in taxonomy.axes()}
+    return templates.TemplateResponse(
+        "rules.html",
+        {
+            "request": request, "rules": rules, "min_confidence": min_confidence,
+            "axes": taxonomy.axes(), "axis_values": axis_values,
+        },
+    )
 
 
-@app.post("/alerts/{index}/delete")
-def alerts_delete(index: int):
-    rules = load_alert_rules(ALERTS_PATH)
+@app.post("/rules")
+def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form(...),
+              weight: float = Form(0.7), flags: str = Form(""), fields: list[str] = Form(["title", "body"]),
+              title_multiplier: float = Form(1.0)):
+    taxonomy = get_taxonomy()
+    pattern = pattern.strip()
+    if axis not in taxonomy.axes() or not taxonomy.is_valid(axis, value):
+        raise HTTPException(status_code=400, detail="unknown axis/value - see config/taxonomy.yaml")
+    if not pattern:
+        raise HTTPException(status_code=400, detail="pattern is required")
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise HTTPException(status_code=400, detail=f"invalid regex pattern: {e}")
+    match_entry = {"pattern": pattern, "weight": weight}
+    if flags.strip():
+        match_entry["flags"] = flags.strip()
+    min_confidence, rules = load_raw_rules(RULES_PATH)
+    rules.append({
+        "axis": axis, "value": value, "match": [match_entry],
+        "fields": fields or ["title", "body"], "title_multiplier": title_multiplier,
+    })
+    write_raw_rules(RULES_PATH, min_confidence, rules)
+    return RedirectResponse("/rules", status_code=303)
+
+
+@app.post("/rules/{index}/delete")
+def rules_delete(index: int):
+    min_confidence, rules = load_raw_rules(RULES_PATH)
     if 0 <= index < len(rules):
         rules.pop(index)
-        write_alert_rules(ALERTS_PATH, rules)
-    return RedirectResponse("/alerts", status_code=303)
+        write_raw_rules(RULES_PATH, min_confidence, rules)
+    return RedirectResponse("/rules", status_code=303)
+
+
+@app.get("/api/unclassified")
+def api_unclassified(axis: str, limit: int = 50, offset: int = 0, regulator_id: str = "", since: str = "",
+                      include_low_confidence: bool = False):
+    items = get_unclassified(get_engine(), axis=axis, limit=limit, offset=offset,
+                              regulator_id=regulator_id or None, since=since or None,
+                              include_low_confidence=include_low_confidence)
+    return {"items": items}
 
 
 # JSON API - same query layer as the HTML views, so a future non-HTML

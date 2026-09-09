@@ -769,6 +769,84 @@ def get_health(engine) -> dict:
             "stalled_sources": stalled_sources}
 
 
+def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regulator_id=None, since=None,
+                      include_low_confidence: bool = False, max_content_chars: int = 6000) -> list[dict]:
+    """Returns items with no live classification row on `axis` (architecture
+    doc §4.5), oldest published first, for a classifier - human or agent -
+    to work through the backlog. `body_md` is truncated to
+    `max_content_chars` (default 6000) to protect a caller's context window.
+
+    `include_low_confidence=True` (docs/issues/04-rules-engine-write
+    -interface-llm-classifier-skill.md "Open questions") additionally
+    returns items that DO have a live row on `axis` but whose confidence
+    never reached the axis's effective-label threshold (taxonomy.yaml
+    min_confidence) - those are "effectively unclassified" (no entry in
+    item_labels, the materialized-label side table) even though a
+    classifier has touched them. The default (False) is stricter: only
+    items with zero live rows on the axis at all.
+    """
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(offset))
+    except (TypeError, ValueError):
+        offset = 0
+
+    if include_low_confidence:
+        exclude_sql = "SELECT item_id FROM item_labels WHERE axis = :axis"
+    else:
+        exclude_sql = "SELECT DISTINCT item_id FROM classifications WHERE axis = :axis AND superseded_at IS NULL"
+
+    conditions = [f"id NOT IN ({exclude_sql})"]
+    params: dict = {"axis": axis, "limit": limit, "offset": offset}
+    if regulator_id:
+        conditions.append("regulator_id = :regulator_id")
+        params["regulator_id"] = regulator_id
+    if since:
+        conditions.append("fetched_at > :since")
+        params["since"] = since
+
+    where = " AND ".join(conditions)
+    sql = f"""
+        SELECT id, regulator_id, source_label, title, body_md, published_at, fetched_at, language, labels
+        FROM items WHERE {where}
+        ORDER BY COALESCE(published_at, fetched_at) ASC
+        LIMIT :limit OFFSET :offset
+    """
+    keys = ["id", "regulator_id", "source_label", "title", "body_md", "published_at", "fetched_at", "language", "labels"]
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+        reg_rows = conn.execute(text("SELECT id, name, jurisdiction FROM regulators")).fetchall()
+    regulators = {r[0]: {"name": r[1], "jurisdiction": r[2]} for r in reg_rows}
+
+    results = []
+    for r in rows:
+        item = _row_to_dict(r, keys)
+        body_md = item.pop("body_md") or ""
+        item["body_md"] = body_md[:max_content_chars]
+        other_labels = json.loads(item.pop("labels") or "{}")
+        other_labels.pop(axis, None)
+        item["labels"] = other_labels
+        reg = regulators.get(item["regulator_id"], {})
+        item["regulator"] = reg.get("name")
+        item["jurisdiction"] = reg.get("jurisdiction")
+        results.append(item)
+    return results
+
+
+def get_item_labels(engine, item_id: str) -> dict:
+    """Returns one item's current effective labels (items.labels, JSON) -
+    used by the write interface (classify_item/classify_items) to report
+    what an item's labels are immediately after a write."""
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT labels FROM items WHERE id = :id"), {"id": item_id}).fetchone()
+    if row is None:
+        return {}
+    return json.loads(row[0] or "{}")
+
+
 _CHANGES_COLUMNS = [
     "id", "regulator_id", "source_label", "title", "url", "published_at",
     "fetched_at", "updated_at", "date_inferred", "language", "source_type", "labels", "body_md",

@@ -23,7 +23,6 @@ import os
 from sqlalchemy import text
 
 from collector.pipeline import filter_source_tags as _filter_source_tags
-from collector.keyword_alerts import load_alert_rules, match_keywords
 from collector.storage import init_db
 
 logging.basicConfig(
@@ -31,6 +30,37 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def load_alert_rules(path: str) -> list[dict]:
+    """Reads the old alerts.yaml `keyword`/`tag` format - inlined here
+    (rather than importing collector.keyword_alerts, which docs/issues/04-
+    rules-engine-write-interface-llm-classifier-skill.md removes along with
+    the feature it implemented) since this v1 migration is a completed,
+    idempotent one-off that only matters for a pre-v2 database still
+    carrying the legacy `tags` column, and needs the exact same matching
+    behaviour it used when items were first migrated."""
+    import yaml
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except FileNotFoundError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        {"keyword": entry["keyword"], "tag": entry["tag"]}
+        for entry in data
+        if isinstance(entry, dict) and isinstance(entry.get("keyword"), str) and isinstance(entry.get("tag"), str)
+    ]
+
+
+def match_keywords(text_to_match: str, rules: list[dict]) -> list[str]:
+    if not text_to_match or not rules:
+        return []
+    lowered = text_to_match.lower()
+    matched = {rule["tag"] for rule in rules if rule["keyword"].lower() in lowered}
+    return sorted(matched)
 
 
 def migrate_item_tags(old_tags: list[str], text_for_matching: str, alert_rules: list[dict]) -> tuple[list[str], list[str]]:
