@@ -1,0 +1,14 @@
+# eu/* selects EU-level output plus every member state (architecture doc
+# §5.3). regulators stays empty per the task-7 ruling; languages stays
+# empty (all) since a pan-EU firm needs member-state-language output, not
+# just English - unlike uk-equities-dealer, which watches a single
+# English-language jurisdiction.
+name: eu-casp
+jurisdictions: [eu/*]
+activities: [casp]
+instruments: []
+exclude_instruments: []
+document_types: []
+regulators: []
+languages: []
+include_unclassified: true

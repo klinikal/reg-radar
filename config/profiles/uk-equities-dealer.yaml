@@ -1,0 +1,10 @@
+# Architecture doc §5.2, verbatim.
+name: uk-equities-dealer
+jurisdictions: [gb]
+activities: [equities_dealing]
+instruments: []
+exclude_instruments: [mica]
+document_types: []
+regulators: []
+languages: [en]
+include_unclassified: true

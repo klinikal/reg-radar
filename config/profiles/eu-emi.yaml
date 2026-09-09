@@ -1,0 +1,10 @@
+# See eu-casp.yaml for the jurisdictions/languages/regulators rationale.
+name: eu-emi
+jurisdictions: [eu/*]
+activities: [emi]
+instruments: []
+exclude_instruments: []
+document_types: []
+regulators: []
+languages: []
+include_unclassified: true
