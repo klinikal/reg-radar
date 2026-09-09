@@ -75,6 +75,19 @@ Two other one-off scripts under `scripts/` are for disaster recovery or after bu
 - `rebuild_fts_index.py` — rebuilds the SQLite FTS5 search index (`items_fts`) from the `items` table if it ever drifts or you're restoring from backup.
 - `rebuild_chunks.py` — rebuilds the `item_chunks` table (paragraph-aware text chunks derived from each item's full content). Chunks are prep infrastructure for future semantic search; the collector does not populate them automatically yet — run this after a large backfill if you want chunks in place.
 
+### Source health
+
+Selector drift (a regulator redesign keeps returning HTTP 200 with a parser matching nothing) is invisible to a single-run check, so it's caught two ways:
+
+- **Regression fixtures.** Every enabled source has a captured fixture under `tests/fixtures/sources/<regulator_id>/<source_label>.{html,xml}`. `tests/test_source_fixtures.py` runs each source's existing parser against its fixture offline and asserts at least one parsed item with a title, url, and resolved date. Recapture one deliberately (never automatic) with:
+  ```
+  python -m scripts.capture_fixture --regulator <id> --source <label>
+  python -m scripts.capture_fixture --all       # every enabled source
+  ```
+  Fetches go through the exact same code path (and FlareSolverr wiring/throttling) as the real collector. A source that can't be captured here — a Cloudflare challenge with no FlareSolverr running, a bot-blocking WAF — is recorded with the reason and its contract test marked as an expected failure (`xfail`) naming that reason, not silently skipped.
+- **Nightly live check.** `.github/workflows/source-health-nightly.yml` runs the same fetch-and-parse contract against every source's live URL (with a FlareSolverr service container, so Cloudflare-protected sources are checked too) and opens or updates one GitHub issue per newly-failing source, closing it automatically on recovery.
+- **Stall detector.** Independent of a hard fetch error: a source that fetches successfully but returns zero items for `STALL_THRESHOLD_RUNS` consecutive runs (default 7) is flagged `stalled` in `get_health_tool`/`list_regulators_tool` and shown in the web UI's regulator panel, distinct from the existing consecutive-failure warning.
+
 ## Tags
 
 Every item carries two separate tag lists, kept apart deliberately:
@@ -92,7 +105,7 @@ The MCP server exposes eleven tools over streamable HTTP, returning structured c
 |---|---|
 | `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails), with AND semantics, quoted-phrase support, and `limit`/`offset` pagination. Filter by `tags` (source + content tags combined), or `source_tags`/`content_tags` individually — see [Tags](#tags) |
 | `get_recent_tool` | Most recent N items with optional filters, same `tags`/`source_tags`/`content_tags` options as above |
-| `list_regulators_tool` | Full registry with live fetch status |
+| `list_regulators_tool` | Full registry with live fetch status, including `stalled` (a source has hit the consecutive zero-item-run threshold — see [Source health](#source-health)) |
 | `get_item_tool` | Single item by ID, including raw content; optional `max_content_chars` to truncate large text and protect context windows |
 | `get_run_log_tool` | Recent collector run stats |
 | `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below |
@@ -100,7 +113,7 @@ The MCP server exposes eleven tools over streamable HTTP, returning structured c
 | `get_month_facets_tool` | Item counts grouped by publish month for a search, for a month-picker style view |
 | `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts — discover valid tag values before filtering by them |
 | `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — the polling primitive for "everything new since my last check" |
-| `get_health_tool` | Most recent collector run's status, freshness, and database integrity (see [Backups & recovery](#backups--recovery)) — check this before trusting search results after a long gap |
+| `get_health_tool` | Most recent collector run's status, freshness, database integrity (see [Backups & recovery](#backups--recovery)), and `stalled_sources` (see [Source health](#source-health)) — check this before trusting search results after a long gap |
 
 **On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list.
 
@@ -186,6 +199,7 @@ Copy `.env.example` to `.env` and adjust:
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
 | `FLARESOLVERR_MAX_RETRIES` | `3` | Retry attempts per FlareSolverr fetch |
 | `FLARESOLVERR_RETRY_BACKOFF_SECONDS` | `45` | Base backoff when a FlareSolverr fetch looks blocked (doubles per retry) |
+| `STALL_THRESHOLD_RUNS` | `7` | Consecutive successful-but-empty runs before a source is flagged `stalled` (see [Source health](#source-health)) |
 | `MCP_EXTRA_ALLOWED_HOSTS` | *(unset)* | Comma-separated `host:port` values to add to the MCP server's Host-header allowlist — required if you remap the published port (see above) |
 
 ## Backups & recovery
