@@ -10,6 +10,15 @@
   <label>From <input type="date" name="date_from" value="{{ date_from }}"></label>
   <label>To <input type="date" name="date_to" value="{{ date_to }}"></label>
 
+  <label>Profile
+    <select name="profile">
+      <option value="">All (no profile)</option>
+      {% for p in profile_options %}
+      <option value="{{ p }}" {% if p == profile %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
   <button type="submit">Search</button>
   <a class="clear" href="/">Clear all</a>
   <a href="/alerts">Keyword alerts</a>
