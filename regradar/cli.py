@@ -17,14 +17,14 @@ import logging
 import os
 import sys
 
-from regradar import digest, exporter, reclassify, render
+from regradar import classify, digest, exporter, reclassify, render
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 
-_SUBCOMMAND_MODULES = [render, reclassify, exporter, digest]
+_SUBCOMMAND_MODULES = [render, reclassify, exporter, digest, classify]
 
 
 def build_parser() -> argparse.ArgumentParser:
