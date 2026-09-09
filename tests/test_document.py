@@ -153,6 +153,56 @@ def test_convert_body_falls_back_when_nothing_collected():
     assert extractor == "raw/1"
 
 
+# --- effective_body_md (pre-v2 raw_content fallback) ----------------------
+
+def test_effective_body_md_returns_body_md_when_present():
+    item = make_item(body_md="already have a body")
+    assert doc.effective_body_md(item) == "already have a body"
+
+
+def test_effective_body_md_returns_empty_when_neither_present():
+    item = make_item(body_md="", raw_content=None)
+    assert doc.effective_body_md(item) == ""
+
+
+def test_effective_body_md_derives_rss_body_with_not_collected_note():
+    # A pre-v2 RSS item: body_md is NULL, raw_content is the feed's own
+    # unconverted HTML summary (collector.pipeline._extract's is_partial
+    # branch) - the derived body must look like a fresh RSS item's own
+    # rss_body_markdown() output, note included.
+    item = make_item(
+        body_md="", raw_content="<p>Warning about unregistered firms.</p>",
+        source_type="rss", content_snippet="Warning about unregistered firms.",
+        url="https://example.org/warnings/123",
+    )
+    body = doc.effective_body_md(item)
+    assert "Warning about unregistered firms." in body
+    assert body.endswith("> Full text not collected. See https://example.org/warnings/123.")
+
+
+def test_effective_body_md_derives_scrape_body_via_paragraph_normalisation():
+    # Pre-v2 scrape/page_watch raw_content is already plain extracted text
+    # (collector.pipeline._extract's non-RSS branches) - only paragraph
+    # joining applies, no "not collected" note (a real body was collected).
+    raw = "This is a\nwrapped line.\n\nSecond paragraph\nhere."
+    item = make_item(body_md="", raw_content=raw, source_type="scrape")
+    body = doc.effective_body_md(item)
+    assert body == "This is a wrapped line.\n\nSecond paragraph here."
+
+
+def test_build_frontmatter_content_hash_covers_derived_body():
+    item = make_item(body_md="", raw_content="hello", source_type="scrape")
+    fm = doc.build_frontmatter(item)
+    assert fm["content_hash"] == doc._content_hash(doc.effective_body_md(item))
+    assert fm["content_hash"] != doc._content_hash("")
+
+
+def test_render_item_renders_derived_body_for_pre_v2_item():
+    item = make_item(body_md="", raw_content="hello world", source_type="scrape")
+    text = doc.render_item(item, None, None, None)
+    assert "hello world" in text.split("---\n\n", 1)[1]
+
+
 # --- frontmatter build / render / parse round trip ------------------------
 
 def test_build_frontmatter_omits_labels_when_absent():

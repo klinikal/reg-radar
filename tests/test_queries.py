@@ -311,12 +311,12 @@ def test_get_item_includes_body_md_and_document_frontmatter():
             "jurisdiction": "EU", "jurisdiction_type": "supranational", "website": "https://esma.europa.eu",
             "mica_competent_authority": True, "enabled": True,
         })
-        item = make_item(regulator_id="esma")
+        item = make_item(regulator_id="esma", raw_content="")
         insert_item(engine, item)
 
         result = get_item(engine, item.id)
 
-        assert result["body_md"] == ""  # make_item() (this test file's helper) doesn't set body_md
+        assert result["body_md"] == ""  # no body_md and no raw_content to derive one from
         assert "document" in result
         document = result["document"]
         assert document["id"] == item.id
@@ -389,6 +389,33 @@ def test_get_item_without_taxonomy_omits_provenance_and_ancestors():
         assert document["jurisdiction_ancestors"] == []
         assert "labels" not in document
         assert "label_provenance" not in document
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_item_derives_body_md_from_raw_content_for_pre_v2_items():
+    """A pre-v2 row (items.body_md NULL/empty, raw_content populated) gets
+    a real body_md back from get_item(), and document.content_hash covers
+    that derived text, not the empty string - see
+    regradar.document.effective_body_md()."""
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu",
+            "jurisdiction_type": "supranational", "website": "https://esma.europa.eu",
+            "mica_competent_authority": True, "enabled": True,
+        })
+        item = make_item(regulator_id="esma", raw_content="<p>Some notice text.</p>")
+        insert_item(engine, item)
+
+        result = get_item(engine, item.id)
+
+        assert result["body_md"] != ""
+        assert "Some notice text." in result["body_md"]
+        document = result["document"]
+        from regradar.document import _content_hash
+        assert document["content_hash"] == _content_hash(result["body_md"])
+        assert document["content_hash"] != _content_hash("")
     finally:
         os.unlink(db_path)
 

@@ -483,7 +483,8 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
     100, max 200.
     """
     items, next_cursor = _safe("get_changes_tool", get_changes, get_engine(), since=since, limit=limit,
-                                profile=_resolve_profile(profile), include_body=include_body)
+                                profile=_resolve_profile(profile), include_body=include_body,
+                                taxonomy=get_taxonomy())
     return {"items": items, "next_cursor": next_cursor}
 
 

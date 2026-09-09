@@ -503,7 +503,7 @@ def _atom_feed_xml(profile_name: str, items: list[dict], feed_url: str) -> bytes
 @app.get("/feeds/{profile_name}.atom")
 def feed_atom(request: Request, profile_name: str):
     expanded = _resolve_profile(profile_name)
-    items = get_latest_changes(get_engine(), profile=expanded, limit=FEED_MAX_ITEMS)
+    items = get_latest_changes(get_engine(), profile=expanded, limit=FEED_MAX_ITEMS, taxonomy=get_taxonomy())
     xml_bytes = _atom_feed_xml(profile_name, items, str(request.url))
     return Response(content=xml_bytes, media_type="application/atom+xml")
 

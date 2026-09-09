@@ -110,7 +110,7 @@ def _label_str(labels: dict, axis: str) -> str:
     return ", ".join(value) if isinstance(value, list) else str(value)
 
 
-def _fetch_all_changes(engine, expanded_profile, since: str | None) -> tuple[list[dict], str | None]:
+def _fetch_all_changes(engine, expanded_profile, since: str | None, taxonomy=None) -> tuple[list[dict], str | None]:
     """Pages through get_changes() until nothing new is left, returning
     every matching item plus the final cursor - the same pagination shape
     regradar.exporter.export_profile() uses.
@@ -133,7 +133,8 @@ def _fetch_all_changes(engine, expanded_profile, since: str | None) -> tuple[lis
     seen_ids: set = set()
     cursor = since
     while True:
-        items, next_cursor = get_changes(engine, since=cursor, profile=expanded_profile, limit=_PAGE_SIZE, include_body=True)
+        items, next_cursor = get_changes(engine, since=cursor, profile=expanded_profile, limit=_PAGE_SIZE,
+                                          include_body=True, taxonomy=taxonomy)
         if not items:
             break
         stuck = next_cursor == cursor
@@ -223,11 +224,11 @@ def render_html(profile_name: str, items: list[dict]) -> str:
     return "".join(parts)
 
 
-def render_digest(engine, expanded_profile, profile_name: str, since: str | None) -> dict:
+def render_digest(engine, expanded_profile, profile_name: str, since: str | None, taxonomy=None) -> dict:
     """Returns {"markdown", "html", "next_cursor", "items"} for everything
     matching `expanded_profile` changed after `since`. `next_cursor` is
     `since` unchanged when nothing new was found."""
-    items, next_cursor = _fetch_all_changes(engine, expanded_profile, since)
+    items, next_cursor = _fetch_all_changes(engine, expanded_profile, since, taxonomy=taxonomy)
     return {
         "markdown": render_markdown(profile_name, items),
         "html": render_html(profile_name, items),
@@ -282,7 +283,7 @@ def send_digest(engine, entry: dict, taxonomy, activities: dict, profiles_dir: s
     name = entry["name"]
     expanded_profile = get_expanded_profile(entry["profile"], taxonomy, activities, profiles_dir=profiles_dir)
     since = get_digest_cursor(engine, name)
-    result = render_digest(engine, expanded_profile, entry["profile"], since)
+    result = render_digest(engine, expanded_profile, entry["profile"], since, taxonomy=taxonomy)
 
     if not result["items"] and not entry["send_empty"]:
         logger.info("Digest '%s': nothing new since last send - skipping (send_empty is false)", name)
