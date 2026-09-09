@@ -329,3 +329,22 @@ def test_lifespan_fails_at_boot_on_invalid_taxonomy(monkeypatch, tmp_path):
     finally:
         app_module._taxonomy = None
         app_module._activities = None
+
+
+def test_with_search_fields_names_countries_from_the_jurisdiction_config(monkeypatch):
+    """Regulator jurisdictions are lower-case taxonomy ids (gb, not UK).
+    A hand-maintained upper-case name map here silently lost the country
+    name for every regulator once the ids moved."""
+    import webui.app as app_module
+
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+
+    reg = app_module._with_search_fields({
+        "id": "uk-fca", "name": "FCA", "full_name": "Financial Conduct Authority", "jurisdiction": "gb",
+    })
+
+    assert reg["country"] == "United Kingdom"
+    assert "united kingdom" in reg["search_text"]
+    app_module._taxonomy = None

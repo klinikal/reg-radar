@@ -57,20 +57,6 @@ RULES_PATH = os.getenv("RULES_PATH", "/app/config/rules.yaml")
 FEED_MAX_ITEMS = int(os.getenv("FEED_MAX_ITEMS", "50"))
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 
-# Full country/entity names for jurisdiction codes used in config/regulators.yaml,
-# so the regulator filter can be searched by country name ("czech"), not just
-# abbreviation (CNB) or code (CZ). Extend this if a new jurisdiction is added.
-JURISDICTION_NAMES = {
-    "AT": "Austria", "BE": "Belgium", "BG": "Bulgaria", "CY": "Cyprus",
-    "CZ": "Czech Republic", "DE": "Germany", "DK": "Denmark", "EE": "Estonia",
-    "ES": "Spain", "EU": "European Union", "FI": "Finland", "FR": "France",
-    "GR": "Greece", "HR": "Croatia", "HU": "Hungary", "IE": "Ireland",
-    "IS": "Iceland", "IT": "Italy", "LT": "Lithuania", "LU": "Luxembourg",
-    "LV": "Latvia", "MT": "Malta", "NL": "Netherlands", "NO": "Norway",
-    "PL": "Poland", "PT": "Portugal", "RO": "Romania", "SE": "Sweden",
-    "SI": "Slovenia", "SK": "Slovakia", "UK": "United Kingdom",
-}
-
 _engine = None
 _taxonomy = None
 _activities = None
@@ -161,7 +147,11 @@ def _with_tags(item: dict) -> dict:
 
 
 def _with_search_fields(regulator: dict) -> dict:
-    country = JURISDICTION_NAMES.get(regulator["jurisdiction"], regulator["jurisdiction"])
+    # Country name comes from config/jurisdictions.yaml, the single source of
+    # jurisdiction ids and names - a second hand-maintained map here went
+    # stale the moment an id changed (UK -> gb), losing the country name from
+    # the regulator panel and breaking search-by-country for it.
+    country = get_taxonomy().jurisdiction_name((regulator["jurisdiction"] or "").lower())
     regulator["country"] = country
     regulator["display_label"] = f"{country} - {regulator['name']} - {regulator['full_name']}"
     regulator["search_text"] = " ".join([
@@ -248,9 +238,9 @@ def index(
     filter_qs_no_jurisdiction = qs(jurisdiction=[])
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "items": items,
             "regulators": regulators,
             "regulator_names": regulator_names,
@@ -291,7 +281,7 @@ def item_view(request: Request, item_id: str):
     item = get_item(get_engine(), item_id, taxonomy=taxonomy)
     if item is None:
         return templates.TemplateResponse(
-            "not_found.html", {"request": request, "item_id": item_id}, status_code=404
+            request, "not_found.html", {"item_id": item_id}, status_code=404
         )
     item["has_full_text"] = bool(item.get("raw_content"))
     item["clean_text"] = _clean_text(item.get("raw_content"), item.get("content_snippet"))
@@ -301,9 +291,9 @@ def item_view(request: Request, item_id: str):
     document_type_values = [v.id for v in taxonomy.axis_values("document_type")]
     instrument_values = [v.id for v in taxonomy.axis_values("instrument")]
     return templates.TemplateResponse(
+        request,
         "item.html",
         {
-            "request": request,
             "item": item,
             "regulator_name": regulators.get(item["regulator_id"]),
             "item_labels": item_labels,
@@ -344,9 +334,10 @@ def rules_view(request: Request):
     min_confidence, rules = load_raw_rules(RULES_PATH)
     axis_values = {axis: [v.id for v in taxonomy.axis_values(axis)] for axis in taxonomy.axes()}
     return templates.TemplateResponse(
+        request,
         "rules.html",
         {
-            "request": request, "rules": rules, "min_confidence": min_confidence,
+            "rules": rules, "min_confidence": min_confidence,
             "axes": taxonomy.axes(), "axis_values": axis_values,
         },
     )
