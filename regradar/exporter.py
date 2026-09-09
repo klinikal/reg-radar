@@ -116,6 +116,7 @@ def _read_jsonl_snapshot(out_dir: Path) -> dict[str, str]:
     if not path.exists():
         return {}
     snapshot: dict[str, str] = {}
+    dropped = 0
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -123,8 +124,17 @@ def _read_jsonl_snapshot(out_dir: Path) -> dict[str, str]:
         try:
             doc_id = json.loads(line)["id"]
         except (json.JSONDecodeError, KeyError):
+            dropped += 1
             continue
         snapshot[doc_id] = line
+    if dropped:
+        # A dropped line is an item silently vanishing from the snapshot on
+        # the next rewrite - say so rather than shrinking the export quietly.
+        logger.warning(
+            "%d unparseable line(s) in %s were dropped from the snapshot - "
+            "re-run with a fresh --out for a full rebuild if the export looks short",
+            dropped, path,
+        )
     return snapshot
 
 
@@ -180,9 +190,10 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
     one line per item id, latest wins - rebuilt from the existing snapshot
     plus whatever changed since `since`, and only rewritten if its content
     actually changed (so an unchanged run doesn't touch the file's mtime
-    either). Returns {"written": int, "cursor": str | None} - `cursor` is
-    the new head of the stream (or `since` again if nothing changed), for
-    the caller to persist.
+    either). Returns {"written": int, "cursor": str | None} - `written`
+    counts only the items whose output actually changed on disk, not every
+    item the pass looked at, and `cursor` is the new head of the stream (or
+    `since` again if nothing changed), for the caller to persist.
 
     `exclude_regulators` (a set of regulator ids, see regradar.dataset.
     load_exclusions - issue #12) drops matching items from every format
@@ -227,8 +238,13 @@ def export_profile(engine, out_dir: Path, *, profile=None, since: str | None = N
             if "markdown" in formats and render_item_to_dir(engine, item_id, out_dir, taxonomy=taxonomy) is not None:
                 item_written = True
             if "jsonl" in formats:
-                snapshot[item_id] = json.dumps(doc, sort_keys=False)
-                item_written = True
+                line = json.dumps(doc, sort_keys=False)
+                # Only a changed line is a write: an unchanged one leaves the
+                # rewritten snapshot byte-identical, so counting it would
+                # report work the export did not do.
+                if snapshot.get(item_id) != line:
+                    item_written = True
+                snapshot[item_id] = line
             if item_written:
                 written += 1
             if with_originals:
