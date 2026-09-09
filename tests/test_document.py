@@ -201,11 +201,22 @@ def test_rendered_frontmatter_is_valid_yaml_and_matches_json_schema():
 
 
 def test_frontmatter_top_level_values_are_obsidian_safe_types():
-    # Obsidian's Properties panel renders scalars and lists (plus a single
-    # level of mapping for `labels`/`original`) cleanly - anything deeper,
-    # or a python-specific type PyYAML can't round-trip, would not.
+    # Obsidian's Properties panel renders scalars and lists cleanly.
+    # `labels` and `original` are the only top-level values allowed to be a
+    # mapping (a single level: axis/value pairs, or path/mime/sha256/bytes);
+    # `label_provenance` is a list whose entries are mappings. Anything else
+    # nested this deep would not render as a Properties panel field.
     item = make_item()
     labels = {"document_type": "consultation", "instrument": ["cass", "mifid2"]}
-    fm = doc.build_frontmatter(item, labels=labels)
+    provenance = [{"axis": "document_type", "value": "consultation", "by": "source_default"}]
+    artefact = {"path": "originals/9f/9f2c.pdf", "mime": "application/pdf", "sha256": "77aa", "bytes": 1}
+    fm = doc.build_frontmatter(item, artefact=artefact, labels=labels, label_provenance=provenance)
+
+    mapping_keys = {"labels", "original"}
     for key, value in fm.items():
-        assert isinstance(value, (str, int, float, bool, type(None), list, dict, date, datetime)), (key, type(value))
+        if key in mapping_keys:
+            assert isinstance(value, dict), (key, type(value))
+        elif key == "label_provenance":
+            assert isinstance(value, list) and all(isinstance(entry, dict) for entry in value)
+        else:
+            assert isinstance(value, (str, int, float, bool, type(None), list, date, datetime)), (key, type(value))

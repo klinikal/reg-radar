@@ -33,9 +33,21 @@
       "items": { "type": "string" }
     },
     "title": { "type": "string" },
-    "published_at": { "type": "string", "description": "ISO 8601 date" },
-    "fetched_at": { "type": "string", "description": "ISO 8601 date-time" },
-    "updated_at": { "type": "string", "description": "ISO 8601 date-time" },
+    "published_at": {
+      "type": "string",
+      "description": "ISO 8601 date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "fetched_at": {
+      "type": "string",
+      "description": "ISO 8601 date-time, UTC, Z-suffixed (e.g. 2026-08-15T06:02:11Z)",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "ISO 8601 date-time, UTC, Z-suffixed (e.g. 2026-08-15T06:02:11Z)",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
     "date_inferred": { "type": "boolean" },
     "language": { "type": "string" },
     "source_url": { "type": "string" },

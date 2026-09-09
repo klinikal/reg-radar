@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from regradar.document import build_frontmatter
+from regradar.document import build_frontmatter, frontmatter_to_json_safe
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +365,8 @@ def get_item(engine, item_id: str) -> dict | None:
         doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
         doc_item["jurisdiction"] = reg.get("jurisdiction")
     artefact = dict(artefact_row._mapping) if artefact_row is not None else None
-    item["document"] = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+    item["document"] = frontmatter_to_json_safe(fm)
     return item
 
 

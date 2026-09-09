@@ -158,14 +158,37 @@ def _as_utc_datetime(value) -> datetime | None:
     """Accepts a datetime or an ISO string - raw SQL (used by
     regradar.render and mcpserver.queries) returns SQLite's stored
     datetime columns as plain strings, not python datetime objects.
+    Microseconds are dropped - the frontmatter's declared precision
+    (section 3.2's examples) is whole seconds, and both build_frontmatter()
+    and parse() need to agree on that precision for the round trip to be
+    lossless at the field's own resolution.
     """
     if value is None:
         return None
     if isinstance(value, str):
         value = datetime.fromisoformat(value)
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.replace(microsecond=0)
+
+
+_DATETIME_Z_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _format_datetime_z(value: datetime) -> str:
+    """ISO 8601 with a T separator and Z suffix for UTC, per section 3.2's
+    frontmatter example (e.g. 2026-08-15T06:02:11Z) - PyYAML's own
+    datetime representer instead renders "2026-08-15 06:02:11+00:00"
+    (space-separated, explicit offset), so fetched_at/updated_at are
+    formatted explicitly rather than left to the default representer.
+    """
+    return value.astimezone(timezone.utc).strftime(_DATETIME_Z_FORMAT)
+
+
+def _parse_datetime_z(value: str) -> datetime:
+    return datetime.strptime(value, _DATETIME_Z_FORMAT).replace(tzinfo=timezone.utc)
 
 
 def build_frontmatter(
@@ -223,17 +246,27 @@ def render_item(item: dict, artefact: dict | None, labels: dict | None, provenan
     then the Markdown body (item["body_md"]).
     """
     fm = build_frontmatter(item, artefact=artefact, labels=labels, label_provenance=provenance)
-    yaml_text = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True, default_flow_style=False).strip()
+    fm_for_yaml = dict(fm)
+    for key in ("fetched_at", "updated_at"):
+        fm_for_yaml[key] = _format_datetime_z(fm[key])
+    yaml_text = yaml.safe_dump(fm_for_yaml, sort_keys=False, allow_unicode=True, default_flow_style=False).strip()
     body = (item.get("body_md") or "").strip()
     return f"---\n{yaml_text}\n---\n\n{body}\n"
 
 
 def parse(text: str) -> tuple[dict, str]:
-    """Inverse of render_item(): returns (frontmatter_dict, body)."""
+    """Inverse of render_item(): returns (frontmatter_dict, body). Restores
+    fetched_at/updated_at to timezone-aware UTC datetimes (they're written
+    as Z-suffixed strings, not left to YAML's own timestamp resolution) so
+    the round trip matches build_frontmatter()'s types field-for-field.
+    """
     match = _FRONTMATTER_RE.match(text)
     if not match:
         raise ValueError("not a valid canonical document: missing frontmatter block")
     fm = yaml.safe_load(match.group(1)) or {}
+    for key in ("fetched_at", "updated_at"):
+        if key in fm and isinstance(fm[key], str):
+            fm[key] = _parse_datetime_z(fm[key])
     body = match.group(2)
     return fm, body
 
@@ -241,10 +274,15 @@ def parse(text: str) -> tuple[dict, str]:
 def frontmatter_to_json_safe(fm: dict) -> dict:
     """Frontmatter with date/datetime values converted to ISO strings, for
     JSON Schema validation (jsonschema works on JSON-native types only).
+    fetched_at/updated_at use the same Z-suffixed form render_item() writes
+    (docs/schema/document-v1.json's pattern expects exactly that).
     """
     out = dict(fm)
-    for key in ("published_at", "fetched_at", "updated_at"):
+    for key in ("fetched_at", "updated_at"):
         value = out.get(key)
-        if isinstance(value, (date, datetime)):
-            out[key] = value.isoformat()
+        if isinstance(value, datetime):
+            out[key] = _format_datetime_z(value)
+    value = out.get("published_at")
+    if isinstance(value, date):
+        out["published_at"] = value.isoformat()
     return out
