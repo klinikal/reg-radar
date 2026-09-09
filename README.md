@@ -121,6 +121,15 @@ docker compose exec collector python -m regradar.reclassify reclassify --axis in
 
 **Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`) - it predates the registry split and targets a single regulators file, so point it at one of the files under `config/regulators/` at a time; `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better; `scripts/migrate_alerts_to_rules.py` converts the old `alerts.yaml` keyword rules into `rules.yaml` entries, printing any it can't map onto a taxonomy value for manual handling. All three support `--dry-run`.
 
+Run the one-off upgrade steps in this order:
+
+1. Run the collector once (it refreshes the `regulators` table's `jurisdiction` column on every upsert), or run `scripts/migrate_regulator_labels.py --db-path <path>` directly — its DB-rewrite step runs independently of whether the YAML still has `tags` to migrate.
+2. `regradar reclassify --axis document_type`
+3. `regradar reclassify --axis instrument --by rule`
+4. `regradar reclassify --axis document_type --by rule`
+5. `scripts/migrate_content_tags.py`
+6. `scripts/reprocess_bodies.py --from-raw-content` (re-extracts body Markdown from raw content saved before the extractor upgrade)
+
 ## Classification rules
 
 `config/rules.yaml` is a deterministic, weighted, regex-capable rules engine that runs on every newly-collected item (and via `regradar reclassify --by rule`), replacing v1's keyword-to-tag alerts. Each entry scores one (axis, value) pair:
