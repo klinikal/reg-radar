@@ -397,22 +397,7 @@ def get_taxonomy_tool() -> dict:
     classify_items_tool so an agent never needs filesystem access to the
     config to know what axes/values are valid.
     """
-    taxonomy = get_taxonomy()
-    return {
-        "version": taxonomy.version(),
-        "axes": [
-            {
-                "id": axis,
-                "cardinality": taxonomy.cardinality(axis),
-                "min_confidence": taxonomy.min_confidence(axis),
-                "values": [
-                    {"id": v.id, "name": v.name, "aliases": v.aliases, "jurisdiction": v.jurisdiction}
-                    for v in taxonomy.axis_values(axis)
-                ],
-            }
-            for axis in taxonomy.axes()
-        ],
-    }
+    return get_taxonomy().to_dict()
 
 
 @mcp.tool()

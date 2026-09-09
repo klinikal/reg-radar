@@ -96,6 +96,29 @@ class Taxonomy:
         _walk(jurisdiction_id)
         return result
 
+    def to_dict(self) -> dict:
+        """Renders the taxonomy as the plain dict shape both the
+        `get_taxonomy_tool` MCP tool and the batch LLM classifier
+        (regradar/classify.py, architecture doc §4.6) hand to their
+        respective classifiers - a single rendering so the two paths can't
+        drift on what they tell the model is valid (docs/issues/12-batch
+        -llm-classifier-runner.md design notes)."""
+        return {
+            "version": self._version,
+            "axes": [
+                {
+                    "id": axis,
+                    "cardinality": self.cardinality(axis),
+                    "min_confidence": self.min_confidence(axis),
+                    "values": [
+                        {"id": v.id, "name": v.name, "aliases": v.aliases, "jurisdiction": v.jurisdiction}
+                        for v in self.axis_values(axis)
+                    ],
+                }
+                for axis in self.axes()
+            ],
+        }
+
     def descendants(self, jurisdiction_id: str) -> list:
         """Every jurisdiction id for which `jurisdiction_id` is an ancestor
         (the reverse of ancestors()) - used by profile expansion's `<id>/*`
