@@ -85,9 +85,7 @@ rules:
 - axis: document_type
   value: technical_standard
   match:
-  - pattern: \bRTS\b
-    weight: 0.85
-  - pattern: \bITS\b
+  - pattern: \b(RTS|ITS)\b[^\n]{0,40}\d
     weight: 0.85
   - pattern: regulatory technical standard
     weight: 0.85
