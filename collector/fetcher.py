@@ -530,6 +530,8 @@ def _parse_page_watch(html: str, source: dict, regulator_id: str) -> list[Item]:
         raw_content=text,
         body_md=body_md,
         extractor=extractor,
+        raw_bytes=html.encode("utf-8"),
+        mime="text/html",
     )]
 
 

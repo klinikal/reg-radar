@@ -980,4 +980,15 @@ def test_parse_page_watch_body_md_is_flattened_text():
     items = _parse_page_watch(html, source, "esma")
     assert items[0].body_md == "Real page text here."
     assert items[0].extractor == "raw/1"
-    assert items[0].raw_bytes is None
+
+
+def test_parse_page_watch_stores_the_fetched_page_as_an_artefact():
+    # Section 3.3: the original response is stored for every item that has
+    # a body - page_watch fetches a page body, so it's not exempt (unlike
+    # RSS, which never fetches a full body at all).
+    from collector.fetcher import _parse_page_watch
+    html = '<html><body><nav>ignore</nav><div class="content">Real page text here.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    items = _parse_page_watch(html, source, "esma")
+    assert items[0].raw_bytes == html.encode("utf-8")
+    assert items[0].mime == "text/html"
