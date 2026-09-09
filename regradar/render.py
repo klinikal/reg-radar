@@ -79,7 +79,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("item_id", nargs="?", help="Render a single item by id")
     parser.add_argument("--all", action="store_true", help="Render every item in the database")
     parser.add_argument("--out", default="export", help="Output directory (default: export)")
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.set_defaults(func=run)

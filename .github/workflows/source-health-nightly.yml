@@ -34,6 +34,6 @@ jobs:
         env:
           REGULATORS_PATH: config/regulators
           FLARESOLVERR_URL: http://localhost:8191
-          USER_AGENT: "regradar/2.0 (+https://github.com/klinikal/regradar)"
+          USER_AGENT: "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"
           GH_TOKEN: ${{ github.token }}
         run: python -m scripts.source_health

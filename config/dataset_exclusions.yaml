@@ -1,6 +1,6 @@
-# Regulator ids dropped from the published dataset (regradar export
+# Regulator ids dropped from the published dataset (reg-radar export
 # --exclude-regulator-file, .github/workflows/publish-dataset.yml) - never
-# affects the live collector or a local `regradar export` run without this
+# affects the live collector or a local `reg-radar export` run without this
 # flag.
 #
 # Starts empty: nothing found while compiling NOTICE (repository root)

@@ -1,7 +1,7 @@
 [project]
-name = "regradar"
+name = "reg-radar"
 version = "2.0.0"
-description = "RegRadar canonical document format, taxonomy and CLI"
+description = "reg-radar canonical document format, taxonomy and CLI"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml==6.0.1",
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-regradar = "regradar.cli:main"
+reg-radar = "regradar.cli:main"
 
 [project.optional-dependencies]
 test = [

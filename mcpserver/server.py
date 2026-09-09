@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # The Host header a client sends reflects the EXTERNAL port it connected to
 # (e.g. "127.0.0.1:8001"), not this container's internal port (always 8000)
 # - so an operator who remaps the published port via docker-compose.override.yml
-# (documented in skills/regradar-operator/SKILL.md for port conflicts) needs
+# (documented in skills/reg-radar-operator/SKILL.md for port conflicts) needs
 # their remapped host:port added here too, via MCP_EXTRA_ALLOWED_HOSTS
 # (comma-separated, e.g. "127.0.0.1:8001,localhost:8001").
 _extra_allowed_hosts = [
@@ -45,7 +45,7 @@ _extra_allowed_hosts = [
 ]
 
 mcp = FastMCP(
-    "regradar",
+    "reg-radar",
     host="0.0.0.0",
     port=8000,
     transport_security=TransportSecuritySettings(
@@ -65,7 +65,7 @@ _activities = None
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+        db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
         if not os.path.exists(db_path):
             logger.error(
                 "Database file not found at %s - has the collector run yet? "
@@ -360,7 +360,7 @@ def get_health_tool() -> dict:
     collection cycle specifically so corruption is caught here - if this
     ever reads "corrupted", search results and other reads may already be
     unreliable; see "Backups & recovery" in
-    skills/regradar-operator/SKILL.md to restore from the Litestream
+    skills/reg-radar-operator/SKILL.md to restore from the Litestream
     backup rather than trusting query results.
 
     `stalled_sources` lists every regulator_id/source_label that has hit the
@@ -370,7 +370,7 @@ def get_health_tool() -> dict:
     selectors need updating.
 
     `dataset_import` is {cursor, generated_at, imported_at} if this database
-    was seeded from a published dataset (`regradar import-dataset`), else
+    was seeded from a published dataset (`reg-radar import-dataset`), else
     null. It is a bookmark, not a filter: pass its `cursor` to
     get_changes_tool's `since` to see only what has arrived since that
     snapshot was built. Nothing applies it for you.
@@ -390,7 +390,7 @@ def get_write_engine():
     global _write_engine
     if _write_engine is None:
         from collector.storage import init_db
-        _write_engine = init_db(os.getenv("DB_PATH", "/app/data/regradar.db"))
+        _write_engine = init_db(os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     return _write_engine
 
 
@@ -410,7 +410,7 @@ def get_taxonomy_tool() -> dict:
 def get_unclassified_tool(axis: str, limit: int = 50, offset: int = 0, regulator_id: str | None = None,
                            since: str | None = None, include_low_confidence: bool = False) -> list[dict]:
     """Returns items with no live classification row on `axis`, oldest
-    published first, so an agent (see skills/regradar-classifier/SKILL.md)
+    published first, so an agent (see skills/reg-radar-classifier/SKILL.md)
     can page through the backlog for one axis at a time. Each item includes
     `title`, `body_md` (truncated to 6000 characters), `regulator`,
     `jurisdiction`, and `labels` (this item's current classifications on
@@ -435,7 +435,7 @@ def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence:
 
     `axis`/`value` must be valid per get_taxonomy_tool. `by` records
     provenance - use `llm:<provider>/<model>` for an agent-driven
-    classification (see skills/regradar-classifier/SKILL.md), e.g.
+    classification (see skills/reg-radar-classifier/SKILL.md), e.g.
     "llm:anthropic/claude-sonnet-5". `confidence` is 0.0-1.0 and
     self-reported - prefer leaving an axis unset over guessing below 0.5.
     Writing the same (item, axis, value, by) again is a no-op; writing a

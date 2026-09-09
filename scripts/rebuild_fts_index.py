@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Report the row count without writing")
     args = parser.parse_args()
 
-    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     engine = init_db(db_path)
     rebuild(engine, dry_run=args.dry_run)
 

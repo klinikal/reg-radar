@@ -1,4 +1,4 @@
-"""Shared v2 code for RegRadar: canonical document format, taxonomy,
+"""Shared v2 code for reg-radar: canonical document format, taxonomy,
 classification, profiles, export and the `regradar` CLI.
 """
 

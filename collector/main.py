@@ -33,9 +33,9 @@ logger = logging.getLogger(__name__)
 
 def load_config():
     return {
-        "db_path": os.getenv("DB_PATH", "/app/data/regradar.db"),
+        "db_path": os.getenv("DB_PATH", "/app/data/reg_radar.db"),
         "schedule": os.getenv("SCHEDULE", "0 6 * * *"),
-        "user_agent": os.getenv("USER_AGENT", "regradar/2.0"),
+        "user_agent": os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
         "timeout": int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,
@@ -178,7 +178,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
         logger.critical(
             "DATABASE INTEGRITY CHECK FAILED - the SQLite file at %s may be "
             "corrupted. Search and other read paths may already be broken. "
-            "See 'Backups & recovery' in skills/regradar-operator/SKILL.md "
+            "See 'Backups & recovery' in skills/reg-radar-operator/SKILL.md "
             "to restore from the Litestream backup.",
             cfg.get("db_path", "<unknown>"),
         )
@@ -433,12 +433,12 @@ def _dispatch_webhooks(engine, cfg: dict, taxonomy) -> None:
 
 def _schedule_digests(scheduler: BlockingScheduler, engine, cfg: dict, taxonomy) -> None:
     """Adds one APScheduler cron job per config/digests.yaml entry, each
-    calling the same code path as `regradar digest --send --name <name>`
+    calling the same code path as `reg-radar digest --send --name <name>`
     (issue #13's ruling: no second scheduling mechanism - reuse the
     collector's own scheduler, independent of its own SCHEDULE). A missing
     digests.yaml is a no-op - digests are opt-in, matching webhooks.yaml's
     own precedent; an invalid one is logged and skipped entirely rather
-    than raised, so a bad config file never crashes the collector. `regradar
+    than raised, so a bad config file never crashes the collector. `reg-radar
     digest --send` can also be run from an external cron instead of this
     scheduler - see the README's Digests section.
     """

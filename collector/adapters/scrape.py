@@ -88,7 +88,7 @@ class ScrapeAdapter(SourceAdapter):
                 # landing page).
                 pdf_bytes = fetch_bytes(
                     href,
-                    config.get("user_agent", "regradar/2.0"),
+                    config.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
                     int(config.get("timeout", 30)),
                     int(config.get("retries", 3)),
                     max_bytes=MAX_PDF_DOWNLOAD_BYTES,

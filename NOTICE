@@ -1,8 +1,8 @@
-RegRadar - reuse terms by regulator
+reg-radar - reuse terms by regulator
 ====================================
 
 This file is a starting inventory of what is known about the reuse terms
-for each regulator's published content collected into RegRadar, one row
+for each regulator's published content collected into reg-radar, one row
 per regulator currently enabled in config/regulators/*.yaml. It is NOT a
 legal sign-off - "known" rows cite the exact page checked and quote the
 operative sentence; everything else is marked "unclear" because no

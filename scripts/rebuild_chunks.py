@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--item-id", help="Only process this single item id")
     args = parser.parse_args()
 
-    db_path = os.getenv("DB_PATH", "/app/data/regradar.db")
+    db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     engine = init_db(db_path)
 
     if args.dry_run:

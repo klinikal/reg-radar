@@ -165,7 +165,7 @@ def _group(items: list[dict]) -> dict:
 
 
 def render_markdown(profile_name: str, items: list[dict]) -> str:
-    lines = [f"# RegRadar digest: {profile_name}", ""]
+    lines = [f"# reg-radar digest: {profile_name}", ""]
     if not items:
         lines.append("No new items since the last digest.")
         return "\n".join(lines) + "\n"
@@ -194,7 +194,7 @@ def render_html(profile_name: str, items: list[dict]) -> str:
     esc = html_escape_mod.escape
     parts = [
         '<div style="font-family: sans-serif; color: #1a1a1a;">',
-        f"<h1>RegRadar digest: {esc(profile_name)}</h1>",
+        f"<h1>reg-radar digest: {esc(profile_name)}</h1>",
     ]
     if not items:
         parts.append("<p>No new items since the last digest.</p></div>")
@@ -245,7 +245,7 @@ def _deliver_channel(engine, digest_name: str, channel: dict, markdown: str, htm
     ctype = channel["type"]
     if ctype == "email":
         from regradar.delivery.email import send_email
-        return send_email(channel["to"], f"RegRadar digest: {digest_name}", markdown, html)
+        return send_email(channel["to"], f"reg-radar digest: {digest_name}", markdown, html)
     if ctype == "telegram":
         from regradar.delivery.telegram import send_telegram
         return send_telegram(channel["chat_id"], markdown, client=telegram_client)
@@ -318,7 +318,7 @@ def add_subparser(subparsers: argparse._SubParsersAction) -> None:
     mode.add_argument("--send", action="store_true", help="Render and deliver the named digest's channels")
     parser.add_argument("--since", help="Cursor to render from with --preview (default: full history)")
     parser.add_argument("--digests-path", default=os.getenv("DIGESTS_PATH", DEFAULT_DIGESTS_PATH))
-    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/regradar.db"))
+    parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--taxonomy-path", default=os.getenv("TAXONOMY_PATH", "config/taxonomy.yaml"))
     parser.add_argument("--jurisdictions-path", default=os.getenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml"))
     parser.add_argument("--activities-path", default=os.getenv("ACTIVITIES_PATH", "config/activities.yaml"))
