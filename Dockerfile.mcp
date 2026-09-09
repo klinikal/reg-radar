@@ -7,6 +7,9 @@ RUN pip install --no-cache-dir -r mcpserver/requirements.txt
 
 COPY collector/ ./collector/
 COPY mcpserver/ ./mcpserver/
+COPY regradar/ ./regradar/
+COPY pyproject.toml ./pyproject.toml
+RUN pip install --no-cache-dir --no-deps .
 
 RUN addgroup --system appgroup && \
     adduser --system --ingroup appgroup appuser && \
@@ -14,7 +17,8 @@ RUN addgroup --system appgroup && \
 
 USER appuser
 
-ENV DB_PATH=/app/data/regradar.db \
+ENV PYTHONPATH=/app \
+    DB_PATH=/app/data/regradar.db \
     LOG_LEVEL=INFO
 
 CMD ["python", "-m", "mcpserver.server"]

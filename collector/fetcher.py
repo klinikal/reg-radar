@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from collector.chunking import content_hash
 from collector.language import detect_language
 from collector.schema import Item, make_item_id, make_page_watch_item_id
+from regradar.document import convert_body, rss_body_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +332,7 @@ def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[It
         language = _resolve_language(entry, source_preferred_lang, title, snippet)
 
         item_id = make_item_id(regulator_id, url, published_at if not date_inferred else None)
+        body_md, extractor = rss_body_markdown(raw_content, snippet, url)
 
         items.append(Item(
             id=item_id,
@@ -347,6 +349,8 @@ def _parse_rss(content: bytes | str, source: dict, regulator_id: str) -> list[It
             source_tags=tags,
             content_tags=[],
             raw_content=raw_content,
+            body_md=body_md,
+            extractor=extractor,
         ))
     return items
 
@@ -442,6 +446,8 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
                         pass
 
         raw_content = ""
+        content_html = None
+        pdf_bytes = None
         if extract_pdf_text:
             # The item's own link is the document itself (e.g. CNMV's warning
             # notices link straight to a PDF, no separate HTML landing page).
@@ -457,11 +463,18 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
         if not raw_content and content_selector:
             content_el = element.select_one(content_selector)
             if content_el:
+                content_html = str(content_el)
                 raw_content = content_el.get_text(strip=True)
 
         snippet = _truncate_snippet(raw_content)
         language = _resolve_language({}, source_preferred_lang, title, snippet)
         item_id = make_item_id(regulator_id, href, published_at)
+        body_md, extractor = convert_body(
+            content_html=content_html,
+            pdf_text=raw_content if pdf_bytes else None,
+            snippet=snippet,
+            source_url=href,
+        )
 
         items.append(Item(
             id=item_id,
@@ -478,6 +491,10 @@ def _parse_scrape(html: str, source: dict, regulator_id: str, config: dict | Non
             source_tags=tags,
             content_tags=[],
             raw_content=raw_content,
+            body_md=body_md,
+            extractor=extractor,
+            raw_bytes=pdf_bytes if pdf_bytes else (content_html.encode("utf-8") if content_html else None),
+            mime="application/pdf" if pdf_bytes else ("text/html" if content_html else None),
         ))
     return items
 
@@ -495,6 +512,7 @@ def _parse_page_watch(html: str, source: dict, regulator_id: str) -> list[Item]:
 
     hash_value = content_hash(text)
     now = datetime.now(timezone.utc)
+    body_md, extractor = convert_body(plain_text=text, snippet=_truncate_snippet(text), source_url=source["url"])
     return [Item(
         id=make_page_watch_item_id(regulator_id, source["url"], hash_value),
         regulator_id=regulator_id,
@@ -510,6 +528,10 @@ def _parse_page_watch(html: str, source: dict, regulator_id: str) -> list[Item]:
         source_tags=_filter_source_tags(source.get("tags", [])),
         content_tags=[],
         raw_content=text,
+        body_md=body_md,
+        extractor=extractor,
+        raw_bytes=html.encode("utf-8"),
+        mime="text/html",
     )]
 
 

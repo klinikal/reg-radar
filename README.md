@@ -74,6 +74,20 @@ Two other one-off scripts under `scripts/` are for disaster recovery or after bu
 
 - `rebuild_fts_index.py` — rebuilds the SQLite FTS5 search index (`items_fts`) from the `items` table if it ever drifts or you're restoring from backup.
 - `rebuild_chunks.py` — rebuilds the `item_chunks` table (paragraph-aware text chunks derived from each item's full content). Chunks are prep infrastructure for future semantic search; the collector does not populate them automatically yet — run this after a large backfill if you want chunks in place.
+- `reprocess_bodies.py` — re-runs Markdown body conversion from stored artefacts for items whose `extractor` predates the currently installed library version (see [Canonical documents & artefacts](#canonical-documents--artefacts)).
+
+### Source health
+
+Selector drift (a regulator redesign keeps returning HTTP 200 with a parser matching nothing) is invisible to a single-run check, so it's caught two ways:
+
+- **Regression fixtures.** Every enabled source has a captured fixture under `tests/fixtures/sources/<regulator_id>/<source_label>.{html,xml}`. `tests/test_source_fixtures.py` runs each source's existing parser against its fixture offline and asserts at least one parsed item with a title, url, and resolved date. Recapture one deliberately (never automatic) with:
+  ```
+  python -m scripts.capture_fixture --regulator <id> --source <label>
+  python -m scripts.capture_fixture --all       # every enabled source
+  ```
+  Fetches go through the exact same code path (and FlareSolverr wiring/throttling) as the real collector. A source that can't be captured here — a Cloudflare challenge with no FlareSolverr running, a bot-blocking WAF — is recorded with the reason and its contract test marked as an expected failure (`xfail`) naming that reason, not silently skipped.
+- **Nightly live check.** `.github/workflows/source-health-nightly.yml` runs the same fetch-and-parse contract against every source's live URL (with a FlareSolverr service container, so Cloudflare-protected sources are checked too) and opens or updates one GitHub issue per newly-failing source, closing it automatically on recovery.
+- **Stall detector.** Independent of a hard fetch error: a source that fetches successfully but returns zero items for `STALL_THRESHOLD_RUNS` consecutive runs (default 7) is flagged `stalled` in `get_health_tool`/`list_regulators_tool` and shown in the web UI's regulator panel, distinct from the existing consecutive-failure warning.
 
 ## Tags
 
@@ -115,8 +129,8 @@ The MCP server exposes twelve tools over streamable HTTP, returning structured c
 |---|---|
 | `search_items_tool` | Full-text search (SQLite FTS5 over title, snippet, and full scraped text; falls back to LIKE if FTS fails), with AND semantics, quoted-phrase support, and `limit`/`offset` pagination. Filter by `jurisdictions` (expanded through ancestors) and `labels` (per-axis, e.g. `{"document_type": ["warning"]}`) — see [Classification](#classification). The deprecated `tags`/`source_tags`/`content_tags` filters still work against the old columns for one release |
 | `get_recent_tool` | Most recent N items with optional filters, same `tags`/`source_tags`/`content_tags` options as above |
-| `list_regulators_tool` | Full registry with live fetch status |
-| `get_item_tool` | Single item by ID, including raw content; optional `max_content_chars` to truncate large text and protect context windows |
+| `list_regulators_tool` | Full registry with live fetch status, including `stalled` (a source has hit the consecutive zero-item-run threshold — see [Source health](#source-health)) |
+| `get_item_tool` | Single item by ID, including raw content, `body_md` (the same text as Markdown), and a `document` object with the canonical document frontmatter fields; optional `max_content_chars` to truncate large text and protect context windows |
 | `get_run_log_tool` | Recent collector run stats |
 | `get_warnings_tool` | Items whose `source_tags` include `warnings`, optionally filtered by date range — see note below. Deprecated for one release: kept as an alias, prefer `search_items_tool(labels={"document_type": ["warning"]})` |
 | `count_items_tool` | Total count matching a search, without fetching rows — cheaper than `search_items_tool` when only the number matters |
@@ -124,7 +138,7 @@ The MCP server exposes twelve tools over streamable HTTP, returning structured c
 | `list_tags_tool` | Every distinct `source_tags`/`content_tags` value in use, with counts. Deprecated for one release: prefer `list_labels_tool` |
 | `list_labels_tool` | Every taxonomy axis (config-driven) with its distinct classified values and item counts — discover valid `labels` values for `search_items_tool` before guessing |
 | `get_items_since_tool` | Items collected (`fetched_at`) strictly after a given timestamp, oldest first — the polling primitive for "everything new since my last check" |
-| `get_health_tool` | Most recent collector run's status, freshness, and database integrity (see [Backups & recovery](#backups--recovery)) — check this before trusting search results after a long gap |
+| `get_health_tool` | Most recent collector run's status, freshness, database integrity (see [Backups & recovery](#backups--recovery)), and `stalled_sources` (see [Source health](#source-health)) — check this before trusting search results after a long gap |
 
 **On `get_warnings_tool`:** some regulators only have one general news feed, so it's source-tagged `warnings` alongside `news`/`publications` rather than leaving genuine warnings uncollected — this means that feed's entire output shows up here, not just actual warning notices. Sources with a dedicated warnings-only feed are precise; broad `all_news`-style feeds are not. Treat results from a broad feed as "may contain warnings," not a pre-filtered list. `labels={"document_type": ["warning"]}` reads the classification store instead — a superset that also catches warnings a rule or a human classified on a broad feed, not just items from a feed tagged `warnings` wholesale.
 
@@ -212,13 +226,29 @@ Copy `.env.example` to `.env` and adjust:
 | `FLARESOLVERR_MIN_INTERVAL_SECONDS` | `8` | Minimum seconds between FlareSolverr requests |
 | `FLARESOLVERR_MAX_RETRIES` | `3` | Retry attempts per FlareSolverr fetch |
 | `FLARESOLVERR_RETRY_BACKOFF_SECONDS` | `45` | Base backoff when a FlareSolverr fetch looks blocked (doubles per retry) |
+| `STALL_THRESHOLD_RUNS` | `7` | Consecutive successful-but-empty runs before a source is flagged `stalled` (see [Source health](#source-health)) |
 | `MCP_EXTRA_ALLOWED_HOSTS` | *(unset)* | Comma-separated `host:port` values to add to the MCP server's Host-header allowlist — required if you remap the published port (see above) |
+| `ARTEFACTS_DIR` | `/app/data/originals` | Where fetched originals (HTML/PDF) are stored — see [Canonical documents & artefacts](#canonical-documents--artefacts) |
+| `MAX_ARTEFACT_BYTES` | `26214400` (25 MB) | Artefacts larger than this are not stored (the item itself is still collected) |
+| `STORE_ARTEFACTS` | `true` | Set to `false` to skip writing artefacts entirely (a constrained install) |
+
+## Canonical documents & artefacts
+
+Every item is also available as a canonical Markdown document with YAML frontmatter (`regulator`, `jurisdiction`, `labels`, `content_hash`, etc.) — the format any downstream tool (Obsidian, a vector store, another script) ingests, described in [`docs/design/regradar-architecture.md`](docs/design/regradar-architecture.md#3-canonical-document-format) and validated against [`docs/schema/document-v1.json`](docs/schema/document-v1.json). `get_item_tool` and `/api/items/{id}` include it as `document`.
+
+The collector also keeps the original fetched artefact (HTML or PDF) for every scrape item that has one, under `ARTEFACTS_DIR` (content-addressed by item id) and referenced from the `item_artefacts` table.
+
+`regradar render <item_id> --out <dir>` writes one item's document to disk; `regradar render --all --out <dir>` writes every item, skipping files whose content hasn't changed. Run it via `docker compose exec collector regradar render --all --out /app/data/export` (or any container that has the database mounted).
+
+If a body-conversion library is upgraded, `scripts/reprocess_bodies.py --dry-run` reports how many stored artefacts would be reconverted; drop `--dry-run` to actually rewrite `body_md` for those items.
 
 ## Backups & recovery
 
 The live database lives in a Docker-managed named volume (`regradar_data`), not a bind-mounted host folder — SQLite's WAL mode needs precise file-locking guarantees that Docker Desktop's macOS bind-mount bridge doesn't fully honour, which caused a real corruption incident. A `litestream` service continuously replicates the database to `./backups/regradar` on the host disk, so a corruption or data-loss event is a restore, not a salvage job.
 
 The collector also runs a full `PRAGMA integrity_check` at the start of every collection cycle, so corruption is caught immediately and surfaced loudly (`get_health_tool`'s `db_integrity` field: `"ok"`, `"corrupted"`, or `"unknown"` if no run has completed yet) — not discovered later as a failed search.
+
+**`originals/` is not covered by Litestream** — Litestream only replicates the SQLite file. The original artefacts (fetched HTML/PDF, see [Canonical documents & artefacts](#canonical-documents--artefacts)) live on the same data volume under `originals/` and need their own host-level backup (a periodic `docker cp`/volume snapshot, or whatever backup tool you already run against the host).
 
 Full restore procedure and details: see [Backups & recovery in the operator skill](skills/regradar-operator/SKILL.md#backups--recovery).
 

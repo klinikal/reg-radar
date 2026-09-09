@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -7,7 +8,15 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from regradar.document import build_frontmatter, frontmatter_to_json_safe
+
 logger = logging.getLogger(__name__)
+
+# Consecutive zero-item runs (despite a successful fetch) before a source is
+# considered stalled rather than just having a quiet day - see
+# collector.storage.record_source_empty_run. Env-configurable to match the
+# FLARESOLVERR_* convention.
+STALL_THRESHOLD_RUNS = int(os.getenv("STALL_THRESHOLD_RUNS", "7"))
 
 
 def _row_to_dict(row, keys):
@@ -371,11 +380,13 @@ def list_regulators(engine) -> list[dict]:
                r.website, r.mica_competent_authority, r.enabled,
                COUNT(i.id) as total_items,
                MAX(i.fetched_at) as last_fetched_at,
-               COALESCE(se.consecutive_failures, 0) as consecutive_failures
+               COALESCE(se.consecutive_failures, 0) as consecutive_failures,
+               COALESCE(se.consecutive_empty_runs, 0) as consecutive_empty_runs
         FROM regulators r
         LEFT JOIN items i ON i.regulator_id = r.id
         LEFT JOIN (
-            SELECT regulator_id, MAX(consecutive_failures) as consecutive_failures
+            SELECT regulator_id, MAX(consecutive_failures) as consecutive_failures,
+                   MAX(consecutive_empty_runs) as consecutive_empty_runs
             FROM source_errors
             GROUP BY regulator_id
         ) se ON se.regulator_id = r.id
@@ -384,27 +395,58 @@ def list_regulators(engine) -> list[dict]:
     """
     keys = ["id", "name", "full_name", "jurisdiction", "jurisdiction_type",
             "website", "mica_competent_authority", "enabled",
-            "total_items", "last_fetched_at", "consecutive_failures"]
+            "total_items", "last_fetched_at", "consecutive_failures", "consecutive_empty_runs"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql)).fetchall()
-    return [_row_to_dict(r, keys) for r in rows]
+    results = [_row_to_dict(r, keys) for r in rows]
+    for r in results:
+        # True if any source under this regulator has hit the stall
+        # threshold (STALL_THRESHOLD_RUNS consecutive successful-but-empty
+        # runs) - distinct from consecutive_failures, which only tracks
+        # outright fetch errors.
+        r["stalled"] = r.pop("consecutive_empty_runs") >= STALL_THRESHOLD_RUNS
+    return results
 
 
 def get_item(engine, item_id: str) -> dict | None:
+    """Returns the item, including `body_md` (the Markdown body alongside
+    the existing `raw_content`) and a `document` object holding the same
+    frontmatter fields a rendered file would have (section 3.2) - built
+    from whatever `labels`/artefact data exists for this item, which is
+    empty until the classification and artefact-writing paths populate it.
+    """
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
-               fetched_at, date_inferred, language, content_snippet, source_type, source_tags, content_tags,
-               labels, raw_content
+               fetched_at, updated_at, date_inferred, language, content_snippet, source_type,
+               source_tags, content_tags, labels, raw_content, body_md, extractor
         FROM items WHERE id = :id
     """
     keys = ["id", "regulator_id", "source_label", "title", "url", "published_at",
-            "fetched_at", "date_inferred", "language", "content_snippet", "source_type", "source_tags", "content_tags",
-            "labels", "raw_content"]
+            "fetched_at", "updated_at", "date_inferred", "language", "content_snippet", "source_type",
+            "source_tags", "content_tags", "labels", "raw_content", "body_md", "extractor"]
     with engine.connect() as conn:
         row = conn.execute(text(sql), {"id": item_id}).fetchone()
-    if row is None:
-        return None
-    return _row_to_dict(row, keys)
+        if row is None:
+            return None
+        item = _row_to_dict(row, keys)
+        reg_row = conn.execute(
+            text("SELECT name, full_name, jurisdiction FROM regulators WHERE id = :id"),
+            {"id": item["regulator_id"]},
+        ).fetchone()
+        artefact_row = conn.execute(
+            text("SELECT path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id = :id"),
+            {"id": item_id},
+        ).fetchone()
+
+    doc_item = dict(item)
+    if reg_row is not None:
+        reg = dict(reg_row._mapping)
+        doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
+        doc_item["jurisdiction"] = reg.get("jurisdiction")
+    artefact = dict(artefact_row._mapping) if artefact_row is not None else None
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+    item["document"] = frontmatter_to_json_safe(fm)
+    return item
 
 
 def get_run_log(engine, limit: int = 10) -> list[dict]:
@@ -544,16 +586,31 @@ def get_health(engine) -> dict:
     PRAGMA integrity_check once per collection cycle specifically so
     corruption is caught here loudly, not discovered later as a failed
     search.
+
+    `stalled_sources` lists every regulator_id/source_label that has hit
+    STALL_THRESHOLD_RUNS (default 7, env-configurable) consecutive
+    successful-but-empty fetches - the "200 OK, selectors matching nothing"
+    case a single run's zero-items check can't distinguish from a quiet day.
     """
     sql = """
         SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok
         FROM runs ORDER BY started_at DESC LIMIT 1
     """
     keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors", "db_integrity_ok"]
+    stalled_sql = """
+        SELECT regulator_id, source_label, consecutive_empty_runs
+        FROM source_errors WHERE consecutive_empty_runs >= :threshold
+    """
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
+        stalled_rows = conn.execute(text(stalled_sql), {"threshold": STALL_THRESHOLD_RUNS}).fetchall()
+    stalled_sources = [
+        {"regulator_id": r[0], "source_label": r[1], "consecutive_empty_runs": r[2]}
+        for r in stalled_rows
+    ]
     if row is None:
-        return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown"}
+        return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown",
+                "stalled_sources": stalled_sources}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
@@ -565,4 +622,5 @@ def get_health(engine) -> dict:
         db_integrity = "unknown"
     else:
         db_integrity = "ok" if integrity_flag else "corrupted"
-    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity}
+    return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
+            "stalled_sources": stalled_sources}

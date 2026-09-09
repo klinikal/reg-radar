@@ -6,3 +6,4 @@ beautifulsoup4==4.12.3
 lxml==5.2.2
 pyyaml==6.0.1
 python-multipart==0.0.9
+markdownify==1.2.3

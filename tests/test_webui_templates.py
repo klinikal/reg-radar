@@ -62,6 +62,37 @@ def test_regulator_panel_healthy_source_has_no_warning_class():
     assert "reg-warning" not in html
 
 
+def test_regulator_panel_flags_stalled_source_distinctly_from_failures():
+    regulators = [{
+        "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+        "jurisdiction": "EU", "jurisdiction_type": "supranational", "website": "https://www.esma.europa.eu",
+        "mica_competent_authority": True, "enabled": True,
+        "total_items": 50, "last_fetched_at": "2026-07-02 17:19:23.665000",
+        "consecutive_failures": 0, "stalled": True,
+        "country": "EU", "display_label": "EU - ESMA - European Securities and Markets Authority",
+        "search_text": "eu esma european securities and markets authority esma",
+    }]
+    html = _render_index(regulators)
+    assert "reg-stalled" in html
+    assert "reg-unhealthy" in html
+    assert "reg-warning" not in html  # distinct from the consecutive-failure warning
+
+
+def test_regulator_panel_not_stalled_shows_no_stall_warning():
+    regulators = [{
+        "id": "esma", "name": "ESMA", "full_name": "European Securities and Markets Authority",
+        "jurisdiction": "EU", "jurisdiction_type": "supranational", "website": "https://www.esma.europa.eu",
+        "mica_competent_authority": True, "enabled": True,
+        "total_items": 50, "last_fetched_at": "2026-07-02 17:19:23.665000",
+        "consecutive_failures": 0, "stalled": False,
+        "country": "EU", "display_label": "EU - ESMA - European Securities and Markets Authority",
+        "search_text": "eu esma european securities and markets authority esma",
+    }]
+    html = _render_index(regulators)
+    assert "reg-stalled" not in html
+    assert "reg-unhealthy" not in html
+
+
 def test_regulator_panel_handles_never_fetched_regulator():
     regulators = [{
         "id": "xx-new", "name": "New Reg", "full_name": "New Regulator",

@@ -912,3 +912,83 @@ def test_parse_rss_sets_source_tags_filtered_and_content_tags_empty():
     items = _parse_rss(rss, source, "esma")
     assert items[0].source_tags == ["news"]
     assert items[0].content_tags == []
+
+
+def test_parse_rss_body_md_has_not_collected_note():
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Test item</title><link>https://example.com/a</link>
+      <description>&lt;p&gt;Short summary&lt;/p&gt;</description>
+      <pubDate>Fri, 03 Jul 2026 10:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    source = {"label": "all_news", "tags": [], "type": "rss"}
+    items = _parse_rss(rss, source, "esma")
+    assert "Short summary" in items[0].body_md
+    assert items[0].body_md.endswith("> Full text not collected. See https://example.com/a.")
+    assert items[0].extractor.startswith("markdownify/")
+    assert items[0].raw_bytes is None
+
+
+def test_parse_scrape_pdf_sets_body_md_extractor_and_raw_bytes():
+    html = """
+    <html><body>
+      <div class="item"><h2>Warning notice</h2><a href="https://example.com/notice.pdf">link</a></div>
+    </body></html>
+    """
+    with patch("collector.fetcher._fetch_bytes") as mock_fetch, \
+         patch("collector.fetcher._extract_pdf_text") as mock_extract:
+        mock_fetch.return_value = b"%PDF-fake-bytes"
+        mock_extract.return_value = "Entity warned: SOME UNAUTHORISED FIRM LTD"
+
+        items = _parse_scrape(html, PDF_SCRAPE_SOURCE, "test_reg", SAMPLE_CONFIG)
+
+        assert items[0].body_md == "Entity warned: SOME UNAUTHORISED FIRM LTD"
+        assert items[0].extractor.startswith("pypdf/")
+        assert items[0].raw_bytes == b"%PDF-fake-bytes"
+        assert items[0].mime == "application/pdf"
+
+
+def test_parse_scrape_content_selector_sets_body_md_extractor_and_raw_bytes():
+    html = """
+    <html><body>
+      <div class="item">
+        <h2>Notice</h2><a href="https://example.com/n">link</a>
+        <div class="summary"><p>Hello <b>world</b></p></div>
+      </div>
+    </body></html>
+    """
+    source = {
+        "url": "https://example.com/warnings", "label": "test_feed", "type": "scrape",
+        "scrape": {
+            "item_selector": ".item", "title_selector": "h2", "link_selector": "a",
+            "date_selector": None, "date_attribute": None,
+            "content_selector": ".summary", "extract_pdf_text": False,
+        },
+        "tags": [],
+    }
+    items = _parse_scrape(html, source, "test_reg", SAMPLE_CONFIG)
+    assert items[0].body_md == "Hello **world**"
+    assert items[0].extractor.startswith("markdownify/")
+    assert items[0].mime == "text/html"
+    assert b"Hello" in items[0].raw_bytes
+
+
+def test_parse_page_watch_body_md_is_flattened_text():
+    from collector.fetcher import _parse_page_watch
+    html = '<html><body><div class="content">Real page text here.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    items = _parse_page_watch(html, source, "esma")
+    assert items[0].body_md == "Real page text here."
+    assert items[0].extractor == "raw/1"
+
+
+def test_parse_page_watch_stores_the_fetched_page_as_an_artefact():
+    # Section 3.3: the original response is stored for every item that has
+    # a body - page_watch fetches a page body, so it's not exempt (unlike
+    # RSS, which never fetches a full body at all).
+    from collector.fetcher import _parse_page_watch
+    html = '<html><body><nav>ignore</nav><div class="content">Real page text here.</div></body></html>'
+    source = {"label": "test_page", "url": "https://example.com/page", "watch_selector": ".content"}
+    items = _parse_page_watch(html, source, "esma")
+    assert items[0].raw_bytes == html.encode("utf-8")
+    assert items[0].mime == "text/html"
