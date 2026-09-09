@@ -2,9 +2,9 @@
 
 > Renamed from casp-radar. If you have an existing install, see [Upgrading from casp-radar](#upgrading-from-casp-radar).
 
-Open-source regulatory intelligence tool for European (EU, UK coming soon) entities. Collects news, warnings, and publications from financial regulators across the EU on a daily schedule, stores them in SQLite, and exposes the database via an MCP server so AI agents can query it. There is also a lightweight webUX that can be run to see, query and search.
+Open-source regulatory intelligence tool for European (EU and UK) entities. Collects news, warnings, and publications from financial regulators across the EU on a daily schedule, stores them in SQLite, and exposes the database via an MCP server so AI agents can query it. There is also a lightweight webUX that can be run to see, query and search.
 
-**Bring your own agent.** This tool provides clean structured data, a simple web UI, and an MCP server. AI classification and relevance scoring are out of scope — connect any MCP-compatible agent (Claude, ChatGPT, Gemini, Hermes, a custom agent, whatever you use).
+**Bring your own agent.** This tool provides clean structured data, a simple web UI, and an MCP server. Classification is built in and deterministic — source defaults and a weighted regex rules engine write into a provenance-tracked label store (see [Classification](#classification) and [Classification rules](#classification-rules)) — and any MCP-compatible agent can classify the remaining backlog through the write tools, or just read the data. No model is called for you.
 
 ## Prerequisites
 
@@ -113,15 +113,15 @@ Every classification is written with **provenance** — who or what said it, and
 Re-applying source defaults to existing items after a config change:
 
 ```bash
-docker compose exec collector python -m regradar.reclassify reclassify --axis instrument --dry-run
-docker compose exec collector python -m regradar.reclassify reclassify --axis instrument
+docker compose exec collector regradar reclassify --axis instrument --dry-run
+docker compose exec collector regradar reclassify --axis instrument
 ```
 
 `--dry-run` reports what would change, including how many live rows on that axis carry an older `taxonomy_version` than the current config, without writing anything. Human corrections are never touched by this or any other automated path. `--by rule` rescores every item against `config/rules.yaml` instead of source defaults (see [Classification rules](#classification-rules)); `--by source_default` (the default) re-applies `regulators.yaml` source defaults as above.
 
 **Migrating from v1:** `scripts/migrate_regulator_labels.py` renames `sources[].tags` to `sources[].labels` (preserving comments via `ruamel.yaml`) and lower-cases `jurisdiction` (`UK` → `gb`) - it predates the registry split and targets a single regulators file, so point it at one of the files under `config/regulators/` at a time; `scripts/migrate_content_tags.py` imports existing per-item `content_tags` into the classifications store as `by: import`, confidence 0.5 rows, so they survive but rank below anything better; `scripts/migrate_alerts_to_rules.py` converts the old `alerts.yaml` keyword rules into `rules.yaml` entries, printing any it can't map onto a taxonomy value for manual handling. All three support `--dry-run`.
 
-Run the one-off upgrade steps in this order:
+Run the one-off upgrade steps in this order (also linked from [Migrating v1 data](#migrating-v1-data), where the volume rename leaves off):
 
 1. Run the collector once (it refreshes the `regulators` table's `jurisdiction` column on every upsert), or run `scripts/migrate_regulator_labels.py --db-path <path>` directly — its DB-rewrite step runs independently of whether the YAML still has `tags` to migrate.
 2. `regradar reclassify --axis document_type`
@@ -446,18 +446,45 @@ docker compose up -d
 ```
 Remove that line once you've migrated with Option B so future upgrades use the new default.
 
-**Option B: migrate to the new volume name.** This copies your existing data into a volume named `regradar_data` and moves the Litestream backup directory to match:
-```bash
-docker compose down
-docker volume create regradar_data
-docker run --rm -v casp_radar_data:/from -v regradar_data:/to alpine sh -c "cp -a /from/. /to/"
-docker volume rm casp_radar_data
-mv ./backups/casp_radar ./backups/regradar
-docker compose up -d
-```
-Confirm the migration worked: `count_items_tool` should return the same number of items before and after.
+**Option B: migrate to the new volume name.** This copies your existing data into a volume named `regradar_data` and moves the Litestream backup directory to match. Do the steps in this order — the old volume is only deleted at the end, after you have confirmed the new one works.
 
-See [Classification rules](#classification-rules) above for the rules engine that replaced the old keyword-alerts feature; classified labels feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery. Email and Telegram digests are not implemented yet.
+1. If you took Option A earlier, remove the override first, or step 4 will still resolve to the old volume name and start the stack against a brand-new empty one:
+   ```bash
+   docker compose down
+   sed -i.bak '/^DATA_VOLUME_NAME=/d' .env
+   ```
+   (On macOS `sed -i.bak` leaves a `.env.bak` you can delete once you have checked `.env`.) If you never took Option A, just run `docker compose down`.
+2. Copy the data into the new volume:
+   ```bash
+   docker volume create regradar_data
+   docker run --rm -v casp_radar_data:/from -v regradar_data:/to alpine sh -c "cp -a /from/. /to/"
+   ```
+3. Move the Litestream backup directory to match:
+   ```bash
+   mv ./backups/casp_radar ./backups/regradar
+   ```
+4. Start the stack and confirm the migration worked — `count_items_tool` must return the same number of items as before:
+   ```bash
+   docker compose up -d
+   ```
+5. **Only once step 4 checks out**, delete the old volume:
+   ```bash
+   docker volume rm casp_radar_data
+   ```
+   Deleting it before the check leaves you with nothing to fall back to: Litestream would already have replicated the new (possibly empty) database over `./backups/regradar`.
+
+## Migrating v1 data
+
+The volume rename above moves the database file. These are the one-off steps that bring the *contents* of a v1 database up to the v2 schema — labels, classifications and document bodies. Run them once, after the stack is up on the new volume; full detail and `--dry-run` notes are in [Classification](#classification).
+
+1. Run the collector once (it refreshes the `regulators` table's `jurisdiction` column on every upsert), or run `scripts/migrate_regulator_labels.py --db-path <path>` directly.
+2. `regradar reclassify --axis document_type`
+3. `regradar reclassify --axis instrument --by rule`
+4. `regradar reclassify --axis document_type --by rule`
+5. `scripts/migrate_content_tags.py`
+6. `scripts/reprocess_bodies.py --from-raw-content`
+
+See [Classification rules](#classification-rules) above for the rules engine that replaced the old keyword-alerts feature; classified labels feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery and [Digests](#digests) for scheduled email, Telegram and webhook digests.
 
 ## Contributing
 

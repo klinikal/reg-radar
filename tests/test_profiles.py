@@ -137,8 +137,11 @@ def test_expand_profile_exclude_instruments_removed_from_the_set():
     activities = _activities()
     profile = load_profile("uk-equities-dealer", taxonomy, activities)
     expanded = expand_profile(profile, taxonomy, activities)
+    # §5.2's hard exclude is applied during expansion, so the excluded id is
+    # simply absent from the one instrument set - there is no second copy of
+    # the exclusion for a query to re-apply.
     assert "mica" not in expanded.instrument_ids
-    assert "mica" in expanded.exclude_instrument_ids
+    assert not hasattr(expanded, "exclude_instrument_ids")
     assert "mifid2" in expanded.instrument_ids  # not excluded, still present
 
 

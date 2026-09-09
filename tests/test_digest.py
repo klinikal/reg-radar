@@ -340,6 +340,8 @@ def test_webhook_channel_signature_validates_the_same_way_issue_8_does():
 class _FakeSMTP:
     sent = []
 
+    starttls_contexts = []
+
     def __init__(self, host, port, timeout=None):
         self.host = host
         self.port = port
@@ -352,8 +354,9 @@ class _FakeSMTP:
     def __exit__(self, *exc):
         return False
 
-    def starttls(self):
+    def starttls(self, context=None):
         self.starttls_called = True
+        _FakeSMTP.starttls_contexts.append(context)
 
     def login(self, user, password):
         self.login_args = (user, password)
@@ -368,6 +371,7 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     from regradar.delivery.email import send_email
 
     _FakeSMTP.sent = []
+    _FakeSMTP.starttls_contexts = []
     monkeypatch.setattr(smtplib, "SMTP", _FakeSMTP)
     cfg = {
         "host": "smtp.example.org", "port": 587, "user": "bot", "password": "pw",
@@ -377,6 +381,12 @@ def test_email_delivery_sends_multipart_with_correct_headers(monkeypatch):
     ok = send_email("dest@example.org", "RegRadar digest: test", "plain text body", "<p>html body</p>", cfg=cfg)
 
     assert ok is True
+    # STARTTLS must verify the certificate and hostname, not just encrypt.
+    import ssl
+    context = _FakeSMTP.starttls_contexts[0]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
     assert len(_FakeSMTP.sent) == 1
     from_addr, to_addrs, msg_str = _FakeSMTP.sent[0]
     assert from_addr == "ops@example.org"
@@ -572,3 +582,43 @@ def test_scheduler_skips_invalid_digests_yaml_without_crashing(tmp_path):
     _schedule_digests(scheduler, engine, cfg, taxonomy)  # must not raise
 
     assert scheduler.get_jobs() == []
+
+
+def test_digest_preview_documents_carry_jurisdiction_ancestors_and_label_provenance(tmp_path, monkeypatch, capsys):
+    """`regradar digest --preview` must pass the taxonomy through to
+    render_digest(), or every document it builds loses
+    jurisdiction_ancestors and label_provenance."""
+    import argparse
+
+    import regradar.digest as digest_mod
+
+    db_path = tmp_path / "digest.db"
+    engine = init_db(str(db_path))
+    taxonomy, _activities = _taxonomy_and_activities()
+    _item(engine, taxonomy, title="AMF notice", regulator_id="fr-amf", doc_type="warning")
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        conn.execute(text("UPDATE regulators SET jurisdiction='fr' WHERE id='fr-amf'"))
+        conn.commit()
+
+    captured = {}
+    real_render_digest = digest_mod.render_digest
+
+    def spy(*args, **kwargs):
+        result = real_render_digest(*args, **kwargs)
+        captured["items"] = result["items"]
+        return result
+
+    monkeypatch.setattr(digest_mod, "render_digest", spy)
+
+    args = argparse.Namespace(
+        profile="eu-casp", name=None, preview=True, send=False, since=None,
+        digests_path="config/digests.yaml", db_path=str(db_path),
+        taxonomy_path="config/taxonomy.yaml", jurisdictions_path="config/jurisdictions.yaml",
+        activities_path="config/activities.yaml", profiles_dir="config/profiles",
+    )
+    assert digest_mod.run(args) == 0
+
+    doc = captured["items"][0]
+    assert doc["jurisdiction_ancestors"] == ["eu"]
+    assert [(p["axis"], p["value"]) for p in doc["label_provenance"]] == [("document_type", "warning")]

@@ -303,3 +303,48 @@ def test_rules_add_rejects_invalid_regex(monkeypatch, tmp_path):
     client = TestClient(app_module.app)
     resp = client.post("/rules", data={"axis": "instrument", "value": "mica", "pattern": "(unclosed"})
     assert resp.status_code == 400
+
+
+def test_lifespan_fails_at_boot_on_invalid_taxonomy(monkeypatch, tmp_path):
+    """A broken taxonomy must kill the process at startup, not turn every
+    request into a 500 (load_and_exit_on_error calls sys.exit)."""
+    import asyncio
+    import pytest
+    import webui.app as app_module
+
+    bad = tmp_path / "taxonomy.yaml"
+    bad.write_text("version: 1\naxes: []\n")  # empty axes list is invalid
+    monkeypatch.setenv("TAXONOMY_PATH", str(bad))
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+    app_module._activities = None
+
+    async def boot():
+        async with app_module._lifespan(app_module.app):
+            pass
+
+    try:
+        with pytest.raises(SystemExit):
+            asyncio.run(boot())
+    finally:
+        app_module._taxonomy = None
+        app_module._activities = None
+
+
+def test_with_search_fields_names_countries_from_the_jurisdiction_config(monkeypatch):
+    """Regulator jurisdictions are lower-case taxonomy ids (gb, not UK).
+    A hand-maintained upper-case name map here silently lost the country
+    name for every regulator once the ids moved."""
+    import webui.app as app_module
+
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+
+    reg = app_module._with_search_fields({
+        "id": "uk-fca", "name": "FCA", "full_name": "Financial Conduct Authority", "jurisdiction": "gb",
+    })
+
+    assert reg["country"] == "United Kingdom"
+    assert "united kingdom" in reg["search_text"]
+    app_module._taxonomy = None

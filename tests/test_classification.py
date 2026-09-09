@@ -386,3 +386,34 @@ def test_classify_batch_rolls_back_all_writes_on_mid_batch_failure(monkeypatch):
     assert count == 0  # the first (successful) write was rolled back too
     assert i1_labels in (None, "{}")
     assert i2_labels in (None, "{}")
+
+
+def test_write_classification_rejects_an_unknown_item():
+    """Writing against an item id that does not exist used to insert an
+    orphan classifications row and report it like a successful write."""
+    from sqlalchemy import text
+
+    engine = _engine()
+    taxonomy = _make_taxonomy()
+
+    with pytest.raises(ValueError, match="unknown item 'nope'"):
+        write_classification(engine, taxonomy, "nope", "document_type", "warning", by="human:test", confidence=1.0)
+
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM classifications")).scalar() == 0
+
+
+def test_classify_batch_reports_an_unknown_item_per_entry_without_losing_the_batch():
+    from regradar.classification import classify_batch
+
+    engine = _engine()
+    taxonomy = _make_taxonomy()
+    _insert_item(engine, "i1")
+
+    result = classify_batch(engine, taxonomy, [
+        {"item_id": "i1", "axis": "document_type", "value": "warning", "by": "human:test"},
+        {"item_id": "ghost", "axis": "document_type", "value": "warning", "by": "human:test"},
+    ])
+
+    assert result["written"] == ["i1"]
+    assert result["errors"] == [{"index": 1, "item_id": "ghost", "error": "unknown item 'ghost'"}]

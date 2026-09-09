@@ -115,20 +115,24 @@ def load_profile(name_or_path: str, taxonomy, activities: dict, profiles_dir: st
 
 
 class ExpandedProfile:
-    """jurisdiction_ids, instrument_ids, exclude_instrument_ids,
-    document_types, regulators, languages (all sets), include_unclassified
-    (bool) - the output of expand_profile(), architecture doc §5.3."""
+    """jurisdiction_ids, instrument_ids, document_types, regulators,
+    languages (all sets), include_unclassified (bool) - the output of
+    expand_profile(), architecture doc §5.3.
+
+    No exclude_instrument_ids: §5.2's "hard exclude" is applied once during
+    expansion (the excluded ids are already subtracted from
+    instrument_ids), so carrying the set forward only invited a second,
+    divergent exclusion at query time."""
 
     __slots__ = (
-        "jurisdiction_ids", "instrument_ids", "exclude_instrument_ids",
+        "jurisdiction_ids", "instrument_ids",
         "document_types", "regulators", "languages", "include_unclassified",
     )
 
-    def __init__(self, jurisdiction_ids, instrument_ids, exclude_instrument_ids,
+    def __init__(self, jurisdiction_ids, instrument_ids,
                  document_types, regulators, languages, include_unclassified):
         self.jurisdiction_ids = jurisdiction_ids
         self.instrument_ids = instrument_ids
-        self.exclude_instrument_ids = exclude_instrument_ids
         self.document_types = document_types
         self.regulators = regulators
         self.languages = languages
@@ -164,7 +168,6 @@ def expand_profile(profile: dict, taxonomy, activities: dict) -> ExpandedProfile
     return ExpandedProfile(
         jurisdiction_ids=jurisdiction_ids,
         instrument_ids=instrument_ids,
-        exclude_instrument_ids=exclude_instrument_ids,
         document_types=set(profile["document_types"]),
         regulators=set(profile["regulators"]),
         languages=set(profile["languages"]),

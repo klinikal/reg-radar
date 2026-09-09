@@ -319,3 +319,45 @@ def test_explicit_since_into_an_empty_out_dir_is_not_second_guessed(tmp_path, mo
     assert rc == 0
     assert "falling back to a full export" not in caplog.text
     assert (out_dir / "export.jsonl").read_text() == ""
+
+
+def test_export_jsonl_deleted_with_persisted_cursor_rebuilds_the_full_snapshot(tmp_path, monkeypatch, caplog):
+    """The exact reported repro: a completed jsonl export, then export.jsonl
+    removed (a botched copy, a cleanup script) while .regradar-cursor
+    survives. Trusting that cursor wrote an EMPTY snapshot - the whole
+    corpus silently gone from the export."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    assert main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path]) == 0
+    assert len((out_dir / "export.jsonl").read_text().strip().splitlines()) == 1
+    cursor_before = (out_dir / ".regradar-cursor").read_text()
+
+    (out_dir / "export.jsonl").unlink()
+    with caplog.at_level("WARNING"):
+        rc = main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path])
+
+    assert rc == 0
+    assert "falling back to a full export" in caplog.text
+    assert len((out_dir / "export.jsonl").read_text().strip().splitlines()) == 1
+    assert (out_dir / ".regradar-cursor").read_text() == cursor_before
+
+
+def test_export_reports_only_items_it_actually_wrote(tmp_path, monkeypatch, capsys):
+    """An unchanged re-export rewrites nothing, so it must not claim to
+    have exported the item again."""
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    db_path, _item_id = _setup_db(tmp_path)
+    out_dir = tmp_path / "out"
+
+    assert main(["export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path]) == 0
+    assert "Exported 1 item(s)" in capsys.readouterr().out
+
+    # An old --since walks the whole change set again, so the item IS
+    # re-checked - but its snapshot line is identical, so nothing is written.
+    past = encode_cursor(datetime(2000, 1, 1, tzinfo=timezone.utc), "a")
+    assert main([
+        "export", "--format", "jsonl", "--out", str(out_dir), "--db-path", db_path, "--since", past,
+    ]) == 0
+    assert "Exported 0 item(s)" in capsys.readouterr().out

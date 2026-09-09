@@ -176,8 +176,13 @@ def _write_classification_row_conn(conn, taxonomy, item_id: str, axis: str, valu
     classify_batch() (one connection/transaction for the whole batch).
 
     Caller must have already validated axis/value against the taxonomy -
-    this assumes both are valid.
+    this assumes both are valid. `item_id` is checked here, on the shared
+    path, because a typo'd or stale id otherwise inserted an orphan
+    classification row against an item that does not exist and reported it
+    as a successful write.
     """
+    if conn.execute(text("SELECT 1 FROM items WHERE id=:i"), {"i": item_id}).fetchone() is None:
+        raise ValueError(f"unknown item {item_id!r}")
     cardinality = taxonomy.cardinality(axis)
     now = db_now()
     existing = conn.execute(
@@ -316,6 +321,20 @@ def supersede_axis(engine, item_id: str, axis: str, by: str | None = None) -> in
 MAX_BATCH_SIZE = 100
 
 
+def _known_item_ids(engine, item_ids: list) -> set:
+    """Which of `item_ids` actually exist in `items` - one query, so
+    classify_batch() can report an unknown id per entry during validation
+    instead of raising inside the batch transaction."""
+    wanted = [i for i in dict.fromkeys(item_ids) if i]
+    if not wanted:
+        return set()
+    placeholders = ", ".join(f":i_{n}" for n in range(len(wanted)))
+    params = {f"i_{n}": v for n, v in enumerate(wanted)}
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"SELECT id FROM items WHERE id IN ({placeholders})"), params).fetchall()
+    return {r[0] for r in rows}
+
+
 def classify_batch(engine, taxonomy, classifications: list) -> dict:
     """Batch write interface (docs/issues/04-rules-engine-write-interface
     -llm-classifier-skill.md): validates every entry against the current
@@ -346,6 +365,7 @@ def classify_batch(engine, taxonomy, classifications: list) -> dict:
     if len(classifications) > MAX_BATCH_SIZE:
         raise ValueError(f"batch of {len(classifications)} exceeds the {MAX_BATCH_SIZE}-entry limit")
 
+    known_item_ids = _known_item_ids(engine, [e.get("item_id") for e in classifications])
     validated = []
     errors = []
     for i, entry in enumerate(classifications):
@@ -361,6 +381,11 @@ def classify_batch(engine, taxonomy, classifications: list) -> dict:
             continue
         if not taxonomy.is_valid(axis, value):
             errors.append({"index": i, "item_id": item_id, "error": f"unknown value {value!r} for axis {axis!r}"})
+            continue
+        if item_id not in known_item_ids:
+            # Reported per entry like any other validation failure, so one
+            # stale id never rolls back the rest of a batch.
+            errors.append({"index": i, "item_id": item_id, "error": f"unknown item {item_id!r}"})
             continue
         try:
             confidence = float(entry.get("confidence", 1.0))

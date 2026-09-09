@@ -2,7 +2,7 @@
 
 `RawDocument` is what every adapter's `fetch()` returns; `collector.pipeline`
 turns a list of them into `collector.schema.Item` rows. The fields beyond the
-issue's base shape (url, title, published_at, body, mime, labels,
+issue's base shape (url, title, published_at, body, mime,
 date_inferred) exist because "the original response to store as an
 artefact" and "the content used to build the Markdown body" are not always
 the same fetch - a page_watch artefact is the *whole* fetched page, but its
@@ -12,7 +12,7 @@ these apart lets every adapter's post-fetch handling (extraction, snippet,
 language, id generation) run through one shared pipeline instead of each
 adapter reimplementing it.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 
@@ -23,8 +23,11 @@ class RawDocument:
     published_at: datetime | None
     body: bytes = b""
     mime: str = ""
-    labels: dict = field(default_factory=dict)
     date_inferred: bool = False
+    # Deviation from the issue's base shape: no `labels` field. Source
+    # defaults are applied from `sources[].labels` in the regulator config
+    # by the classify step (collector/main.py), not carried per document,
+    # so an adapter never has one to set.
 
     # Content for the shared pipeline to build body_md/raw_content from -
     # distinct from body/mime (the artefact to store), see module docstring.

@@ -440,7 +440,9 @@ def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence:
     self-reported - prefer leaving an axis unset over guessing below 0.5.
     Writing the same (item, axis, value, by) again is a no-op; writing a
     different value for the same (item, axis, by) on a single-valued axis
-    supersedes the prior one rather than accumulating.
+    supersedes the prior one rather than accumulating. An `item_id` that is
+    not in the database raises rather than recording an orphan row -
+    classify_items_tool reports the same condition per entry.
     """
     def _write():
         write_classification(get_write_engine(), get_taxonomy(), item_id, axis, value, by=by,
@@ -495,4 +497,12 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
 
 
 if __name__ == "__main__":
+    # Load taxonomy and activities before serving anything: both go through
+    # load_and_exit_on_error()/ProfileError, and doing that lazily inside a
+    # tool call meant a broken config raised SystemExit per request (which
+    # _safe() does not catch) instead of failing this process at boot.
+    # Module import stays side-effect free so the tests can import this
+    # module and point get_taxonomy() at their own config paths.
+    get_taxonomy()
+    get_activities()
     mcp.run(transport="streamable-http")

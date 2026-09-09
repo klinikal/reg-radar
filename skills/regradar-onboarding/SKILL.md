@@ -5,7 +5,7 @@ description: Use when a new regradar operator wants to go from a fresh clone to 
 
 # regradar Onboarding
 
-Takes an operator from a fresh clone to a fully working regradar instance: verifies the environment, brings the stack up, confirms data is flowing and the MCP server is reachable, then interviews the operator to generate their private `refs/context.md` — the file `regradar-operator` reads to know which regulatory items actually matter to this entity, instead of treating ~33 regulators and thousands of feed items as equally relevant.
+Takes an operator from a fresh clone to a fully working regradar instance: verifies the environment, brings the stack up, confirms data is flowing and the MCP server is reachable, then interviews the operator to generate their private `refs/context.md` — the file `regradar-operator` reads to know which regulatory items actually matter to this entity, instead of treating 40-odd regulators and thousands of feed items as equally relevant.
 
 Run this end-to-end. Don't skip straight to the interview — an operator context file is useless if the stack underneath it doesn't work.
 
@@ -87,6 +87,8 @@ If you (the agent running this skill) have a way to register a remote MCP server
    - Batch 2 — licence: Licence & Regulatory Status, Authorised MiCA Services, Asset Scope
    - Batch 3 — infrastructure: Fiat Rails & Banking, Exclusions, Adjacent Interests, Relevant Affiliates
    - Batch 4 — content preferences: Things Interested In (offer the regradar-operator defaults — CASP circulars, MiCA text/interpretation, transition periods, warning notices, guidance notes — and ask what to add, remove, or reprioritise)
+
+   While you are here, point the operator at `config/profiles/` — a profile turns those preferences into a saved filter (jurisdictions, activities, instruments, document types) that every surface accepts: the web UI picker, the `profile` parameter on the MCP query tools, the JSON API, `regradar export`, the Atom feeds, webhooks and digests. If one of the shipped templates (`eu-casp`, `eu-bank`, `eu-emi`, `uk-equities-dealer`) already matches what they described, name it; if not, say a custom profile YAML is a copy of the closest template with the lists edited.
 
    Use judgement on phrasing — ask plain-English questions, not "what's your Entity Type & Incorporation," and don't require the operator to know regulatory jargon. Infer the right heading from their answer.
 

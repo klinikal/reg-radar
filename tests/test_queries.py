@@ -1069,3 +1069,45 @@ def test_get_health_stalled_sources_empty_when_none_stalled():
         assert result["stalled_sources"] == []
     finally:
         os.unlink(db_path)
+
+
+def test_search_items_jurisdictions_without_taxonomy_raises():
+    """A jurisdictions filter cannot be expanded without a taxonomy.
+    Dropping it silently used to widen the query to the whole corpus - the
+    opposite of what the caller asked for."""
+    from mcpserver.queries import _jurisdiction_filter_conditions
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        insert_item(engine, make_item(regulator_id="esma"))
+
+        with pytest.raises(ValueError, match="jurisdictions filter requires a taxonomy"):
+            search_items(engine, "", jurisdictions=["fr"], taxonomy=None)
+        with pytest.raises(ValueError, match="jurisdictions filter requires a taxonomy"):
+            _jurisdiction_filter_conditions(["fr"], None)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_unclassified_derives_body_md_from_raw_content_for_pre_v2_items():
+    """A v1-upgraded row has items.body_md NULL but raw_content populated.
+    Returning the raw column left the classifier skill and `regradar
+    classify` with an empty body to classify."""
+    from mcpserver.queries import get_unclassified
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        item = make_item(regulator_id="esma", raw_content="<p>Some notice text.</p>")
+        insert_item(engine, item)
+
+        results = get_unclassified(engine, axis="document_type")
+
+        assert [r["id"] for r in results] == [item.id]
+        assert "Some notice text." in results[0]["body_md"]
+        # Shape unchanged: the extra columns are only read to derive the body.
+        assert "raw_content" not in results[0]
+        assert "content_snippet" not in results[0]
+    finally:
+        os.unlink(db_path)

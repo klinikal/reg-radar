@@ -304,7 +304,7 @@ name: uk-equities-dealer
 jurisdictions: [gb]             # "eu/*" selects the EU and every jurisdiction beneath it
 activities: [equities_dealing]
 instruments: []                  # additional explicit instruments
-exclude_instruments: [mica]      # hard exclude, applied last
+exclude_instruments: [mica]      # hard exclude, subtracted last when the set is expanded
 document_types: []               # empty means all
 regulators: []                   # empty means all in matched jurisdictions
 languages: [en]
