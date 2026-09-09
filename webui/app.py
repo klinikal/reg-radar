@@ -222,7 +222,8 @@ def _parse_labels(raw: str | None) -> dict:
 
 @app.get("/item/{item_id}", response_class=HTMLResponse)
 def item_view(request: Request, item_id: str):
-    item = get_item(get_engine(), item_id)
+    taxonomy = get_taxonomy()
+    item = get_item(get_engine(), item_id, taxonomy=taxonomy)
     if item is None:
         return templates.TemplateResponse(
             "not_found.html", {"request": request, "item_id": item_id}, status_code=404
@@ -232,7 +233,6 @@ def item_view(request: Request, item_id: str):
     item = _with_tags(item)
     item_labels = _parse_labels(item.get("labels"))
     regulators = {r["id"]: r["name"] for r in list_regulators(get_engine())}
-    taxonomy = get_taxonomy()
     document_type_values = [v.id for v in taxonomy.axis_values("document_type")]
     instrument_values = [v.id for v in taxonomy.axis_values("instrument")]
     return templates.TemplateResponse(
@@ -315,7 +315,7 @@ def api_months(q: str = "", exact: bool = False, regulator_id: list[str] = Query
 
 @app.get("/api/items/{item_id}")
 def api_item(item_id: str):
-    item = get_item(get_engine(), item_id)
+    item = get_item(get_engine(), item_id, taxonomy=get_taxonomy())
     if item is None:
         raise HTTPException(status_code=404, detail="not found")
     return item

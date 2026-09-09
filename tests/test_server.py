@@ -25,6 +25,8 @@ def _server_with_db(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     write_engine = init_db(str(db_path))
     monkeypatch.setenv("DB_PATH", str(db_path))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
     server = _fresh_server_module()
     return server, write_engine
 

@@ -33,6 +33,61 @@ def _by_rank(by: str) -> int:
     return _BY_RANK.get(by, 0)
 
 
+def winning_classification_rows(rows: list, taxonomy) -> list:
+    """Returns the live classification rows that determine the effective
+    label for each axis - one row per single-valued axis, one row per
+    qualifying value on a multi-valued axis - applying the same precedence
+    as effective_labels() (architecture doc §4.4) but returning the winning
+    rows themselves (axis, value, by, confidence, taxonomy_version, ...)
+    rather than just their values. This is what the canonical document's
+    `label_provenance` (architecture doc §3.2) is built from.
+
+    `rows` are dicts with at least axis/value/by/confidence/superseded_at;
+    already-superseded rows are filtered out here so callers can pass a
+    full history rather than pre-filtering themselves. Axes unknown to
+    `taxonomy`, or values no longer in its vocab (e.g. a stale `import`
+    row - see import_classification()), are ignored.
+    """
+    live = [r for r in rows if r.get("superseded_at") is None]
+    by_axis: dict = {}
+    for row in live:
+        by_axis.setdefault(row["axis"], []).append(row)
+
+    winners: list = []
+    known_axes = set(taxonomy.axes())
+    for axis, axis_rows in by_axis.items():
+        if axis not in known_axes:
+            continue
+        cardinality = taxonomy.cardinality(axis)
+        axis_rows = [r for r in axis_rows if taxonomy.is_valid(axis, r["value"])]
+        human_rows = [r for r in axis_rows if is_human(r["by"])]
+        if human_rows:
+            if cardinality == "many":
+                by_value = {}
+                for r in human_rows:
+                    by_value.setdefault(r["value"], r)
+                winners.extend(by_value[v] for v in sorted(by_value))
+            else:
+                best_value = sorted({r["value"] for r in human_rows})[-1]
+                winners.append(next(r for r in human_rows if r["value"] == best_value))
+            continue
+
+        threshold = taxonomy.min_confidence(axis)
+        candidates = [r for r in axis_rows if (r.get("confidence") or 0) >= threshold]
+        if not candidates:
+            continue
+        if cardinality == "many":
+            by_value = {}
+            for r in candidates:
+                if r["value"] not in by_value or (r.get("confidence") or 0) > (by_value[r["value"]].get("confidence") or 0):
+                    by_value[r["value"]] = r
+            winners.extend(by_value[v] for v in sorted(by_value))
+        else:
+            best = max(candidates, key=lambda r: ((r.get("confidence") or 0), _by_rank(r["by"])))
+            winners.append(best)
+    return winners
+
+
 def effective_labels(rows: list, taxonomy) -> dict:
     """Computes the effective per-axis labels for one item from its
     classification rows, per architecture doc §4.4:
@@ -46,43 +101,16 @@ def effective_labels(rows: list, taxonomy) -> dict:
     3. Otherwise the axis is unset - simply absent from the result dict.
        Unset is a real state, not an error.
 
-    `rows` are dicts with at least axis/value/by/confidence/superseded_at;
-    already-superseded rows are filtered out here so callers can pass a
-    full history rather than pre-filtering themselves. Axes unknown to
-    `taxonomy` are ignored (defensive - shouldn't happen since
-    write_classification() rejects them at write time).
+    Built from winning_classification_rows() - see that function for the
+    full precedence rules and row-shape requirements.
     """
-    live = [r for r in rows if r.get("superseded_at") is None]
-    by_axis: dict = {}
-    for row in live:
-        by_axis.setdefault(row["axis"], []).append(row)
-
     result: dict = {}
-    known_axes = set(taxonomy.axes())
-    for axis, axis_rows in by_axis.items():
-        if axis not in known_axes:
-            continue
-        cardinality = taxonomy.cardinality(axis)
-        # Values no longer in the current vocab (e.g. a stale `import` row -
-        # see regradar.classification.import_classification, which
-        # deliberately bypasses write-time validation to preserve history)
-        # are inert here rather than surfacing as a live label.
-        axis_rows = [r for r in axis_rows if taxonomy.is_valid(axis, r["value"])]
-        human_rows = [r for r in axis_rows if is_human(r["by"])]
-        if human_rows:
-            values = sorted({r["value"] for r in human_rows})
-            result[axis] = values if cardinality == "many" else values[-1]
-            continue
-
-        threshold = taxonomy.min_confidence(axis)
-        candidates = [r for r in axis_rows if (r.get("confidence") or 0) >= threshold]
-        if not candidates:
-            continue
-        if cardinality == "many":
-            result[axis] = sorted({r["value"] for r in candidates})
+    for w in winning_classification_rows(rows, taxonomy):
+        axis = w["axis"]
+        if taxonomy.cardinality(axis) == "many":
+            result.setdefault(axis, []).append(w["value"])
         else:
-            best = max(candidates, key=lambda r: ((r.get("confidence") or 0), _by_rank(r["by"])))
-            result[axis] = best["value"]
+            result[axis] = w["value"]
     return result
 
 

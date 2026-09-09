@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from regradar.classification import winning_classification_rows
 from regradar.document import build_frontmatter, frontmatter_to_json_safe
 
 logger = logging.getLogger(__name__)
@@ -408,12 +409,18 @@ def list_regulators(engine) -> list[dict]:
     return results
 
 
-def get_item(engine, item_id: str) -> dict | None:
+def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
     """Returns the item, including `body_md` (the Markdown body alongside
     the existing `raw_content`) and a `document` object holding the same
     frontmatter fields a rendered file would have (section 3.2) - built
-    from whatever `labels`/artefact data exists for this item, which is
-    empty until the classification and artefact-writing paths populate it.
+    from whatever `labels`/artefact data exists for this item.
+
+    `taxonomy` (a regradar.taxonomy.Taxonomy) is optional but needed to
+    populate `document.jurisdiction_ancestors` (via ancestors()) and
+    `document.label_provenance` (via winning_classification_rows() over
+    this item's live classifications); without it those come back empty/
+    omitted rather than erroring, so existing callers that don't have a
+    taxonomy handy keep working.
     """
     sql = """
         SELECT id, regulator_id, source_label, title, url, published_at,
@@ -437,14 +444,39 @@ def get_item(engine, item_id: str) -> dict | None:
             text("SELECT path, mime, sha256, bytes, fetched_at FROM item_artefacts WHERE item_id = :id"),
             {"id": item_id},
         ).fetchone()
+        classification_rows = (
+            conn.execute(
+                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
+                     "FROM classifications WHERE item_id = :id"),
+                {"id": item_id},
+            ).fetchall()
+            if taxonomy is not None else []
+        )
 
     doc_item = dict(item)
+    jurisdiction = None
     if reg_row is not None:
         reg = dict(reg_row._mapping)
         doc_item["regulator_name"] = reg.get("full_name") or reg.get("name")
-        doc_item["jurisdiction"] = reg.get("jurisdiction")
+        jurisdiction = reg.get("jurisdiction")
+        doc_item["jurisdiction"] = jurisdiction
     artefact = dict(artefact_row._mapping) if artefact_row is not None else None
-    fm = build_frontmatter(doc_item, artefact=artefact, labels=None, label_provenance=None)
+
+    labels = None
+    label_provenance = None
+    if taxonomy is not None:
+        if jurisdiction:
+            doc_item["jurisdiction_ancestors"] = taxonomy.ancestors(jurisdiction.lower())
+        labels = json.loads(item["labels"]) if item.get("labels") else None
+        winners = winning_classification_rows([dict(r._mapping) for r in classification_rows], taxonomy)
+        if winners:
+            label_provenance = [
+                {"axis": w["axis"], "value": w["value"], "by": w["by"],
+                 "confidence": w["confidence"], "taxonomy_version": w["taxonomy_version"]}
+                for w in winners
+            ]
+
+    fm = build_frontmatter(doc_item, artefact=artefact, labels=labels, label_provenance=label_provenance)
     item["document"] = frontmatter_to_json_safe(fm)
     return item
 

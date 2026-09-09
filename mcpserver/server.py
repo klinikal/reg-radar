@@ -183,7 +183,7 @@ def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | 
     max_content_chars to truncate it and protect your context window; omit
     for the full text. Returns None if the id doesn't exist.
     """
-    result = _safe("get_item_tool", get_item, get_engine(), item_id)
+    result = _safe("get_item_tool", get_item, get_engine(), item_id, taxonomy=get_taxonomy())
     if result and max_content_chars is not None and result.get("raw_content"):
         result["raw_content"] = result["raw_content"][:max_content_chars]
     return result
