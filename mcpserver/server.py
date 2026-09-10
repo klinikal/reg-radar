@@ -146,9 +146,10 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     provenance (see list_labels_tool).
 
     `jurisdictions` filters to items from a regulator in one of these
-    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any of their
-    descendants (e.g. "eu" also matches "fr", "de", ...). `labels` filters
-    by classification axis, e.g. {"document_type": ["warning"]} or
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any ancestor of it
+    (e.g. "fr" also matches "eu"). There is no descendant expansion -
+    filtering on "eu" does not include member-state regulators. `labels`
+    filters by classification axis, e.g. {"document_type": ["warning"]} or
     {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
     values within one axis OR together. Call list_labels_tool to see valid
     axes/values with their counts.
