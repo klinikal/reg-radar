@@ -158,7 +158,7 @@ def newest_published_at(items: list[Item]) -> datetime | None:
     guess, not the source's claim, so it says nothing about staleness."""
     dates = [
         (i.published_at if i.published_at.tzinfo else i.published_at.replace(tzinfo=timezone.utc))
-        for i in items if i.published_at is not None
+        for i in items if i.published_at is not None and not i.date_inferred
     ]
     return max(dates) if dates else None
 
@@ -166,7 +166,18 @@ def newest_published_at(items: list[Item]) -> datetime | None:
 def check_staleness(items: list[Item], source: dict, now: datetime | None = None) -> tuple[str | None, str | None]:
     """Returns (error, warning), either or both None. No date to judge from
     means no assertion: silence is better than a false alarm on a source
-    whose dates are all inferred."""
+    whose dates are all inferred.
+
+    Note what this can and cannot assess. It reads the dates a source
+    supplies, from one live fetch, so it answers "is this source still
+    publishing?" It cannot answer "is this source still being collected?" -
+    that needs collection history, and this module deliberately has no
+    database (the nightly workflow runs it in CI, where none exists).
+
+    A `page_watch` source therefore cannot be judged here at all: its item
+    carries a fetch-time date, not the source's, so its age is always zero.
+    `staleness:` on a page_watch source is rejected by registry validation
+    rather than accepted and silently ignored."""
     newest = newest_published_at(items)
     if newest is None:
         return None, None

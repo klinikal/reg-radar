@@ -144,7 +144,7 @@ def load_regulators(config_path: str, modules_path: str | None = None,
                     sys.exit(1)
                 seen_labels.add(label)
 
-                problem = _source_backfill_error(source)
+                problem = _source_backfill_error(source) or _source_staleness_error(source)
                 if problem:
                     logger.error(
                         "%s: regulator '%s' source '%s': %s", path, reg_id, label, problem
@@ -248,6 +248,39 @@ def source_backfill(source: dict) -> dict:
         "script": block.get("script"),
         "note": block.get("note"),
     }
+
+
+def _source_staleness_error(source: dict) -> str | None:
+    """`staleness:` on a page_watch source can never fire, so it is rejected
+    rather than accepted and silently ignored.
+
+    The freshness assertion reads the dates a source supplies. A page_watch
+    item carries a fetch-time date, not the source's, so its age is always
+    zero days and no threshold is ever crossed. FATF shipped exactly such an
+    override - warn 200 / error 550 on the grey list - which read as
+    considered configuration while asserting nothing at all. Answering "has
+    this page changed lately?" needs collection history, which the nightly
+    check has no database for; until that exists, the honest state is no
+    assertion, said out loud here rather than implied by a dead setting.
+    """
+    st = source.get("staleness")
+    if st is None:
+        return None
+    if not isinstance(st, dict):
+        return "staleness: must be a mapping with warn_days / error_days"
+    if source.get("type") == "page_watch":
+        return (
+            "staleness: cannot apply to a page_watch source - its items carry a "
+            "fetch-time date, so the age checked here is always zero and the "
+            "thresholds can never fire. Remove it."
+        )
+    for key in ("warn_days", "error_days"):
+        if key in st and not isinstance(st[key], int):
+            return f"staleness.{key} must be a whole number of days"
+    warn, err = st.get("warn_days"), st.get("error_days")
+    if isinstance(warn, int) and isinstance(err, int) and warn > err:
+        return f"staleness.warn_days ({warn}) is above error_days ({err}) - the warning could never fire first"
+    return None
 
 
 def _source_backfill_error(source: dict) -> str | None:

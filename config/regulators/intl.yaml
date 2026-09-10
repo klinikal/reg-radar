@@ -20,14 +20,20 @@
     preferred_language: en
     tags: [page_watch]
     watch_selector: "body > div.container.responsivegrid"
-    # FATF revises the two country lists at its plenary, which sits three
-    # times a year (Feb / Jun / Oct) - so ~130 days is a NORMAL gap and the
-    # 90-day default would warn on a perfectly healthy source. warn at 200
-    # days = one whole plenary cycle missed plus margin; error at 550 = four
-    # consecutive plenaries with no revision, which has no innocent reading.
-    staleness:
-      warn_days: 200
-      error_days: 550
+    # NO staleness: block here, deliberately, and none is possible today.
+    # This source shipped with warn 200 / error 550 - sized against FATF's
+    # three-plenary-a-year cadence (Feb/Jun/Oct), where ~130 days is a normal
+    # gap - and it asserted nothing whatsoever. A page_watch item carries a
+    # fetch-time date, not the source's, so the age the freshness check reads
+    # is always zero and no threshold can ever be crossed. It read as
+    # considered configuration while being dead, which is worse than an
+    # obvious gap; registry validation now rejects the shape outright.
+    #
+    # The assertion this source actually wants is "no change detected in N
+    # days", which needs collection history. The nightly check has no
+    # database by design - it runs in CI - so that belongs in a DB-backed
+    # check, not here. Until then FATF's freshness is unasserted, and that is
+    # said out loud rather than implied by a setting that does nothing.
 
   - type: scrape
     url: "https://www.fatf-gafi.org/en/home.html"
