@@ -1,12 +1,11 @@
 """CSS-selector scrape adapter - wraps v1's `_parse_scrape` unchanged."""
 import logging
-import re
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from collector.adapters.base import FetchContext, RawDocument, SourceAdapter
+from collector.adapters.base import FetchContext, RawDocument, SourceAdapter, parse_text_date
 from collector.adapters.http import (
     DEFAULT_USER_AGENT,
     MAX_PDF_DOWNLOAD_BYTES,
@@ -122,33 +121,5 @@ class ScrapeAdapter(SourceAdapter):
         return docs
 
 
-_ISO_DATE = re.compile(r"\s*\d{4}-\d{1,2}-\d{1,2}")
-
-
 def _parse_date(date_str: str, fuzzy: bool, date_attribute: str | None) -> datetime | None:
-    try:
-        from dateutil.parser import parse as parse_date
-        # dayfirst: EEA/UK sources render free-text dates as DD/MM/YYYY -
-        # without this, ambiguous dates like 02/07/2026 silently misparse as
-        # 2 July -> 7 Feb. Only applied when reading free text (no
-        # date_attribute); an unambiguous ISO datetime="..." attribute is
-        # NOT left alone by dateutil's dayfirst=True either (verified
-        # directly), so this stays keyed off date_attribute, matching v1.
-        #
-        # fuzzy is NOT a safe global default - it silently extracts a
-        # date-shaped substring from surrounding text and never fails
-        # loudly. Opt in per-source via date_fuzzy: true only for sources
-        # that genuinely need it (e.g. FCA's "Published: DD/MM/YYYY" text).
-        #
-        # An ISO-shaped string read as TEXT is unambiguous, and dayfirst=True
-        # actively corrupts it: dateutil reads "2026-08-03" as 8 March and
-        # "2026-12-01" as 12 January, stored with date_inferred=False - i.e.
-        # asserted as fact. NYDFS's tables are the first source to render
-        # dates that way (no <time datetime>, bare text), but the fix is keyed
-        # off the string's shape rather than a per-source flag, so every
-        # ISO-text source is right by default.
-        iso_text = _ISO_DATE.match(date_str) is not None
-        parsed = parse_date(date_str, fuzzy=fuzzy, dayfirst=not date_attribute and not iso_text)
-        return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except Exception:
-        return None
+    return parse_text_date(date_str, fuzzy=fuzzy, date_attribute=date_attribute)

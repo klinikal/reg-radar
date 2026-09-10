@@ -12,8 +12,40 @@ these apart lets every adapter's post-fetch handling (extraction, snippet,
 language, id generation) run through one shared pipeline instead of each
 adapter reimplementing it.
 """
+import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+_ISO_DATE = re.compile(r"\s*\d{4}-\d{1,2}-\d{1,2}")
+
+
+def parse_text_date(date_str: str, fuzzy: bool = False, date_attribute: str | None = None) -> datetime | None:
+    """Parse a date a source rendered for humans, returning UTC or None.
+
+    Shared by every adapter that reads a date out of text rather than a
+    machine-readable field, so these two rules hold everywhere rather than
+    per-adapter:
+
+    dayfirst - EEA/UK sources render free text as DD/MM/YYYY, so 02/07/2026
+    must be 2 July, not 7 February. Not applied when the value came from a
+    machine-readable attribute, which is already unambiguous.
+
+    ISO text is exempt from dayfirst, because dayfirst corrupts it: dateutil
+    reads "2026-08-03" as 8 March and "2026-12-01" as 12 January, and the
+    result is stored with date_inferred=False - asserted as fact. Keyed off
+    the string's shape, so any ISO-text source is right by default.
+
+    fuzzy is NOT a safe default: it extracts a date-shaped substring from
+    surrounding prose and never fails loudly. Opt in per source.
+    """
+    try:
+        from dateutil.parser import parse as _parse
+        iso_text = _ISO_DATE.match(date_str) is not None
+        parsed = _parse(date_str, fuzzy=fuzzy, dayfirst=not date_attribute and not iso_text)
+        return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
 
 @dataclass
