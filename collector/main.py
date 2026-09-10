@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from collector.fetcher import fetch_source
 from collector.storage import (
+    regulator_has_items,
     check_db_integrity,
     get_module_enable_state,
     get_page_watch_baseline,
@@ -646,7 +647,20 @@ def apply_on_enable(engine, regulators: list[dict]) -> None:
             continue  # already collecting - on_enable is not consulted again
         module = reg.get("module") or {}
         on_enable = module.get("on_enable") or DEFAULT_ON_ENABLE
-        watermark = _watermark_for(on_enable, module)
+        if state is None and regulator_has_items(engine, reg["id"]):
+            # Not a new module at all: this install was already collecting
+            # this regulator before module state existed, which is every
+            # regulator on an install upgrading through #48's migration.
+            # Treating it as a fresh enable would stamp a watermark at "now"
+            # and silently drop anything published earlier that has not been
+            # collected yet - a feed's existing backlog, or the window since
+            # the last successful run. #48's guarantee is that an upgraded
+            # install collects exactly what it collected before, so a module
+            # that was already collecting gets no lower bound.
+            watermark = None
+            on_enable = "backfill_all"
+        else:
+            watermark = _watermark_for(on_enable, module)
         record_module_enabled(engine, reg["id"], module.get("id") or reg["id"], on_enable, watermark)
         logger.info(
             "Module %s enabled (%s): collecting %s.",

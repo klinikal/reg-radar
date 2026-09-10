@@ -725,6 +725,20 @@ class PageWatchBaselineRow(Base):
     updated_at = Column(DateTime)
 
 
+def regulator_has_items(engine, regulator_id: str) -> bool:
+    """Whether this install has ever collected anything for a regulator.
+
+    Used to tell "a module being switched on for the first time" from "a
+    module that was already collecting before module state existed" - the
+    latter being every regulator on an install upgrading through #48's
+    migration, which must not be given a watermark that cuts its history.
+    """
+    with Session(engine) as session:
+        return session.execute(
+            text("SELECT 1 FROM items WHERE regulator_id = :r LIMIT 1"), {"r": regulator_id}
+        ).fetchone() is not None
+
+
 def get_module_enable_state(engine, regulator_id: str) -> dict | None:
     # Read through the ORM, not text(): SQLAlchemy's DateTime type is what
     # turns the stored string back into a datetime, and a raw SELECT would
