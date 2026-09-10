@@ -219,6 +219,18 @@ def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):
     assert len(result["raw_content"]) == 10
 
 
+def test_get_item_tool_max_content_chars_truncates_body_md(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("MiCA warning issued")
+    item.raw_content = "x" * 1000
+    item.body_md = "y" * 1000
+    insert_item(write_engine, item)
+    result = server.get_item_tool(item_id=item.id, max_content_chars=10)
+    assert len(result["raw_content"]) == 10
+    assert len(result["body_md"]) == 10
+
+
 def test_get_item_tool_missing_id_returns_none(tmp_path, monkeypatch):
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     result = server.get_item_tool(item_id="nonexistent")
