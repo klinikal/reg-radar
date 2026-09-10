@@ -13,7 +13,7 @@ import logging
 import os
 import sys
 
-from collector.main import load_regulators
+from regradar.registry import load_regulators
 from collector.storage import init_db
 from regradar.classification import materialize_labels, supersede_axis, write_classification
 from regradar.rules import RulesEngine
