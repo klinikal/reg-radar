@@ -127,6 +127,17 @@ class SourceErrorRow(Base):
     # doesn't catch this (no exception is raised), so it needs its own
     # counter, reset only when a fetch actually yields >=1 item.
     consecutive_empty_runs = Column(Integer, default=0)
+    # A fetch classified as blocked/challenged rather than served (issue
+    # #39): a Cloudflare or Sucuri block, a challenge interstitial carrying
+    # a 200, or a large body that parsed to nothing. Its own counter
+    # *alongside* the two above, not instead of them - a blocked source is
+    # neither "the site errored" (consecutive_failures) nor "the site was
+    # quiet" (consecutive_empty_runs), and conflating it with either is what
+    # lets a failed workaround go unnoticed. Reset only by a fetch that came
+    # back clean.
+    consecutive_blocked_runs = Column(Integer, default=0)
+    last_blocked_reason = Column(Text)
+    last_blocked_at = Column(DateTime)
 
 
 class ItemArtefactRow(Base):
@@ -215,6 +226,9 @@ def init_db(db_path: str):
         _ensure_column(conn, "items", "updated_at", "DATETIME")
         _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
         _ensure_column(conn, "source_errors", "consecutive_empty_runs", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "source_errors", "consecutive_blocked_runs", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "source_errors", "last_blocked_reason", "TEXT")
+        _ensure_column(conn, "source_errors", "last_blocked_at", "DATETIME")
     Base.metadata.create_all(engine)
     return engine
 
@@ -452,6 +466,56 @@ def record_source_empty_run(engine, regulator_id: str, source_label: str) -> Non
                 consecutive_empty_runs=1,
                 last_attempt_at=datetime.now(timezone.utc),
             ))
+        session.commit()
+
+
+def record_source_blocked(engine, regulator_id: str, source_label: str, reason: str) -> None:
+    """Increments consecutive_blocked_runs for a source whose fetch was
+    classified as blocked/challenged (collector.adapters.http.detect_block
+    or the large-body-zero-items heuristic). Mirrors record_source_error's
+    upsert shape, and shares its row - `blocked` is an additional state on
+    the same source, not a replacement for the error/empty counters."""
+    with Session(engine) as session:
+        row = session.execute(
+            text("SELECT id, consecutive_blocked_runs FROM source_errors WHERE regulator_id=:r AND source_label=:s"),
+            {"r": regulator_id, "s": source_label}
+        ).fetchone()
+        if row:
+            session.execute(
+                text(
+                    "UPDATE source_errors SET consecutive_blocked_runs=:c, last_blocked_reason=:e, "
+                    "last_blocked_at=:t, last_attempt_at=:t WHERE regulator_id=:r AND source_label=:s"
+                ),
+                {
+                    "c": (row[1] or 0) + 1,
+                    "e": reason,
+                    "t": db_now(),
+                    "r": regulator_id,
+                    "s": source_label,
+                }
+            )
+        else:
+            now = datetime.now(timezone.utc)
+            session.add(SourceErrorRow(
+                regulator_id=regulator_id,
+                source_label=source_label,
+                consecutive_blocked_runs=1,
+                last_blocked_reason=reason,
+                last_blocked_at=now,
+                last_attempt_at=now,
+            ))
+        session.commit()
+
+
+def reset_source_blocked(engine, regulator_id: str, source_label: str) -> None:
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "UPDATE source_errors SET consecutive_blocked_runs=0 "
+                "WHERE regulator_id=:r AND source_label=:s"
+            ),
+            {"r": regulator_id, "s": source_label}
+        )
         session.commit()
 
 

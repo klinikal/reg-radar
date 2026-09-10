@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from collector.adapters.http import (
+    BlockedFetchError,
     extract_pdf_text,
     fetch_bytes,
     fetch_html,
@@ -188,9 +189,11 @@ def test_fetch_via_flaresolverr_backs_off_and_gives_up_on_ban_message():
         }
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        # Since #39 this raises rather than returning None: a ban is a
+        # block, and blocked is its own source state, not "failed to fetch".
+        with pytest.raises(BlockedFetchError):
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3  # exhausts _FLARESOLVERR_MAX_RETRIES, doesn't hammer indefinitely
 
 
@@ -216,9 +219,12 @@ def test_fetch_via_flaresolverr_treats_block_page_as_failure_not_success():
         mock_response.json.return_value = {"status": "ok", "solution": {"response": block_page}}
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        # #39: an unsolved challenge surfaces as blocked, not as a generic
+        # fetch failure - the FATF case, where FlareSolverr quietly stops
+        # working and the source would otherwise just look quiet.
+        with pytest.raises(BlockedFetchError):
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3
 
 
@@ -231,9 +237,9 @@ def test_fetch_via_flaresolverr_rejects_non_2xx_upstream_status():
         }
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        with pytest.raises(BlockedFetchError):  # #39: blocked, not merely unfetchable
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3
 
 

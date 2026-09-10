@@ -250,6 +250,13 @@ main {
   font-weight: 600;
 }
 
+/* A blocked source is as broken as one that 500s - same danger colour as
+   .reg-warning, not the softer stall amber (issue #39). */
+.reg-blocked {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 label.reg.reg-unhealthy {
   background: var(--danger-bg);
 }

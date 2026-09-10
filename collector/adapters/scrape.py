@@ -93,6 +93,10 @@ class ScrapeAdapter(SourceAdapter):
                     int(config.get("timeout", 30)),
                     int(config.get("retries", 3)),
                     max_bytes=MAX_PDF_DOWNLOAD_BYTES,
+                    # A blocked attachment must not discard the listing
+                    # items already parsed above - the listing fetch is what
+                    # decides whether this source is blocked (#39).
+                    raise_on_block=False,
                 )
                 if pdf_bytes:
                     pdf_text = extract_pdf_text(pdf_bytes) or None

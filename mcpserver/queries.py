@@ -488,12 +488,14 @@ def list_regulators(engine) -> list[dict]:
                COUNT(i.id) as total_items,
                MAX(i.fetched_at) as last_fetched_at,
                COALESCE(se.consecutive_failures, 0) as consecutive_failures,
-               COALESCE(se.consecutive_empty_runs, 0) as consecutive_empty_runs
+               COALESCE(se.consecutive_empty_runs, 0) as consecutive_empty_runs,
+               COALESCE(se.consecutive_blocked_runs, 0) as consecutive_blocked_runs
         FROM regulators r
         LEFT JOIN items i ON i.regulator_id = r.id
         LEFT JOIN (
             SELECT regulator_id, MAX(consecutive_failures) as consecutive_failures,
-                   MAX(consecutive_empty_runs) as consecutive_empty_runs
+                   MAX(consecutive_empty_runs) as consecutive_empty_runs,
+                   MAX(consecutive_blocked_runs) as consecutive_blocked_runs
             FROM source_errors
             GROUP BY regulator_id
         ) se ON se.regulator_id = r.id
@@ -502,7 +504,8 @@ def list_regulators(engine) -> list[dict]:
     """
     keys = ["id", "name", "full_name", "jurisdiction", "jurisdiction_type",
             "website", "mica_competent_authority", "enabled",
-            "total_items", "last_fetched_at", "consecutive_failures", "consecutive_empty_runs"]
+            "total_items", "last_fetched_at", "consecutive_failures", "consecutive_empty_runs",
+            "consecutive_blocked_runs"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql)).fetchall()
     results = [_row_to_dict(r, keys) for r in rows]
@@ -512,6 +515,10 @@ def list_regulators(engine) -> list[dict]:
         # runs) - distinct from consecutive_failures, which only tracks
         # outright fetch errors.
         r["stalled"] = r.pop("consecutive_empty_runs") >= STALL_THRESHOLD_RUNS
+        # No threshold: one blocked fetch is already a failed workaround, not
+        # a quiet day, and an operator needs to see it on the first run
+        # rather than a week later (issue #39).
+        r["blocked"] = r.pop("consecutive_blocked_runs") > 0
     return results
 
 
@@ -787,6 +794,34 @@ def _dataset_import_state(conn) -> dict | None:
     }
 
 
+def get_blocked_sources(engine) -> list[dict]:
+    """Every source whose last fetch was classified as blocked/challenged
+    (collector.storage.record_source_blocked), newest block first.
+
+    Unlike stalled_sources there is no run threshold - see list_regulators.
+    Shared by get_health(), the webhook payload and the digest so all three
+    surface the same set.
+    """
+    sql = """
+        SELECT regulator_id, source_label, consecutive_blocked_runs,
+               last_blocked_reason, last_blocked_at
+        FROM source_errors WHERE COALESCE(consecutive_blocked_runs, 0) > 0
+        ORDER BY last_blocked_at DESC
+    """
+    keys = ["regulator_id", "source_label", "consecutive_blocked_runs",
+            "last_blocked_reason", "last_blocked_at"]
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(sql)).fetchall()
+    except OperationalError:
+        # Pre-#39 database that hasn't been through init_db yet.
+        return []
+    results = [_row_to_dict(r, keys) for r in rows]
+    for r in results:
+        r["last_blocked_at"] = str(r["last_blocked_at"]) if r["last_blocked_at"] else None
+    return results
+
+
 def get_health(engine) -> dict:
     """Returns the most recent collector run's status and how long ago it
     completed (or started, if still running), so callers can caveat "data
@@ -795,6 +830,12 @@ def get_health(engine) -> dict:
     PRAGMA integrity_check once per collection cycle specifically so
     corruption is caught here loudly, not discovered later as a failed
     search.
+
+    `blocked_sources` lists every regulator_id/source_label whose last
+    fetch was classified as blocked/challenged rather than served (issue
+    #39) - a WAF block, a challenge interstitial, or a large body that
+    parsed to nothing. Distinct from both an error and a stall: the site
+    answered, it just didn't answer with the content.
 
     `stalled_sources` lists every regulator_id/source_label that has hit
     STALL_THRESHOLD_RUNS (default 7, env-configurable) consecutive
@@ -825,9 +866,11 @@ def get_health(engine) -> dict:
         {"regulator_id": r[0], "source_label": r[1], "consecutive_empty_runs": r[2]}
         for r in stalled_rows
     ]
+    blocked_sources = get_blocked_sources(engine)
     if row is None:
         return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown",
-                "stalled_sources": stalled_sources, "dataset_import": dataset_import}
+                "stalled_sources": stalled_sources, "blocked_sources": blocked_sources,
+                "dataset_import": dataset_import}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
@@ -840,7 +883,8 @@ def get_health(engine) -> dict:
     else:
         db_integrity = "ok" if integrity_flag else "corrupted"
     return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
-            "stalled_sources": stalled_sources, "dataset_import": dataset_import}
+            "stalled_sources": stalled_sources, "blocked_sources": blocked_sources,
+            "dataset_import": dataset_import}
 
 
 def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regulator_id=None, since=None,

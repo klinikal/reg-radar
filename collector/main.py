@@ -15,12 +15,15 @@ from collector.storage import (
     insert_item,
     record_run_complete,
     record_run_start,
+    record_source_blocked,
     record_source_empty_run,
     record_source_error,
+    reset_source_blocked,
     reset_source_empty_runs,
     reset_source_errors,
     upsert_regulator,
 )
+from collector.adapters.http import BlockedFetchError
 from regradar.classification import write_classification
 from regradar.rules import RulesEngine
 from regradar.taxonomy import Taxonomy, TaxonomyError, load_and_exit_on_error, load_jurisdictions
@@ -469,6 +472,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
     total_new = 0
     total_errors = 0
     error_detail = []
+    blocked_detail = []
     _exception = None
 
     # Checked once per run, before fetching anything - corruption doesn't
@@ -535,6 +539,11 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                         # like a quiet, uneventful day. Treat it as a source
                         # error so it surfaces in consecutive_failures instead
                         # of silently resetting a real failure streak.
+                        # Getting here at all means the fetch came back
+                        # clean - no block signature, no decoy heuristic -
+                        # so any previous block is over.
+                        reset_source_blocked(engine, reg["id"], source["label"])
+
                         if source.get("type") == "scrape" and len(items) == 0:
                             error_msg = f"{reg['id']}/{source['label']}: scrape returned 0 items - possible broken selector or blocked fetch"
                             total_errors += 1
@@ -558,6 +567,19 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                             record_source_empty_run(engine, reg["id"], source["label"])
                         else:
                             reset_source_empty_runs(engine, reg["id"], source["label"])
+                    except BlockedFetchError as e:
+                        # Distinct from a fetch failure on purpose: the site
+                        # answered, it just answered with a block or a decoy.
+                        # Recorded against its own counter so a failed
+                        # workaround is as visible as a source that 500s,
+                        # instead of looking like a quiet day.
+                        total_errors += 1
+                        key = f"{reg['id']}/{source['label']}"
+                        error_msg = f"{key}: BLOCKED - {e}"
+                        error_detail.append(error_msg)
+                        blocked_detail.append(error_msg)
+                        logger.error("Blocked fetch for %s: %s", key, e)
+                        record_source_blocked(engine, reg["id"], source["label"], str(e))
                     except Exception as e:
                         total_errors += 1
                         error_msg = f"{reg['id']}/{source['label']}: {e}"
@@ -591,9 +613,19 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
         else:
             status = "success" if total_errors == 0 else "partial"
         record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok)
+        if blocked_detail:
+            # Logged at error level, separately from the counts line: a
+            # blocked source is the failure mode an operator most needs to
+            # see in the run summary, and it is invisible in "errors=N".
+            logger.error(
+                "%d source(s) BLOCKED this run - a workaround (UA, FlareSolverr) has failed or "
+                "the site's protection posture changed:\n  %s",
+                len(blocked_detail), "\n  ".join(blocked_detail),
+            )
         if _exception is None:
             logger.info(
-                "Run complete: fetched=%d new=%d errors=%d", total_fetched, total_new, total_errors
+                "Run complete: fetched=%d new=%d errors=%d blocked=%d",
+                total_fetched, total_new, total_errors, len(blocked_detail),
             )
 
 

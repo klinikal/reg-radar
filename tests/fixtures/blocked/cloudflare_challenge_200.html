@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!--
+  A Cloudflare interstitial served with HTTP 200 - the shape #39 calls out
+  as the most dangerous, because nothing in the status line says anything
+  is wrong.
+
+  The ".publication-item" markup below is here ON PURPOSE. It is what a
+  real scrape source's item_selector matches, and it is the reason
+  classification has to happen before parse(): if this page reached the
+  parser it would write three plausible-looking garbage rows into the
+  corpus, which is strictly worse than collecting nothing.
+-->
+<html>
+<head>
+  <title>Just a moment...</title>
+  <meta http-equiv="refresh" content="10">
+</head>
+<body class="no-js">
+  <div class="main-wrapper">
+    <h1>Checking your browser before accessing example-authority.example</h1>
+    <p>Please enable JavaScript and cookies to continue.</p>
+    <div id="cf-browser-verification" class="cf-browser-verification"></div>
+    <script src="/cdn-cgi/challenge-platform/h/b/orchestrate/jsch/v1"></script>
+  </div>
+
+  <div class="publication-list">
+    <div class="publication-item">
+      <a class="title" href="/publications/verify">Verify you are human</a>
+      <span class="date">2026-09-10</span>
+    </div>
+    <div class="publication-item">
+      <a class="title" href="/publications/ray-id">Ray ID: 8f2b1c9d4e5a6b70</a>
+      <span class="date">2026-09-10</span>
+    </div>
+    <div class="publication-item">
+      <a class="title" href="/publications/performance">Performance &amp; security by Cloudflare</a>
+      <span class="date">2026-09-10</span>
+    </div>
+  </div>
+</body>
+</html>

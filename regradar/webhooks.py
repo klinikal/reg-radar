@@ -20,7 +20,7 @@ import httpx
 import yaml
 
 from collector.storage import get_webhook_cursor, record_webhook_delivery, set_webhook_cursor
-from mcpserver.queries import get_changes
+from mcpserver.queries import get_blocked_sources, get_changes
 from regradar.profiles import get_expanded_profile
 
 logger = logging.getLogger(__name__)
@@ -132,18 +132,29 @@ def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: st
     except Exception as e:
         logger.error("Webhook subscriber %s: get_changes failed: %s", sid, e)
         return
-    if not items:
+    # A blocked source is exactly the case where there are no new items to
+    # deliver, so "nothing new -> send nothing" would make the alarm
+    # unreachable through this path (issue #39). Deliver on either signal.
+    blocked_sources = get_blocked_sources(engine)
+    if not items and not blocked_sources:
         return
 
-    payload = {"cursor": cursor, "next_cursor": next_cursor, "items": items}
+    payload = {"cursor": cursor, "next_cursor": next_cursor, "items": items,
+               "blocked_sources": blocked_sources}
     body = json.dumps(payload).encode("utf-8")
     signature = sign_payload(body, secret)
 
     ok = _deliver_with_retry(client, sub["url"], body, signature, sub["max_retries"], sub["backoff_seconds"])
     if ok:
-        set_webhook_cursor(engine, sid, next_cursor)
+        # Only an actual item batch moves the cursor - a blocked-source-only
+        # delivery must not skip past changes that arrive later.
+        if items:
+            set_webhook_cursor(engine, sid, next_cursor)
         record_webhook_delivery(engine, sid, sub["url"], "success")
-        logger.info("Webhook subscriber %s: delivered %d item(s)", sid, len(items))
+        logger.info(
+            "Webhook subscriber %s: delivered %d item(s), %d blocked source(s)",
+            sid, len(items), len(blocked_sources),
+        )
     else:
         record_webhook_delivery(engine, sid, sub["url"], "failed", detail=f"exhausted {sub['max_retries']} retries")
         logger.error(

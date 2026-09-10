@@ -32,7 +32,7 @@ import yaml
 from sqlalchemy import create_engine
 
 from collector.storage import get_digest_cursor, set_digest_cursor
-from mcpserver.queries import get_changes
+from mcpserver.queries import get_blocked_sources, get_changes
 from regradar.profiles import DOCUMENT_TYPE_AXIS, INSTRUMENT_AXIS, get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 
@@ -164,11 +164,32 @@ def _group(items: list[dict]) -> dict:
     return {j: {r: groups[j][r] for r in sorted(groups[j])} for j in sorted(groups)}
 
 
-def render_markdown(profile_name: str, items: list[dict]) -> str:
+def _blocked_lines(blocked_sources: list[dict] | None) -> list[str]:
+    """Markdown for the blocked-source alarm, or [] when nothing is blocked.
+
+    Rendered above the items, not below: a source whose workaround has
+    failed is the reason the rest of the digest may be short (issue #39).
+    """
+    if not blocked_sources:
+        return []
+    lines = ["", f"## \u26a0 {len(blocked_sources)} blocked source(s)", "",
+             "These sources answered but were blocked or challenged, so nothing was collected from them:", ""]
+    for b in blocked_sources:
+        lines.append(
+            f"- **{b.get('regulator_id')}/{b.get('source_label')}** - "
+            f"{b.get('last_blocked_reason') or 'blocked'} "
+            f"({b.get('consecutive_blocked_runs')} consecutive run(s))"
+        )
+    return lines
+
+
+def render_markdown(profile_name: str, items: list[dict], blocked_sources: list[dict] | None = None) -> str:
     lines = [f"# reg-radar digest: {profile_name}", ""]
+    blocked = _blocked_lines(blocked_sources)
     if not items:
         lines.append("No new items since the last digest.")
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines + blocked) + "\n"
+    lines.extend(blocked)
 
     lines.append(f"{len(items)} new item(s).")
     for jurisdiction, regulators in _group(items).items():
@@ -190,15 +211,35 @@ def render_markdown(profile_name: str, items: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_html(profile_name: str, items: list[dict]) -> str:
+def _blocked_html(blocked_sources: list[dict] | None) -> str:
+    if not blocked_sources:
+        return ""
+    esc = html_escape_mod.escape
+    parts = [f"<h2 style=\"color:#c0392b;\">&#9888; {len(blocked_sources)} blocked source(s)</h2>",
+             "<p>These sources answered but were blocked or challenged, so nothing was collected from them:</p>",
+             '<ul style="padding-left: 1.2em;">']
+    for b in blocked_sources:
+        parts.append(
+            "<li><strong>"
+            f"{esc(str(b.get('regulator_id')))}/{esc(str(b.get('source_label')))}</strong> - "
+            f"{esc(str(b.get('last_blocked_reason') or 'blocked'))} "
+            f"({esc(str(b.get('consecutive_blocked_runs')))} consecutive run(s))</li>"
+        )
+    parts.append("</ul>")
+    return "".join(parts)
+
+
+def render_html(profile_name: str, items: list[dict], blocked_sources: list[dict] | None = None) -> str:
     esc = html_escape_mod.escape
     parts = [
         '<div style="font-family: sans-serif; color: #1a1a1a;">',
         f"<h1>reg-radar digest: {esc(profile_name)}</h1>",
     ]
+    blocked = _blocked_html(blocked_sources)
     if not items:
-        parts.append("<p>No new items since the last digest.</p></div>")
+        parts.append("<p>No new items since the last digest.</p>" + blocked + "</div>")
         return "".join(parts)
+    parts.append(blocked)
 
     parts.append(f"<p>{len(items)} new item(s).</p>")
     for jurisdiction, regulators in _group(items).items():
@@ -227,15 +268,18 @@ def render_html(profile_name: str, items: list[dict]) -> str:
 
 
 def render_digest(engine, expanded_profile, profile_name: str, since: str | None, taxonomy=None) -> dict:
-    """Returns {"markdown", "html", "next_cursor", "items"} for everything
+    """Returns {"markdown", "html", "next_cursor", "items", "blocked_sources"}
+    for everything
     matching `expanded_profile` changed after `since`. `next_cursor` is
     `since` unchanged when nothing new was found."""
     items, next_cursor = _fetch_all_changes(engine, expanded_profile, since, taxonomy=taxonomy)
+    blocked_sources = get_blocked_sources(engine)
     return {
-        "markdown": render_markdown(profile_name, items),
-        "html": render_html(profile_name, items),
+        "markdown": render_markdown(profile_name, items, blocked_sources),
+        "html": render_html(profile_name, items, blocked_sources),
         "next_cursor": next_cursor,
         "items": items,
+        "blocked_sources": blocked_sources,
     }
 
 
@@ -256,7 +300,8 @@ def _deliver_channel(engine, digest_name: str, channel: dict, markdown: str, htm
         if not secret:
             logger.error("Digest '%s' webhook channel: env var %s is not set - skipping", digest_name, channel["secret_env"])
             return False
-        payload = {"digest": digest_name, "cursor": since, "next_cursor": next_cursor, "items": items}
+        payload = {"digest": digest_name, "cursor": since, "next_cursor": next_cursor, "items": items,
+                   "blocked_sources": get_blocked_sources(engine)}
         client = webhook_client
         owns_client = client is None
         if owns_client:
@@ -287,7 +332,10 @@ def send_digest(engine, entry: dict, taxonomy, activities: dict, profiles_dir: s
     since = get_digest_cursor(engine, name)
     result = render_digest(engine, expanded_profile, entry["profile"], since, taxonomy=taxonomy)
 
-    if not result["items"] and not entry["send_empty"]:
+    # A blocked source overrides send_empty: "nothing new" is precisely
+    # what a blocked source looks like, so staying silent would bury the
+    # one thing the operator needs to see (issue #39).
+    if not result["items"] and not result["blocked_sources"] and not entry["send_empty"]:
         logger.info("Digest '%s': nothing new since last send - skipping (send_empty is false)", name)
         return True
 

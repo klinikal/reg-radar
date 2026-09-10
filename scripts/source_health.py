@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from collector.adapters.base import FetchContext
@@ -31,6 +32,14 @@ MAX_FIXTURE_BYTES = 2 * 1024 * 1024
 FIXTURE_WARN_BYTES = 300 * 1024
 
 ISSUE_LABEL = "source-health"
+
+# Staleness assertion (issue #39 A). A feed can be well-formed, return 200
+# and parse cleanly while its newest entry is years old - FINRA's rss.xml
+# serves ten items whose newest is from July 2020, and Texas DOB's serves a
+# valid RSS envelope with no <item> at all. HTTP status catches neither, and
+# to an operator both look exactly like a quiet regulator.
+STALENESS_WARN_DAYS = int(os.getenv("STALENESS_WARN_DAYS", "90"))
+STALENESS_ERROR_DAYS = int(os.getenv("STALENESS_ERROR_DAYS", "365"))
 
 
 def load_regulators(path: str | None = None) -> list[dict]:
@@ -130,6 +139,48 @@ def assert_contract(items: list[Item]) -> None:
     )
 
 
+def staleness_thresholds(source: dict) -> tuple[int, int]:
+    """(warn_days, error_days) for `source`, honouring a per-source
+    `staleness:` override in config/regulators/*.yaml (documented in
+    _template.yaml). The override exists for genuinely low-cadence sources -
+    the FATF grey list fires roughly three times a year, so the 90-day
+    default would be pure noise there."""
+    cfg = source.get("staleness") or {}
+    return (
+        int(cfg.get("warn_days", STALENESS_WARN_DAYS)),
+        int(cfg.get("error_days", STALENESS_ERROR_DAYS)),
+    )
+
+
+def newest_published_at(items: list[Item]) -> datetime | None:
+    """The newest real publication date across `items`, or None if not one
+    item carries one. An inferred date is the collector's own fetch-time
+    guess, not the source's claim, so it says nothing about staleness."""
+    dates = [
+        (i.published_at if i.published_at.tzinfo else i.published_at.replace(tzinfo=timezone.utc))
+        for i in items if i.published_at is not None
+    ]
+    return max(dates) if dates else None
+
+
+def check_staleness(items: list[Item], source: dict, now: datetime | None = None) -> tuple[str | None, str | None]:
+    """Returns (error, warning), either or both None. No date to judge from
+    means no assertion: silence is better than a false alarm on a source
+    whose dates are all inferred."""
+    newest = newest_published_at(items)
+    if newest is None:
+        return None, None
+    now = now or datetime.now(timezone.utc)
+    age_days = (now - newest).days
+    warn_days, error_days = staleness_thresholds(source)
+    detail = f"newest item is {age_days} days old ({newest.date().isoformat()})"
+    if age_days >= error_days:
+        return f"stale: {detail}, over the {error_days}-day error threshold", None
+    if age_days >= warn_days:
+        return None, f"stale: {detail}, over the {warn_days}-day warn threshold"
+    return None, None
+
+
 def capture(regulator: dict, source: dict, cfg: dict, dry_run: bool = False) -> tuple[Path, int]:
     """Fetches a source live and writes its raw response to the fixture
     path, unmodified. Raises if the response exceeds MAX_FIXTURE_BYTES -
@@ -144,17 +195,25 @@ def capture(regulator: dict, source: dict, cfg: dict, dry_run: bool = False) -> 
     return path, len(content)
 
 
-def check_source(regulator: dict, source: dict, cfg: dict) -> str | None:
+def check_source(regulator: dict, source: dict, cfg: dict, warnings: list | None = None) -> str | None:
     """Live equivalent of the offline contract test: fetches the source and
-    runs the same assertion the fixture test does. Returns None on success,
-    else a string describing the failure."""
+    runs the same assertions the fixture test does, plus the staleness
+    assertion. Returns None on success, else a string describing the
+    failure.
+
+    A staleness *warning* is not a failure - it would file an issue for
+    every genuinely quiet regulator - so it is appended to `warnings`
+    (if a list was passed) rather than returned."""
     try:
         content = fetch_raw(regulator, source, cfg)
         items = parse_fixture(source, regulator["id"], content)
         assert_contract(items)
     except Exception as e:
         return str(e)
-    return None
+    error, warning = check_staleness(items, source)
+    if warning is not None and warnings is not None:
+        warnings.append(warning)
+    return error
 
 
 def issue_title(regulator_id: str, source_label: str) -> str:
@@ -197,15 +256,22 @@ def close_issue_if_open(regulator_id: str, source_label: str) -> None:
         _gh("issue", "close", number, "--comment", "Source recovered on the latest nightly check - closing automatically.")
 
 
-def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True) -> dict[str, str | None]:
+def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
+                    warnings: dict | None = None) -> dict[str, str | None]:
     """Runs check_source() for every enabled source and, when file_issues is
     True, opens/updates an issue per failure and closes any that recovered.
-    Returns {"regulator_id/source_label": error_or_None}."""
+    Returns {"regulator_id/source_label": error_or_None}.
+
+    Pass a dict as `warnings` to also collect non-failing staleness
+    warnings, keyed the same way."""
     results: dict[str, str | None] = {}
     for regulator, source in iter_enabled_sources(regulators):
         key = f"{regulator['id']}/{source['label']}"
-        error = check_source(regulator, source, cfg)
+        source_warnings: list[str] = []
+        error = check_source(regulator, source, cfg, warnings=source_warnings)
         results[key] = error
+        if warnings is not None and source_warnings:
+            warnings[key] = source_warnings
         if not file_issues:
             continue
         if error:
@@ -221,12 +287,19 @@ def main(argv=None) -> int:
 
     regulators = load_regulators()
     cfg = load_config()
-    results = run_all_checks(regulators, cfg)
+    warnings: dict[str, list[str]] = {}
+    results = run_all_checks(regulators, cfg, warnings=warnings)
 
     failures = {k: v for k, v in results.items() if v}
-    logger.info("source health: %d checked, %d failed", len(results), len(failures))
+    logger.info(
+        "source health: %d checked, %d failed, %d warned",
+        len(results), len(failures), len(warnings),
+    )
     for key, error in failures.items():
         logger.error("  FAILED %s: %s", key, error)
+    for key, source_warnings in warnings.items():
+        for warning in source_warnings:
+            logger.warning("  WARN %s: %s", key, warning)
     return 1 if failures else 0
 
 

@@ -42,6 +42,16 @@
 #       labels:                         # source-default classification (architecture doc §4.3) - {} if none apply yet
 #         document_type: warning
 #       tags: [warnings]                # structural, per-feed tags (architecture doc §3.2's source_tags)
+#       # Optional, valid on ANY source type. The nightly source-health check
+#       # (scripts/source_health.py) asserts a source's newest item isn't too
+#       # old - warn at 90 days, error at 365 by default - because a feed can
+#       # return 200 and parse cleanly while its newest entry is years stale.
+#       # Override only for a genuinely low-cadence source: the FATF grey list
+#       # changes about three times a year, so the default would be pure noise
+#       # there. Raising it on anything else is how a dead feed goes unnoticed.
+#       staleness:
+#         warn_days: 200
+#         error_days: 550
 #
 #     # --- scrape: CSS-selector listing page ------------------------------
 #     - type: scrape
