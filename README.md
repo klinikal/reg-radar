@@ -24,11 +24,11 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
    ```
    This starts four services: `collector` (fetches on a schedule — see [Configuration](#configuration)), `mcp` (the query server, exposed at `http://localhost:8000/mcp`), `webui` (a browsable list/search view at `http://localhost:8080` — see [Web UI](#web-ui)), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources).
 
-2. **Choose what to collect.** `config/regulators/` is a complete catalogue; a fresh install collects nothing until you select from it.
+2. **Choose what to collect.** `config/regulators/` is a complete catalogue of 62 regulators; a fresh install collects nothing until you select from it.
    ```bash
-   cp config/modules.example.yaml config/modules.yaml
+   docker compose exec collector reg-radar setup
    ```
-   Edit it to keep the jurisdictions and regulators you care about — see [Modules](#modules) for the schema. Without this file (and without `REGRADAR_COLLECT_ALL=true`) the collector starts, says so in one line, and exits cleanly.
+   `setup` walks you through jurisdictions → regulators → sources, tells you roughly how many items the first run will collect **before** it writes anything, and writes `config/modules.yaml` for you. Prefer to hand-edit? `cp config/modules.example.yaml config/modules.yaml` and see [Modules](#modules) for the schema. Without this file (and without `REGRADAR_COLLECT_ALL=true`) the collector starts, says so in one line, and exits cleanly.
 
 3. **Get some data in.** On a fresh install the database is empty until the first run. To collect immediately:
    ```bash
@@ -102,6 +102,17 @@ The watermark is recorded *before* the first fetch and is the enable moment, nev
 Both backfill values are a **hard error** against a source `config/regulators/` declares un-backfillable, before a run is recorded or an item written (see [Declared backfill capability](#declared-backfill-capability-and-volume)). Where they are allowed, be clear on what they do: they stop the collector *filtering* older items out — the collector itself only ever reads the current page of a feed. Walking an archive is a `scripts/backfill_*.py` run, and the enable log names the script for each source.
 
 **Switching a module off is non-destructive.** Every row already collected stays in the database — items, artefacts, classifications — and so does each `page_watch` source's stored baseline. That baseline is why re-enabling is safe: a `page_watch` source's entire state is a hash of the fragment it watches, so a lost baseline would report a change to a page that never changed. Re-enabling compares against the surviving baseline and reports a change only if the page genuinely changed while the module was off. The first-ever enable of a `page_watch` source records the baseline and reports nothing, logging *"baseline established"* — distinct from *"change detected"*, which is what the same source logs when the fragment actually moves. Pruning rows for a disabled module is a separate decision that has not been taken.
+
+### Choosing modules from the CLI
+
+`reg-radar setup` is the interactive route and `reg-radar modules` the scripted one; both write the same `config/modules.yaml`, and both validate the result against the registry **before** anything is written, so a selection the collector would refuse at startup is refused here with the file untouched.
+
+- **`reg-radar setup`** — asks for jurisdictions (grouped: EU/EEA, UK, US, Asia-Pacific, Middle East, international), then all-or-a-subset within each, then per-regulator source labels if you want to narrow further, then `on_enable`. Before writing it prints the selection, the [declared first-run volume](#declared-backfill-capability-and-volume) — *"approximately 9,733 items from 3 sources that declare a volume estimate, plus 8 sources of unknown volume"*, never a total that quietly treats undeclared sources as zero — and the cadence it is about to write. It writes the [suggested cadences](#modules) per module rather than a flat `defaults.schedule`, so you never have to know that the OCC needs four-hourly polling. Re-running it over an existing file shows what you collect today, names anything the new selection would switch **off** (with the sources that can never be backfilled to fill that gap), asks before overwriting, and leaves the old file as `config/modules.yaml.bak`.
+- **`reg-radar modules list [--all]`** — the current selection with each module's resolved cadence, `on_enable`, and the entry it resolved through. Anything you selected that the registry force-disables is called out with the registry's own reason, because that is a state your file cannot fix. `--all` adds the registry regulators you have not selected.
+- **`reg-radar modules enable <id|jurisdiction/*> ... [--on-enable=new_only|backfill_all|backfill_from=<YYYY-MM-DD>]`** — adds one or more modules, or a whole jurisdiction (quote the wildcard: `'us/*'`). Several ids at once, with or without commas, so the list the [web UI](#web-ui) prints when a jurisdiction is missing pastes straight in. A backfill mode against a source the registry declares un-backfillable is the same hard error the collector raises, before the file changes.
+- **`reg-radar modules disable <id>`** — drops a module, after warning that nothing published while it is off will be collected and naming each source that declares no way to backfill, with the registry's reason (*"the feed retains only the 10 most recent items"*). A module currently selected through a wildcard is dropped by expanding that wildcard into explicit entries, which the command tells you it did.
+
+Two caveats. `modules enable`/`disable` rewrite the file with PyYAML, which has no round-trip mode, so **comments in a hand-edited `config/modules.yaml` do not survive them** — every rewrite keeps the previous file as `config/modules.yaml.bak`. And `setup` is interactive by design: for Docker and scripted installs use `modules enable`, which needs no terminal.
 
 ### The trade-off: collection-time filtering is not free to reverse
 
