@@ -5,6 +5,20 @@ const REG_PANEL_FLAG = "caspRadarRegPanelOpen";
 const SEARCH_FOCUS_FLAG = "caspRadarSearchFocus";
 
 document.addEventListener("DOMContentLoaded", () => {
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    const isDark = () => document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const render = () => { themeToggle.textContent = isDark() ? "☀️" : "🌙"; };
+    render();
+    themeToggle.addEventListener("click", () => {
+      document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+      try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {}
+      render();
+    });
+  }
+
   const form = document.querySelector("form.filters");
   if (!form) return;
 

@@ -1,16 +1,84 @@
 * { box-sizing: border-box; }
 
+:root {
+  --bg: #fff;
+  --surface: #f7f7f7;
+  --surface-2: #fff;
+  --text: #1a1a1a;
+  --text-strong: #111;
+  --text-muted: #666;
+  --text-faint: #999;
+  --border: #ddd;
+  --border-light: #eee;
+  --border-input: #ccc;
+  --border-strong: #333;
+  --link: #0645ad;
+  --accent-bg: #222;
+  --on-accent: #fff;
+  --highlight-bg: #eef3ff;
+  --danger: #c0392b;
+  --danger-bg: #fff5f5;
+  --warning: #b26a00;
+  --shadow: rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181c;
+    --surface: #1e2126;
+    --surface-2: #1e2126;
+    --text: #e6e6e6;
+    --text-strong: #fafafa;
+    --text-muted: #a0a0a0;
+    --text-faint: #7a7a7a;
+    --border: #2f333a;
+    --border-light: #262a30;
+    --border-input: #3a3f47;
+    --border-strong: #7a7f87;
+    --link: #7aa7ff;
+    --accent-bg: #e6e6e6;
+    --on-accent: #16181c;
+    --highlight-bg: #23304a;
+    --danger: #ff6b5e;
+    --danger-bg: #3a2222;
+    --warning: #e0a12e;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #16181c;
+  --surface: #1e2126;
+  --surface-2: #1e2126;
+  --text: #e6e6e6;
+  --text-strong: #fafafa;
+  --text-muted: #a0a0a0;
+  --text-faint: #7a7a7a;
+  --border: #2f333a;
+  --border-light: #262a30;
+  --border-input: #3a3f47;
+  --border-strong: #7a7f87;
+  --link: #7aa7ff;
+  --accent-bg: #e6e6e6;
+  --on-accent: #16181c;
+  --highlight-bg: #23304a;
+  --danger: #ff6b5e;
+  --danger-bg: #3a2222;
+  --warning: #e0a12e;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size: 14px;
-  color: #1a1a1a;
-  background: #fff;
+  color: var(--text);
+  background: var(--bg);
   margin: 0;
 }
 
 header {
   padding: 12px 20px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -19,13 +87,24 @@ header {
 .brand {
   font-weight: 700;
   font-size: 16px;
-  color: #111;
+  color: var(--text-strong);
   text-decoration: none;
 }
 
 .tagline {
-  color: #777;
+  color: var(--text-muted);
   font-size: 12px;
+}
+
+.theme-toggle {
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 3px;
+  background: var(--surface-2);
+  cursor: pointer;
 }
 
 main {
@@ -51,8 +130,8 @@ main {
   gap: 10px;
   margin-bottom: 4px;
   padding: 10px;
-  background: #f7f7f7;
-  border: 1px solid #e2e2e2;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
 }
 
@@ -61,13 +140,15 @@ main {
 .filters select {
   font-size: 13px;
   padding: 4px 6px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .filters label.checkbox {
   font-size: 12px;
-  color: #444;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -76,9 +157,9 @@ main {
 .filters button {
   font-size: 13px;
   padding: 5px 12px;
-  border: 1px solid #333;
-  background: #222;
-  color: #fff;
+  border: 1px solid var(--border-strong);
+  background: var(--accent-bg);
+  color: var(--on-accent);
   border-radius: 3px;
   cursor: pointer;
 }
@@ -86,7 +167,7 @@ main {
 .filters .clear,
 .filters .clear-sub {
   font-size: 12px;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .reg-select {
@@ -96,9 +177,10 @@ main {
 .reg-select-toggle {
   font-size: 13px;
   padding: 5px 10px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-2);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -109,10 +191,10 @@ main {
   z-index: 20;
   margin-top: 4px;
   width: 380px;
-  background: #fff;
-  border: 1px solid #ccc;
+  background: var(--surface-2);
+  border: 1px solid var(--border-input);
   border-radius: 4px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 14px var(--shadow);
   padding: 8px;
 }
 
@@ -126,8 +208,10 @@ main {
   margin-bottom: 6px;
   font-size: 13px;
   padding: 5px 7px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .reg-select-list {
@@ -153,21 +237,21 @@ main {
   display: block;
   margin-left: 20px;
   font-size: 11px;
-  color: #999;
+  color: var(--text-faint);
 }
 
 .reg-warning {
-  color: #c0392b;
+  color: var(--danger);
   font-weight: 600;
 }
 
 .reg-stalled {
-  color: #b26a00;
+  color: var(--warning);
   font-weight: 600;
 }
 
 label.reg.reg-unhealthy {
-  background: #fff5f5;
+  background: var(--danger-bg);
 }
 
 .reg-select-actions {
@@ -180,9 +264,10 @@ label.reg.reg-unhealthy {
 .reg-select-all {
   font-size: 12px;
   padding: 3px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
-  background: #fff;
+  background: var(--surface-2);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -198,7 +283,7 @@ aside.months h3 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #888;
+  color: var(--text-muted);
   margin: 4px 0 6px;
 }
 
@@ -220,21 +305,21 @@ aside.months li {
 }
 
 aside.months li.active {
-  background: #eef3ff;
+  background: var(--highlight-bg);
   font-weight: 600;
 }
 
 aside.months li.empty {
-  color: #999;
+  color: var(--text-faint);
 }
 
 aside.months a {
-  color: #0645ad;
+  color: var(--link);
   text-decoration: none;
 }
 
 aside.months .count {
-  color: #999;
+  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -244,7 +329,7 @@ aside.months .count {
 }
 
 .meta {
-  color: #666;
+  color: var(--text-muted);
   font-size: 12px;
   margin: 4px 0 8px;
 }
@@ -259,20 +344,20 @@ table.items th {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #888;
-  border-bottom: 1px solid #ddd;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
   padding: 6px 8px;
 }
 
 table.items td {
   padding: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-light);
   vertical-align: top;
 }
 
 table.items td.date {
   white-space: nowrap;
-  color: #666;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   width: 90px;
 }
@@ -280,11 +365,11 @@ table.items td.date {
 table.items td.regulator {
   white-space: nowrap;
   width: 150px;
-  color: #333;
+  color: var(--text);
 }
 
 table.items td.title a {
-  color: #0645ad;
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -293,7 +378,7 @@ table.items td.title a:hover {
 }
 
 table.items td.tags {
-  color: #888;
+  color: var(--text-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -307,12 +392,12 @@ table.items td.tags {
 }
 
 .tag-group.tag-content {
-  color: #666;
+  color: var(--text-muted);
 }
 
 table.items td.empty {
   text-align: center;
-  color: #888;
+  color: var(--text-muted);
   padding: 30px 0;
 }
 
@@ -326,12 +411,12 @@ table.items td.empty {
 }
 
 .pagination a {
-  color: #0645ad;
+  color: var(--link);
   text-decoration: none;
 }
 
 .note {
-  color: #999;
+  color: var(--text-faint);
   font-size: 12px;
 }
 
@@ -364,7 +449,7 @@ table.items td.empty {
   }
 
   table.items tr {
-    border: 1px solid #eee;
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     margin-bottom: 10px;
     padding: 8px;
@@ -383,7 +468,7 @@ table.items td.empty {
   table.items td[data-label]:not(.empty)::before {
     content: attr(data-label) ": ";
     font-weight: 600;
-    color: #888;
+    color: var(--text-muted);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -393,7 +478,7 @@ table.items td.empty {
 .back {
   display: inline-block;
   margin-bottom: 14px;
-  color: #666;
+  color: var(--text-muted);
   text-decoration: none;
   font-size: 13px;
 }
@@ -408,7 +493,7 @@ article.reader .byline {
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: #777;
+  color: var(--text-muted);
   margin-bottom: 10px;
 }
 
