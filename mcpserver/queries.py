@@ -487,6 +487,7 @@ def list_regulators(engine) -> list[dict]:
                r.website, r.mica_competent_authority, r.enabled,
                COUNT(i.id) as total_items,
                MAX(i.fetched_at) as last_fetched_at,
+               MIN(i.fetched_at) as first_fetched_at,
                COALESCE(se.consecutive_failures, 0) as consecutive_failures,
                COALESCE(se.consecutive_empty_runs, 0) as consecutive_empty_runs,
                COALESCE(se.consecutive_blocked_runs, 0) as consecutive_blocked_runs
@@ -502,9 +503,15 @@ def list_regulators(engine) -> list[dict]:
         GROUP BY r.id
         ORDER BY r.jurisdiction, r.name
     """
+    # first_fetched_at is the earliest item this install ever collected for the
+    # regulator, i.e. the date its history actually starts. With
+    # on_enable: new_only that is the enable date, and the webui uses it to
+    # say so rather than letting a short backlog read as a broken source
+    # (issue #53).
     keys = ["id", "name", "full_name", "jurisdiction", "jurisdiction_type",
             "website", "mica_competent_authority", "enabled",
-            "total_items", "last_fetched_at", "consecutive_failures", "consecutive_empty_runs",
+            "total_items", "last_fetched_at", "first_fetched_at",
+            "consecutive_failures", "consecutive_empty_runs",
             "consecutive_blocked_runs"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql)).fetchall()

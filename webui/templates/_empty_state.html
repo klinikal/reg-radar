@@ -1,0 +1,103 @@
+{# Why this result set is empty (issue #53). The four reasons look
+   identical to a user and blaming the wrong one is worse than saying
+   nothing, so each gets its own wording and its own instruction. #}
+<div class="empty-state empty-{{ empty_state.reason }}">
+
+{% if empty_state.reason == "no_modules_file" %}
+  <h3>This install is not collecting anything yet</h3>
+  <p>
+    There is no module selection at <code>{{ empty_state.modules_path }}</code>, so the collector
+    fetches nothing at all. The page is empty because of a setting, not because the regulators
+    have been quiet.
+  </p>
+  <p class="fix">
+    Choose which regulators to collect by copying <code>config/modules.example.yaml</code> to
+    <code>config/modules.yaml</code> and editing it, then restarting the collector. To collect the
+    whole catalogue instead, set <code>REGRADAR_COLLECT_ALL=true</code>.
+  </p>
+
+{% elif empty_state.reason == "modules_invalid" %}
+  <h3>Your module selection could not be read</h3>
+  <p><code>{{ empty_state.modules_path }}</code> is present but invalid, so nothing is being collected:</p>
+  <p class="fix"><code>{{ empty_state.error }}</code></p>
+
+{% elif empty_state.reason == "not_selected" %}
+  <h3>
+    No module is enabled for
+    {% for j in empty_state.jurisdictions %}{{ j.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+  </h3>
+  <p>
+    This filter asks for
+    {% for j in empty_state.jurisdictions %}
+      <strong>{{ j.name }}</strong>
+      ({% for r in j.regulators %}{{ r.name }}{% if not loop.last %}, {% endif %}{% endfor %}){% if not loop.last %}, {% endif %}
+    {% endfor %}.
+    Those regulators are in the catalogue but not in your selection at
+    <code>{{ empty_state.modules_path }}</code>, so <strong>nothing has ever been collected from
+    them</strong>. The result is empty because of a setting, not because they have published nothing.
+  </p>
+  <p class="fix">
+    To start collecting them, add
+    {% for j in empty_state.jurisdictions %}<code>- id: {{ j.enable_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+    under <code>modules:</code> in <code>{{ empty_state.modules_path }}</code> and restart the
+    collector &mdash; equivalently
+    {% for j in empty_state.jurisdictions %}<code>reg-radar modules enable {{ j.enable_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+  </p>
+  <p class="caveat">
+    Turning a module on collects from now on. History from while it was off is only recovered if
+    that source supports backfill; many feeds only ever expose their most recent items.
+  </p>
+  {% if empty_state.also_registry_disabled %}
+  <p class="caveat">
+    Separately,
+    {% for r in empty_state.also_registry_disabled %}<strong>{{ r.name }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+    {{ "is" if empty_state.also_registry_disabled|length == 1 else "are" }} in your selection but
+    marked broken in the registry, so {{ "it is" if empty_state.also_registry_disabled|length == 1 else "they are" }}
+    not collected either.
+  </p>
+  {% endif %}
+
+{% elif empty_state.reason == "registry_disabled" %}
+  <h3>
+    {% for r in empty_state.regulators %}{{ r.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {{ "is" if empty_state.regulators|length == 1 else "are" }} disabled in the registry
+  </h3>
+  <p>
+    You <em>did</em> select
+    {% for r in empty_state.regulators %}<strong>{{ r.name }}</strong> ({{ r.jurisdiction_name }}){% if not loop.last %}, {% endif %}{% endfor %}
+    in <code>{{ empty_state.modules_path }}</code>. The registry marks
+    {{ "it" if empty_state.regulators|length == 1 else "them" }} <code>enabled: false</code>, which
+    is a maintainer statement that the source is currently broken or blocking us &mdash; not
+    anything wrong with your configuration. Nothing is collected while that stands.
+  </p>
+  <p class="fix">
+    Nothing to change on your side. The registry entry in <code>config/regulators/</code> is
+    re-enabled by a project update once the source works again.
+  </p>
+
+{% else %}
+  <h3>Nothing matches yet</h3>
+  <p>
+    {% if empty_state.collecting_count %}
+      {{ empty_state.collecting_count }} module{{ "s are" if empty_state.collecting_count != 1 else " is" }}
+      collecting for this filter,
+      {% if empty_state.has_query_filter %}
+        but no collected item matches the search terms or date range.
+      {% else %}
+        but nothing collected so far matches.
+      {% endif %}
+    {% else %}
+      No collected item matches this filter.
+    {% endif %}
+  </p>
+  {% if empty_state.new_only_regulators %}
+  <p class="caveat">
+    {% if empty_state.history_start %}History for this install starts {{ empty_state.history_start }}.{% endif %}
+    These modules run in <code>on_enable: new_only</code> mode &mdash; they collect from the moment
+    they were enabled onwards, so a short backlog is expected rather than a fault.
+  </p>
+  {% endif %}
+{% endif %}
+
+<p class="two-filter">{{ two_filter_line }} <a href="/modules">See module state</a>.</p>
+</div>

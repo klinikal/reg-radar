@@ -21,6 +21,7 @@ from regradar.classification import remove_classification, write_classification
 from regradar.profiles import ProfileError, get_expanded_profile, list_shipped_profiles, load_activities
 from regradar.rules import load_raw_rules, write_raw_rules
 from regradar.taxonomy import load_and_exit_on_error
+from webui import modules as modules_state
 from mcpserver.queries import get_changes, get_latest_changes
 from regradar.changes import CursorError
 
@@ -60,7 +61,11 @@ _ATOM_NS = "http://www.w3.org/2005/Atom"
 _engine = None
 _taxonomy = None
 _activities = None
+_module_state = None
+_module_state_mtime = None
 PROFILES_DIR = os.getenv("PROFILES_DIR", "/app/config/profiles")
+REGULATORS_PATH = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+MODULES_PATH = os.getenv("MODULES_PATH", "/app/config/modules.yaml")
 
 
 def get_engine():
@@ -86,6 +91,30 @@ def get_activities():
     if _activities is None:
         _activities = load_activities(os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"), get_taxonomy())
     return _activities
+
+
+def _modules_mtime() -> float | None:
+    try:
+        return os.path.getmtime(MODULES_PATH)
+    except OSError:
+        return None
+
+
+def get_module_state():
+    """Cached like the taxonomy, but re-read when config/modules.yaml's
+    mtime changes (including absent -> present). The empty-state
+    explanation tells the operator to go and enable a module; caching for
+    the process lifetime would then show them the same complaint after
+    they had done exactly what it asked."""
+    global _module_state, _module_state_mtime
+    mtime = _modules_mtime()
+    if _module_state is None or mtime != _module_state_mtime:
+        _module_state = modules_state.load_module_state(
+            REGULATORS_PATH, MODULES_PATH,
+            os.getenv("JURISDICTIONS_PATH", "/app/config/jurisdictions.yaml"),
+        )
+        _module_state_mtime = mtime
+    return _module_state
 
 
 def _resolve_profile(profile: str):
@@ -176,6 +205,64 @@ def _search(q, exact, regulator_ids, date_from, date_to, page, profile=None):
     return items, total
 
 
+def _merged_regulators(state) -> list[dict]:
+    """The registry, left-joined onto the database's per-regulator stats.
+
+    Built registry-first on purpose. The database only holds regulators
+    this install has actually collected, so a database-only list cannot
+    show - or even offer as a filter - the 18-odd regulators in the
+    catalogue that this install is not collecting. Those are exactly the
+    ones a user needs to be able to ask for and be told about (issue #53).
+    Regulators in the database but no longer in the registry are kept, so
+    their existing items never lose their name.
+    """
+    db_stats = {r["id"]: r for r in list_regulators(get_engine())}
+    merged = []
+    for reg in state.registry:
+        stats = db_stats.pop(reg["id"], {})
+        merged.append({
+            **{k: reg.get(k) for k in ("id", "name", "jurisdiction", "website")},
+            "full_name": reg.get("full_name") or reg.get("name") or reg["id"],
+            "total_items": stats.get("total_items", 0),
+            "last_fetched_at": stats.get("last_fetched_at"),
+            "first_fetched_at": stats.get("first_fetched_at"),
+            "consecutive_failures": stats.get("consecutive_failures", 0),
+            "stalled": stats.get("stalled", False),
+            "blocked": stats.get("blocked", False),
+            "registry_enabled": reg.get("enabled", True),
+            "selected": state.is_selected(reg["id"]),
+            "collecting": state.collecting(reg["id"]),
+            "module": state.module_for(reg["id"]),
+        })
+    for leftover in db_stats.values():
+        merged.append({
+            **leftover,
+            "registry_enabled": bool(leftover.get("enabled", True)),
+            "selected": False, "collecting": False, "module": None,
+        })
+    return merged
+
+
+def _scope_regulator_ids(regulators, expanded, effective_regulator_ids):
+    """Which registry regulators is this view asking for? None means "no
+    regulator or jurisdiction constraint at all". The profile's
+    jurisdictions, the profile's explicit regulators and the form's own
+    regulator filter are ANDed at query time, so they are intersected
+    here."""
+    sets = []
+    if expanded is not None:
+        if expanded.jurisdiction_ids:
+            sets.append({r["id"] for r in regulators
+                         if (r.get("jurisdiction") or "").lower() in expanded.jurisdiction_ids})
+        if expanded.regulators:
+            sets.append(set(expanded.regulators))
+    if effective_regulator_ids:
+        sets.append(set(effective_regulator_ids))
+    if not sets:
+        return None
+    return set.intersection(*sets)
+
+
 def _month_bounds(month: str) -> tuple[str, str]:
     year, mon = (int(p) for p in month.split("-"))
     last_day = calendar.monthrange(year, mon)[1]
@@ -194,7 +281,8 @@ def index(
     profile: str = "",
     page: int = Query(1, ge=1),
 ):
-    regulators = [_with_search_fields(r) for r in list_regulators(get_engine())]
+    state = get_module_state()
+    regulators = [_with_search_fields(r) for r in _merged_regulators(state)]
     regulators.sort(key=lambda r: (r["country"], r["name"]))
     regulator_names = {r["id"]: r["name"] for r in regulators}
 
@@ -217,11 +305,19 @@ def index(
         m["date_from"], m["date_to"] = _month_bounds(m["month"])
         m["active"] = date_from == m["date_from"] and date_to == m["date_to"]
 
-    # Jurisdiction filter panel options: only jurisdictions actually in use
-    # by a configured regulator, so the panel doesn't list ids nobody has.
+    # Jurisdiction filter panel options: every jurisdiction in the
+    # registry, not only the ones this install collects - selecting one it
+    # does not collect is how a user reaches the explanation for why they
+    # have nothing from it (issue #53). Each is flagged with whether any
+    # module behind it is on.
     taxonomy = get_taxonomy()
     used_jurisdictions = sorted({(r.get("jurisdiction") or "").lower() for r in regulators} - {""})
-    jurisdiction_options = [{"id": j, "name": taxonomy.jurisdiction_name(j)} for j in used_jurisdictions]
+    jurisdiction_options = [
+        {"id": j, "name": taxonomy.jurisdiction_name(j),
+         "collecting": any(r["collecting"] for r in regulators
+                           if (r.get("jurisdiction") or "").lower() == j)}
+        for j in used_jurisdictions
+    ]
 
     profile_options = list_shipped_profiles(PROFILES_DIR)
 
@@ -231,6 +327,24 @@ def index(
                 "profile": profile}
         base.update(overrides)
         return urlencode({k: v for k, v in base.items() if v}, doseq=True)
+
+    # An empty page must say which of the four reasons produced it - a bare
+    # "no results" is what issue #53 exists to replace.
+    empty_state = None
+    if total == 0:
+        empty_state = modules_state.diagnose(
+            state,
+            _scope_regulator_ids(regulators, expanded_profile, effective_regulator_ids),
+            taxonomy,
+            has_query_filter=bool(q or date_from or date_to),
+        )
+        # The date this install's record actually starts for the modules in
+        # scope - with on_enable: new_only that is the enable date, and it
+        # is what makes a short backlog read as expected rather than broken.
+        if empty_state["reason"] == "no_matching_items" and empty_state["new_only_regulators"]:
+            starts = [r["first_fetched_at"] for r in regulators
+                      if r["id"] in set(empty_state["new_only_regulators"]) and r.get("first_fetched_at")]
+            empty_state["history_start"] = min(starts)[:10] if starts else None
 
     filter_qs = qs()
     filter_qs_no_date = qs(date_from="", date_to="")
@@ -262,6 +376,8 @@ def index(
             "date_from": date_from,
             "date_to": date_to,
             "profile": profile,
+            "empty_state": empty_state,
+            "two_filter_line": modules_state.TWO_FILTER_LINE,
         },
     )
 
@@ -326,6 +442,60 @@ def alerts_view():
     # Renamed to /rules and rebuilt on config/rules.yaml (architecture doc
     # §4.3) - this issue owns the migration; see scripts/migrate_alerts_to_rules.py.
     return RedirectResponse("/rules", status_code=308)
+
+
+@app.get("/modules", response_class=HTMLResponse)
+def modules_view(request: Request):
+    """Read-only module state (issue #53). Deliberately not an editor:
+    config/modules.yaml is user-owned and hand-editable, and a read-only
+    view plus the exact instruction is an honest first cut. Because there
+    is no disable affordance here there is also no irreversibility warning
+    to attach to one - the warning lives on the file itself
+    (config/modules.example.yaml) until a write affordance exists."""
+    state = get_module_state()
+    taxonomy = get_taxonomy()
+    default_schedule = os.getenv("SCHEDULE", "0 6 * * *")
+    rows = []
+    for reg in _merged_regulators(state):
+        module = reg.get("module") or {}
+        schedule = module.get("schedule") or default_schedule
+        rows.append({
+            **reg,
+            "country": taxonomy.jurisdiction_name((reg.get("jurisdiction") or "").lower()),
+            "module_id": module.get("id"),
+            "schedule": schedule if reg["selected"] else None,
+            "on_enable": module.get("on_enable") or ("new_only" if reg["selected"] else None),
+            "next_run": _next_run(schedule) if reg["collecting"] else None,
+        })
+    rows.sort(key=lambda r: (not r["collecting"], r["country"], r["name"]))
+    return templates.TemplateResponse(
+        request,
+        "modules.html",
+        {
+            "rows": rows,
+            "mode": state.mode,
+            "error": state.error,
+            "modules_path": state.modules_path,
+            "collecting_count": sum(1 for r in rows if r["collecting"]),
+            "registry_count": len(state.registry),
+            "two_filter_line": modules_state.TWO_FILTER_LINE,
+            "default_schedule": default_schedule,
+        },
+    )
+
+
+def _next_run(schedule: str) -> str | None:
+    # ponytail: formats to the minute, no relative "in 3 hours" - the cron
+    # expression is right there next to it.
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+
+        nxt = CronTrigger.from_crontab(schedule, timezone="UTC").get_next_fire_time(
+            None, datetime.now(timezone.utc)
+        )
+    except (ValueError, TypeError, ImportError):
+        return None
+    return nxt.strftime("%Y-%m-%d %H:%M UTC") if nxt else None
 
 
 @app.get("/rules", response_class=HTMLResponse)
