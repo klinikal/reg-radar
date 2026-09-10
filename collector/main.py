@@ -507,10 +507,24 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                 flaresolverr_url = cfg["flaresolverr_url"] if cloudflare_protected else None
 
                 if cloudflare_protected and not cfg["flaresolverr_url"]:
-                    logger.warning(
-                        "Regulator %s is cloudflare_protected but FLARESOLVERR_URL is not set — skipping",
-                        reg.get("id", "<unknown>"),
-                    )
+                    # Skipping silently here marked the whole run "success"
+                    # while collecting nothing from this regulator - a green
+                    # run and one WARNING is exactly the invisible failure
+                    # #39 exists to kill, and FATF is the source it was
+                    # written for. A misconfigured install must be as loud as
+                    # a blocked one, so record every source as blocked and
+                    # count it, rather than passing over the regulator.
+                    reason = "cloudflare_protected but FLARESOLVERR_URL is not set"
+                    logger.error("Regulator %s: %s — skipping", reg.get("id", "<unknown>"), reason)
+                    for source in reg.get("sources", []):
+                        if not source.get("enabled", True):
+                            continue
+                        label = source.get("label", "<unknown>")
+                        record_source_blocked(engine, reg["id"], label, reason)
+                        total_errors += 1
+                        msg = f"{reg['id']}/{label}: BLOCKED - {reason}"
+                        error_detail.append(msg)
+                        blocked_detail.append(msg)
                     continue
 
                 for source in reg.get("sources", []):

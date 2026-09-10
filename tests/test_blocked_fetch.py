@@ -541,3 +541,40 @@ def test_a_blocked_item_pdf_does_not_discard_the_listing_items():
     with patch("httpx.Client", side_effect=_client):
         items = fetch_source(source, "xx-example", None, {"user_agent": "ua", "timeout": 10, "retries": 1})
     assert len(items) == 1
+
+
+# --- cloudflare_protected with no FlareSolverr configured -----------------
+
+def test_cloudflare_protected_without_flaresolverr_is_blocked_not_skipped():
+    """Found while shipping FATF (#47), which collects only through
+    FlareSolverr. run_collection used to `continue` past a
+    cloudflare_protected regulator when FLARESOLVERR_URL was unset, before
+    any fetch: nothing recorded, no counter moved, and the run still
+    finished "success". A green run plus one WARNING is precisely the
+    invisible failure #39 exists to kill, so a misconfigured install has to
+    be as loud as a blocked one.
+    """
+    engine = _engine()
+    reg = {
+        "id": "intl-fatf", "name": "FATF", "enabled": True,
+        "cloudflare_protected": True,
+        "sources": [SCRAPE_SOURCE, {**SCRAPE_SOURCE, "label": "disabled_one", "enabled": False}],
+    }
+    cfg = {"user_agent": "ua", "timeout": 10, "retries": 1, "flaresolverr_url": None}
+
+    run_collection(engine, [reg], cfg)
+
+    with Session(engine) as session:
+        row = session.query(SourceErrorRow).filter_by(
+            regulator_id="intl-fatf", source_label="publications").one()
+        assert row.consecutive_blocked_runs == 1
+        assert "FLARESOLVERR_URL" in (row.last_blocked_reason or "")
+        # A disabled source is not a blocked one - it was never meant to run.
+        assert session.query(SourceErrorRow).filter_by(
+            regulator_id="intl-fatf", source_label="disabled_one").one_or_none() is None
+
+    with engine.connect() as conn:
+        status, errors = conn.execute(sa_text(
+            "SELECT status, total_errors FROM runs ORDER BY started_at DESC LIMIT 1")).one()
+    assert status == "partial", "a regulator that collected nothing must not read as success"
+    assert errors == 1
