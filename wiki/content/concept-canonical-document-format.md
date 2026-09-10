@@ -1,7 +1,7 @@
 ---
 title: Canonical Document Format
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [regradar/document.py, regradar/schema/document-v1.json]
 last-verified: 2026-09-10
 ---
 

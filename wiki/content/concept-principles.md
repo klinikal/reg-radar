@@ -1,7 +1,7 @@
 ---
 title: Principles
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [config/taxonomy.yaml, config/jurisdictions.yaml, config/activities.yaml, config/rules.yaml]
 last-verified: 2026-09-10
 ---
 

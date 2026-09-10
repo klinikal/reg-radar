@@ -1,7 +1,7 @@
 ---
 title: Taxonomy and Classification
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [regradar/taxonomy.py, regradar/classification.py, regradar/rules.py, config/taxonomy.yaml, config/jurisdictions.yaml]
 last-verified: 2026-09-10
 ---
 

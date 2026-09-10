@@ -1,7 +1,7 @@
 ---
 title: Profiles and Activities
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [regradar/profiles.py, config/activities.yaml]
 last-verified: 2026-09-10
 ---
 

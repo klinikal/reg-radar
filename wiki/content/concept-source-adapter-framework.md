@@ -1,7 +1,7 @@
 ---
 title: Source Adapter Framework
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [collector/adapters/base.py, collector/adapters/registry.py]
 last-verified: 2026-09-10
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Export and Sync Contract
 type: concept
-sources: [docs/design/regradar-architecture.md]
+sources: [regradar/changes.py, regradar/exporter.py, regradar/webhooks.py]
 last-verified: 2026-09-10
 ---
 
