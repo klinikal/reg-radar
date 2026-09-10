@@ -637,7 +637,7 @@ def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
         ).fetchone()
         classification_rows = (
             [dict(r._mapping) for r in conn.execute(
-                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
+                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at, created_at "
                      "FROM classifications WHERE item_id = :id"),
                 {"id": item_id},
             ).fetchall()]
@@ -1002,7 +1002,7 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False, ta
 
         if taxonomy is not None:
             crows = conn.execute(
-                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at "
+                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at, created_at "
                      f"FROM classifications WHERE item_id IN ({placeholders})"),
                 aparams,
             ).fetchall()
@@ -1010,6 +1010,7 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False, ta
                 classifications_by_item.setdefault(r[0], []).append({
                     "axis": r[1], "value": r[2], "by": r[3],
                     "confidence": r[4], "taxonomy_version": r[5], "superseded_at": r[6],
+                    "created_at": r[7],
                 })
 
     documents = []
