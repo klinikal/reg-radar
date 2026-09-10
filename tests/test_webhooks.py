@@ -252,6 +252,87 @@ def test_dispatch_malformed_yaml_logs_error_and_does_not_raise(tmp_path, caplog)
     assert str(path) in caplog.text
 
 
+def test_subscriber_id_prefers_explicit_id_over_derived():
+    sub = {"id": "acme-prod", "profile": "eu-casp", "url": "https://hooks.example/a"}
+    assert subscriber_id(sub) == "acme-prod"
+
+
+def test_subscriber_id_falls_back_to_profile_url_when_no_id():
+    sub = {"profile": "eu-casp", "url": "https://hooks.example/a"}
+    assert subscriber_id(sub) == "eu-casp|https://hooks.example/a"
+
+
+def test_load_subscribers_rejects_duplicate_ids(tmp_path):
+    path = _write_config(tmp_path, [
+        {"id": "acme", "profile": "eu-casp", "url": "https://x", "secret_env": "S"},
+        {"id": "acme", "profile": "uk-equities-dealer", "url": "https://y", "secret_env": "S"},
+    ])
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(path)
+
+
+def test_load_subscribers_rejects_explicit_id_colliding_with_derived_id(tmp_path):
+    # An explicit id must not collide with another subscriber's fallback
+    # profile|url id - otherwise the two would silently share one cursor.
+    path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://x", "secret_env": "S"},
+        {"id": "eu-casp|https://x", "profile": "uk-equities-dealer", "url": "https://y", "secret_env": "S"},
+    ])
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(path)
+
+
+def test_rotating_url_preserves_cursor_when_subscriber_has_explicit_id(tmp_path, monkeypatch):
+    # Issue #25: a subscriber id derived from url resets its cursor when
+    # url is rotated. An explicit id must survive the rotation.
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET", "supersecret")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    taxonomy, activities = _taxonomy_and_activities()
+
+    old_config = _write_config(tmp_path, [
+        {"id": "acme", "profile": "eu-casp", "url": "https://hooks.example/old", "secret_env": "WEBHOOK_SECRET"},
+    ])
+    dispatch_all(engine, old_config, taxonomy, activities, "config/profiles", client=client)
+    cursor_before = get_webhook_cursor(engine, "acme")
+    assert cursor_before is not None
+
+    # Rotate the url but keep the same explicit id - the cursor stored
+    # under "acme" must still be the one dispatch_one reads next.
+    new_config = _write_config(tmp_path, [
+        {"id": "acme", "profile": "eu-casp", "url": "https://hooks.example/new", "secret_env": "WEBHOOK_SECRET"},
+    ])
+    insert_item(engine, _item("i2"))
+    dispatch_all(engine, new_config, taxonomy, activities, "config/profiles", client=client)
+    assert get_webhook_cursor(engine, "acme") is not None
+    assert get_webhook_cursor(engine, "acme") != cursor_before  # advanced further, not reset
+
+
+def test_fresh_subscriber_without_explicit_id_still_gets_working_cursor(tmp_path, monkeypatch):
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET", "supersecret")
+
+    config_path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://hooks.example/fresh", "secret_env": "WEBHOOK_SECRET"},
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client)
+
+    sid = subscriber_id({"profile": "eu-casp", "url": "https://hooks.example/fresh"})
+    assert get_webhook_cursor(engine, sid) is not None
+
+
 def test_backoff_delays_double_between_retries():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
