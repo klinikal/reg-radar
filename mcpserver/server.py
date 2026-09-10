@@ -179,22 +179,38 @@ def search_items_tool(query: str, regulator_id: str | None = None, regulator_ids
 
 
 @mcp.tool()
-def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
+def get_recent_tool(limit: int = 20, regulator_id: str | None = None, regulator_ids: list[str] | None = None,
+                     tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
-                     language: str | None = None, profile: str | None = None) -> list[dict]:
+                     language: str | None = None, jurisdictions: list[str] | None = None,
+                     labels: dict[str, list[str]] | None = None, profile: str | None = None) -> list[dict]:
     """Returns the most recent regulatory items (ordered by fetched_at,
     newest first), with optional filters.
 
-    limit defaults to 20, max 100. regulator_id must be a valid id from
-    list_regulators_tool. language is an ISO 639-1 code (e.g. "en", "de").
-    `tags` searches both notice-type (source_tags) and topic (content_tags)
-    buckets combined; use `source_tags`/`content_tags` to filter one bucket
-    only. Call list_tags_tool to see valid tag values with their counts.
+    limit defaults to 20, max 100. `regulator_id` filters to a single
+    regulator; `regulator_ids` filters to any of a list of regulators.
+    Both must be valid ids from list_regulators_tool - passing both
+    combines them into one set of ids. language is an ISO 639-1 code
+    (e.g. "en", "de"). `tags` searches both notice-type (source_tags) and
+    topic (content_tags) buckets combined; use `source_tags`/`content_tags`
+    to filter one bucket only. Call list_tags_tool to see valid tag values
+    with their counts.
+
+    `jurisdictions` filters to items from a regulator in one of these
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any ancestor of it
+    (e.g. "fr" also matches "eu"). There is no descendant expansion -
+    filtering on "eu" does not include member-state regulators. `labels`
+    filters by classification axis, e.g. {"document_type": ["warning"]} or
+    {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
+    values within one axis OR together. Call list_labels_tool to see valid
+    axes/values with their counts.
 
     `profile` narrows to a named filter profile - see search_items_tool.
     """
-    results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
+    results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id,
+                     regulator_ids=regulator_ids, tags=tags,
                      source_tags=source_tags, content_tags=content_tags, language=language,
+                     jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
                      profile=_resolve_profile(profile))
     return results
 

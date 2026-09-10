@@ -461,23 +461,37 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
         return _run(use_fts=False)
 
 
-def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None,
-                language=None, profile=None) -> list[dict]:
+def get_recent(engine, limit: int = 20, regulator_id=None, regulator_ids=None, tags=None, source_tags=None,
+                content_tags=None, language=None, jurisdictions=None, labels=None, taxonomy=None,
+                profile=None) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 20
     conditions = []
     params = {"limit": limit}
-    if regulator_id:
-        conditions.append("regulator_id = :regulator_id")
-        params["regulator_id"] = regulator_id
+    # regulator_id (single, back-compat) and regulator_ids (list) combine
+    # into one set of ids rather than fighting each other - see search_items().
+    combined_ids = list(regulator_ids) if regulator_ids else []
+    if regulator_id and regulator_id not in combined_ids:
+        combined_ids.append(regulator_id)
+    reg_conditions, reg_params = _regulator_id_conditions(combined_ids)
+    conditions.extend(reg_conditions)
+    params.update(reg_params)
     if language:
         conditions.append("language = :language")
         params["language"] = language
     tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
     conditions.extend(tag_conditions)
     params.update(tag_params)
+    if jurisdictions:
+        jur_conditions, jur_params = _jurisdiction_filter_conditions(jurisdictions, taxonomy)
+        conditions.extend(jur_conditions)
+        params.update(jur_params)
+    if labels:
+        label_conditions, label_params = _labels_filter_conditions(labels)
+        conditions.extend(label_conditions)
+        params.update(label_params)
     if profile is not None:
         profile_conditions, profile_params = _profile_filter_conditions(profile)
         conditions.extend(profile_conditions)
