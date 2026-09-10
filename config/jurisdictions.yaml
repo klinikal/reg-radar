@@ -99,3 +99,8 @@
   parents: [eu]
 - id: gb
   name: United Kingdom
+- id: us
+  name: United States
+  note: >-
+    Federal level. CSBS/NMLS and NASAA are state-regulator associations, not
+    competent authorities - their sources sit here.

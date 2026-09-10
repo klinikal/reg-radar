@@ -17,6 +17,7 @@ from collector.main import (
     load_regulators,
 )
 from collector.storage import init_db
+from regradar.taxonomy import Taxonomy, load_jurisdictions
 from sqlalchemy import text as sa_text
 
 
@@ -332,7 +333,18 @@ def test_migration_set_matches_collect_all_set(tmp_path):
             for s in (r.get("sources") or []) if s.get("enabled", True)
         )
 
-    before = enabled_pairs(load_regulators("config/regulators"))
+    everything = load_regulators("config/regulators")
+    taxonomy = Taxonomy(0, {}, load_jurisdictions("config/jurisdictions.yaml"))
+
+    def in_eea_or_uk(reg):
+        return {"eu", "gb"} & {reg["jurisdiction"], *taxonomy.ancestors(reg["jurisdiction"])}
+
+    # "No behaviour change" means the set an EEA+UK install collected before
+    # the global coverage expansion - not the whole registry, which now also
+    # holds the US and will grow further. A registry entry outside eu/gb is
+    # deliberately NOT selected by migration: an existing install never
+    # collected it, and that is precisely why #48 had to land first.
+    before = enabled_pairs(r for r in everything if in_eea_or_uk(r))
     modules_path = tmp_path / "modules.yaml"
     modules_path.write_text(MODULES_MIGRATION_YAML)
     after = enabled_pairs(load_regulators(
@@ -342,6 +354,12 @@ def test_migration_set_matches_collect_all_set(tmp_path):
     ))
     assert before == after
     assert len(before) > 0
+
+    # The teeth: every non-EEA/UK entry must be absent from an upgraded
+    # install. Without this the test passes vacuously as the registry grows.
+    outside = [r["id"] for r in everything if not in_eea_or_uk(r)]
+    assert outside, "expected at least one non-EEA/UK regulator in the registry"
+    assert not [p for p in after if p.split("/")[0] in outside]
 
 
 def test_example_file_is_valid_and_resolves_against_the_real_registry():

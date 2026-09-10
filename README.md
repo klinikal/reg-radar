@@ -93,7 +93,7 @@ If your `config/` mount is read-only the write fails with a `WARNING` naming the
 
 ## Coverage
 
-44 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA as a deliberate non-EEA exception. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
+45 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA and the US Federal Register as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
 Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 

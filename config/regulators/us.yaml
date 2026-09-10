@@ -1,0 +1,45 @@
+- id: us-federal-register
+  name: Federal Register
+  full_name: Office of the Federal Register (US)
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.federalregister.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    Single API call covering rulemaking and notices for seven federal agencies
+    (SEC, CFTC, FinCEN, OCC, Federal Reserve, FDIC, CFPB) plus FINRA rule
+    filings, which appear as SEC 'Self-Regulatory Organizations; ...' notices.
+    KNOWN LIMITATION: every item from this source lands under the single
+    us-federal-register regulator id. The per-item `agencies` field is fetched
+    and present in the response, but no adapter splits one source across
+    regulator ids, so an item's issuing agency is not attributed to an SEC/CFTC/
+    FinCEN/OCC/Fed/FDIC/CFPB regulator entry. Working host is
+    www.federalregister.gov/api/v1/ - api.federalregister.gov 302s to an unblock
+    page. No API key required. Brackets in the query string MUST be
+    percent-encoded (%5B%5D); literal [] returns an empty body. per_page is 200,
+    not the API maximum of 1000: at the observed ~317 documents / 30 days that
+    is roughly 19 days of newest-first backlog, ample for daily incremental
+    polling, and it keeps the captured fixture under CONTRIBUTING.md's ~300KB
+    sanity threshold (per_page=1000 returns ~758KB). `count` caps at 10000 and
+    `total_pages` at 50; a historic backfill would need next_page_url's
+    search_after_cursor. The treasury-department slug is deliberately excluded -
+    it drags in IRS/OFAC/TTB/Mint co-listed documents (37 of 75 Treasury hits in
+    a 30-day window were IRS); Treasury is covered by its own scrape source
+    instead. The Federal Register carries NO enforcement, litigation,
+    press-release, speech or testimony content of any kind - those need their own
+    sources. regulations.gov is deliberately not used: it returns 403
+    API_KEY_MISSING and needs an api.data.gov key while covering the same ground.
+  sources:
+    - type: json_api
+      url: "https://www.federalregister.gov/api/v1/documents.json?order=newest&per_page=200&conditions%5Bagencies%5D%5B%5D=securities-and-exchange-commission&conditions%5Bagencies%5D%5B%5D=commodity-futures-trading-commission&conditions%5Bagencies%5D%5B%5D=financial-crimes-enforcement-network&conditions%5Bagencies%5D%5B%5D=comptroller-of-the-currency&conditions%5Bagencies%5D%5B%5D=federal-reserve-system&conditions%5Bagencies%5D%5B%5D=federal-deposit-insurance-corporation&conditions%5Bagencies%5D%5B%5D=consumer-financial-protection-bureau&fields%5B%5D=title&fields%5B%5D=html_url&fields%5B%5D=publication_date&fields%5B%5D=type&fields%5B%5D=agencies&fields%5B%5D=document_number"
+      label: federal_register
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+      json_api:
+        items_path: results
+        title_field: title
+        url_field: html_url
+        published_field: publication_date
