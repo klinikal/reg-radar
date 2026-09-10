@@ -286,3 +286,21 @@ def test_every_script_backed_declaration_names_a_script_that_exists(registry):
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for regulator_id, label, block in declared:
         assert os.path.isfile(os.path.join(root, block["script"])), f"{regulator_id}/{label}"
+
+
+def test_script_existence_is_not_asserted_where_scripts_are_not_shipped(tmp_path, monkeypatch):
+    """The webui and mcp images deliberately omit scripts/ - they never run a
+    backfill. Enforcing the file's existence there made every registry load
+    fail in both services, which took the module view and the empty-state
+    explanations down with it. The check is meaningful only where backfill
+    scripts actually live.
+    """
+    import regradar.registry as registry
+    source = {"label": "x", "type": "rss",
+              "backfill": {"supported": True, "method": "script", "script": "scripts/nope.py"}}
+
+    monkeypatch.setattr(registry, "_REPO_ROOT", str(tmp_path))       # no scripts/ dir
+    assert registry._source_backfill_error(source) is None
+
+    (tmp_path / "scripts").mkdir()                                    # scripts/ present
+    assert "does not exist" in (registry._source_backfill_error(source) or "")
