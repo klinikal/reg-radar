@@ -270,7 +270,16 @@ def _source_backfill_error(source: dict) -> str | None:
                 script = block.get("script")
                 if not isinstance(script, str) or not script.strip():
                     return "backfill.method: script needs a 'script:' naming the backfill script"
-                if not os.path.isfile(os.path.join(_REPO_ROOT, script)):
+                # Only assert the file exists where backfill scripts are
+                # actually shipped. `scripts/` is in the collector image and
+                # the source tree, but deliberately not in the webui or mcp
+                # images - they never run a backfill. Enforcing it there made
+                # every registry load fail in those two services, which took
+                # the module view and the empty-state explanations down with
+                # it. The check still catches a typo everywhere it can be
+                # meaningful: the collector, the CLI, and the test suite.
+                scripts_dir = os.path.join(_REPO_ROOT, "scripts")
+                if os.path.isdir(scripts_dir) and not os.path.isfile(os.path.join(_REPO_ROOT, script)):
                     return f"backfill.script {script!r} does not exist"
         elif method not in (None, "none"):
             return (
