@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  form.querySelectorAll('input[type="date"], input[type="checkbox"]:not(.reg-select-list input)').forEach((el) => {
+  form.querySelectorAll('input[type="date"], input[type="checkbox"]:not(.reg-select-list input), select').forEach((el) => {
     el.addEventListener("change", () => {
       clearTimeout(debounceTimer);
       form.requestSubmit();
