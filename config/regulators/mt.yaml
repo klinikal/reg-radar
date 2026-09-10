@@ -21,6 +21,11 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: &mfsa_backfill
+      supported: true
+      method: script
+      script: scripts/backfill_mfsa_publications.py
+      note: "every MFSA publication category pages back through the same WordPress archive; scripts/backfill_mfsa_publications.py --category <label> (or --all) walks it, FlareSolverr-throttled"
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -33,6 +38,7 @@
     label: circulars_anti_money_laundering
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -45,6 +51,7 @@
     label: circulars_authorisations
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -58,6 +65,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -71,6 +79,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -84,6 +93,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -97,6 +107,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -110,6 +121,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -122,6 +134,7 @@
     label: circulars_conduct_of_business
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -136,6 +149,7 @@
     labels:
       instrument:
       - mica
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -149,6 +163,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -162,6 +177,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -174,6 +190,7 @@
     label: circulars_fintech
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -187,6 +204,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -200,6 +218,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -213,6 +232,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -226,6 +246,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -239,6 +260,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -252,6 +274,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -265,6 +288,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -278,6 +302,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -291,6 +316,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -304,6 +330,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -317,6 +344,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -330,6 +358,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -343,6 +372,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -356,6 +386,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -369,6 +400,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -382,6 +414,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -395,6 +428,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -408,6 +442,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -421,6 +456,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -434,6 +470,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -447,6 +484,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -460,6 +498,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -472,6 +511,7 @@
     label: circulars_supervisory_ict_risk_and_cybersecurity_circulars
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -485,6 +525,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -498,6 +539,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -511,6 +553,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -524,6 +567,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -537,6 +581,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -550,6 +595,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -563,6 +609,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -576,6 +623,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -588,6 +636,7 @@
     label: corporate_publications_dear_ceo_letters
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -601,6 +650,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -614,6 +664,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -627,6 +678,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -640,6 +692,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -653,6 +706,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -666,6 +720,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -679,6 +734,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -692,6 +748,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -705,6 +762,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -718,6 +776,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -731,6 +790,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -744,6 +804,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -757,6 +818,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -770,6 +832,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -782,6 +845,7 @@
     label: notices_and_decisions
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -794,6 +858,7 @@
     label: policy_and_guidelines_consultations
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -806,6 +871,7 @@
     label: policy_and_guidelines_feedback_and_statements
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -819,6 +885,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -832,6 +899,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -845,6 +913,7 @@
     preferred_language: en
     labels: {}
     enabled: false
+    backfill: *mfsa_backfill
     scrape:
       item_selector: ".posts-container .single-publication"
       title_selector: ".publication-title a"
@@ -870,6 +939,7 @@
     label: all_news
     preferred_language: en
     labels: {}
+    backfill: *mfsa_backfill
     scrape:
       item_selector: "article.grid > div.col-span-1"
       title_selector: "a:not(.flex)"

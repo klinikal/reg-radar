@@ -3,7 +3,7 @@
 #
 # Bump `version` on any change to values; it is recorded on every
 # classification row written (see regradar/classification.py).
-version: 1
+version: 3
 axes:
   - id: document_type
     cardinality: one
@@ -133,4 +133,89 @@ axes:
         name: UK Market Abuse Regulation
         aliases: ["UK MAR"]
         jurisdiction: gb
+      - id: sg_psa
+        name: Payment Services Act 2019
+        aliases: ["PSA 2019", "Payment Services Act", "PS Act"]
+        jurisdiction: sg
+      - id: sg_fsma
+        name: Financial Services and Markets Act 2022
+        aliases: ["FSMA 2022", "FSM Act", "Act 18 of 2022"]
+        jurisdiction: sg
+      - id: sg_dtsp
+        name: FSM Act 2022 digital token service provider regime
+        aliases: ["DTSP", "DTSP regime", "digital token service provider",
+                  "Guidelines on Licensing for Digital Token Service Providers"]
+        jurisdiction: sg
+      - id: sg_psn01
+        name: MAS Notice PSN01 (AML/CFT - specified payment services)
+        aliases: ["PSN01", "Notice PSN01", "MAS Notice PSN01"]
+        jurisdiction: sg
+      - id: sg_psn02
+        name: MAS Notice PSN02 (AML/CFT - digital payment token service)
+        aliases: ["PSN02", "Notice PSN02", "MAS Notice PSN02"]
+        jurisdiction: sg
+      - id: sg_stablecoin
+        name: MAS stablecoin regulatory framework
+        aliases: ["SCS", "single-currency stablecoin", "MAS stablecoin framework"]
+        jurisdiction: sg
+      - id: sg_ps_g02
+        name: Guidelines on Provision of Digital Payment Token Services to the Public (PS-G02)
+        aliases: ["PS-G02", "DPT consumer access guidelines"]
+        jurisdiction: sg
+      - id: ae_vara_regulations
+        name: Virtual Assets and Related Activities Regulations 2023
+        aliases: ["VARA Regulations", "VA Regulations"]
+        jurisdiction: ae-dubai
+      - id: ae_dubai_law_4_2022
+        name: Dubai Law No. (4) of 2022 Regulating Virtual Assets
+        aliases: ["Dubai Law No. 4 of 2022", "Law No. (4) of 2022", "VAL"]
+        jurisdiction: ae-dubai
+      - id: ae_vara_marketing_regulations
+        name: VARA Marketing Regulations
+        aliases: ["Marketing Regulations", "VARA marketing rules"]
+        jurisdiction: ae-dubai
+      - id: ae_vara_rulebooks
+        name: VARA Activity and Compulsory Rulebooks
+        aliases: ["VARA Rulebook", "Compulsory Rulebooks", "Virtual Asset Issuance Rulebook",
+                  "Custody Services Rulebook", "Exchange Services Rulebook", "Market Conduct Rulebook"]
+        jurisdiction: ae-dubai
+      - id: ae_cabinet_decision_111_2022
+        name: Cabinet Decision No. 111/2022 on the Regulation of Virtual Assets and Their Service Providers
+        # VARA's rulebooks title this 111/2022; SCA/CMA material calls it "Resolution
+        # No. 111 of 2023". Both aliased deliberately.
+        aliases: ["Cabinet Decision 111/2022", "Cabinet Resolution No. 111 of 2023", "CD 111"]
+        jurisdiction: ae
+      - id: ae_sca_va_rules
+        name: SCA / UAE CMA virtual asset regulatory framework
+        # UNVERIFIED CITATION: the "SCA Decision 26/RM of 2023" alias rests on
+        # secondary sources only - sca.gov.ae is JS-only and uaelegislation.gov.ae
+        # 403s non-browser clients, so no primary confirmation was possible. An
+        # alias asserts nothing operative, but do not cite it as fact.
+        aliases: ["SCA Decision 26/RM of 2023", "SCA virtual assets rules", "UAE CMA VASP rules"]
+        jurisdiction: ae
+      - id: ae_cbuae_ptsr
+        name: CBUAE Payment Token Services Regulation
+        aliases: ["Payment Token Services Regulation", "PTSR", "payment token services"]
+        jurisdiction: ae
+      - id: ae_va_travel_rule
+        name: United Arab Emirates Virtual Assets Travel Rule
+        aliases: ["UAE Travel Rule", "Virtual Assets Travel Rule"]
+        jurisdiction: ae
+      - id: ae_cbuae_svf
+        name: CBUAE Stored Value Facilities Regulation
+        aliases: ["SVF Regulation", "Stored Value Facilities"]
+        jurisdiction: ae
+      - id: ae_federal_amlcft
+        name: UAE Federal AML/CFT Law and implementing regulations
+        aliases: ["Federal AML/CFT", "Federal Decree-Law No. 20 of 2018", "UAE AML law"]
+        jurisdiction: ae
+      - id: ae_dfsa_crypto_token
+        name: DFSA Crypto Token regime
+        aliases: ["Crypto Token", "DFSA Crypto Tokens", "Investment Token", "GEN Chapter 3A"]
+        jurisdiction: ae-difc
+      - id: ae_adgm_va_framework
+        name: ADGM FSRA Virtual Asset and DLT Foundations framework
+        aliases: ["FSRA virtual asset framework", "Accepted Virtual Assets",
+                  "DLT Foundations Regulations", "ADGM virtual asset framework"]
+        jurisdiction: ae-adgm
       # ... grows by PR, no code change

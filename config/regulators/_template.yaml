@@ -10,7 +10,28 @@
 #   name: Example Authority
 #   full_name: Example Financial Supervisory Authority
 #   jurisdiction: xx                    # must be an id in config/jurisdictions.yaml, lower-case
-#   jurisdiction_type: national         # "national" or "supranational"
+#   jurisdiction_type: member_state     # free text, unvalidated, display-only - see below
+#
+#   jurisdiction_type is a plain string. Nothing validates it and nothing branches
+#   on it; it is stored and displayed as written, so a typo will not fail any test.
+#   Values in use, and the two the global coverage expansion adds:
+#
+#     supranational   EU-level body - ESMA, EBA, EIOPA, AMLA
+#     member_state    competent authority of an EU member state
+#     eea_non_eu      EEA-EFTA state authority - Iceland, Norway
+#                     (`member_state` and `eea_non_eu` name genuinely different
+#                     relationships to EU law - it applies directly, versus once
+#                     incorporated into the EEA Agreement - so they are not
+#                     synonyms for `national`. `non_eea` was, and was retired.)
+#     national        national competent authority of a country outside the EU
+#                     and the EEA - the UK's FCA, the US SEC, Singapore's MAS
+#     state           sub-national authority of a federal state - New York's
+#                     DFS, California's DFPI
+#     sro             private self-regulatory organisation exercising delegated
+#                     authority, not a government agency - e.g. FINRA
+#     international   international standard-setting body with no jurisdiction of
+#                     its own; its standards are transposed rather than applied
+#                     directly - e.g. FATF
 #   website: https://example-authority.example
 #   mica_competent_authority: true      # true if this body is a MiCA competent authority
 #   enabled: true                       # false disables every source below without deleting them
@@ -26,6 +47,55 @@
 #       labels:                         # source-default classification (architecture doc §4.3) - {} if none apply yet
 #         document_type: warning
 #       tags: [warnings]                # structural, per-feed tags (architecture doc §3.2's source_tags)
+#       # Optional, valid on ANY source type. The nightly source-health check
+#       # (scripts/source_health.py) asserts a source's newest item isn't too
+#       # old - warn at 90 days, error at 365 by default - because a feed can
+#       # return 200 and parse cleanly while its newest entry is years stale.
+#       # Override only for a genuinely low-cadence source: the FATF grey list
+#       # changes about three times a year, so the default would be pure noise
+#       # there. Raising it on anything else is how a dead feed goes unnoticed.
+#       staleness:
+#         warn_days: 200
+#         error_days: 550
+#
+#       # Optional, valid on ANY source type (issue #50). Backfill capability
+#       # is a property of the SOURCE, not a user choice: a feed that retains
+#       # ten items has no history to fetch at any price. Declare it so the
+#       # CLI can refuse an impossible request at the point it is made
+#       # instead of quietly returning ten items and reporting success.
+#       #
+#       # NO `backfill:` BLOCK MEANS `supported: false`. That is the safe
+#       # default - only declare `supported: true` for a source where someone
+#       # actually walked the archive.
+#       backfill:
+#         supported: true
+#         method: script            # script | paged_api | none
+#                                   #   paged_api - the fetcher itself can walk
+#                                   #     back through pages (MAS Solr, the
+#                                   #     Federal Register API)
+#                                   #   script    - a dedicated script under
+#                                   #     scripts/ does it; `script:` names it
+#                                   #     and the file must exist on disk
+#                                   #   none      - someone checked and there
+#                                   #     is no path. The only method allowed
+#                                   #     with `supported: false`.
+#         script: scripts/backfill_esma_library.py
+#         note: "~7,260 docs across ~363 pages"
+#                                   # With supported: false this note becomes
+#                                   # the REASON in the refusal message the
+#                                   # operator reads, so write it as prose:
+#                                   # "the feed retains only the 10 most recent
+#                                   # items, so there is no history to fetch".
+#
+#       # Optional. What `reg-radar setup` tells the operator BEFORE it writes
+#       # anything: "this will collect approximately 7,260 items on first run".
+#       # Omit any figure that was not actually counted - a missing block is
+#       # reported as "unknown", which is honest; a guessed number is not.
+#       volume_estimate:
+#         first_run: 7260           # items a backfill_all would produce
+#         per_week: 40              # steady-state new items per week
+#         as_of: 2026-09-10         # required whenever a figure is given -
+#                                   # it is what makes a stale estimate visible
 #
 #     # --- scrape: CSS-selector listing page ------------------------------
 #     - type: scrape

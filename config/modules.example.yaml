@@ -1,0 +1,103 @@
+# Module selection - which regulators this install actually collects.
+#
+# config/regulators/ stays a complete community-maintained catalogue; your
+# config/modules.yaml (gitignored, never touched by `git pull`) is your
+# selection from it. The easiest way to write one is:
+#
+#   reg-radar setup                      # pick jurisdictions and regulators
+#   reg-radar modules list               # what this install collects
+#   reg-radar modules enable eu/*        # adjust it later
+#
+# Those show what a selection will collect, and how much, before writing.
+# To hand-edit instead, copy this file and read on:
+#
+#   cp config/modules.example.yaml config/modules.yaml
+#
+# Note that `reg-radar modules enable/disable` rewrites the file through a
+# YAML dump, so hand-written comments in it are not preserved; the previous
+# version is kept as modules.yaml.bak.
+#
+# A module IS a regulator: `uk-fca`, `esma`, `mt-mfsa` - any `id` in
+# config/regulators/*.yaml. A jurisdiction wildcard (`eu/*`, `gb/*`) is a
+# convenience selector that expands to every regulator in that jurisdiction
+# and its descendants in config/jurisdictions.yaml - `eu/*` therefore covers
+# ESMA and every member state's authority.
+#
+# Resolution order, narrower always winning:
+#   1. defaults
+#   2. jurisdiction wildcard (eu/*)
+#   3. explicit module id (uk-fca)
+#   4. sources: within a module
+#
+# The registry wins on `false`: anything config/regulators/ marks
+# `enabled: false` is never collected however explicitly you select it here.
+# That flag is a maintainer statement that a source is broken or blocked,
+# not a statement about whether you want it. When it overrides you by name,
+# the collector logs a WARNING saying so.
+#
+# Collection-time filtering is NOT free to reverse. A profile change
+# re-filters rows you already have, instantly. A module that was off for six
+# months leaves a six-month hole, and many sources cannot be backfilled -
+# some feeds only ever expose the last handful of items. Turn something off
+# because you will never want it, not because you are unsure.
+#
+# With no config/modules.yaml at all, the collector collects nothing and says
+# so. Set REGRADAR_COLLECT_ALL=true to collect the whole registry instead.
+
+version: 1
+
+defaults:
+  schedule: "0 6 * * *"          # inherited by any module without its own
+  on_enable: new_only            # new_only | backfill_from | backfill_all
+
+modules:
+  # Every EU/EEA regulator, including the supranational ones (ESMA, EBA, ...).
+  - id: eu/*
+    schedule: "0 6 * * *"
+
+  # One regulator, narrowed to two of its sources. Omit `sources:` for all.
+  - id: uk-fca
+    sources: [news, warnings]
+    schedule: "0 6 * * *"
+
+  # `schedule:` is a per-module cron cadence. The collector adds one job per
+  # *distinct* resolved expression, so the job count tracks the cadences in
+  # use, not the size of the registry. Anything without a `schedule:` anywhere
+  # falls back to SCHEDULE in .env. Suggested cadences:
+  #
+  #   0 */4 * * *   OCC - a 10-item feed loses documents at anything slower
+  #   0 6 * * *     most RSS and scrape sources (the default)
+  #   0 6 * * 1     FATF grey list and statute page_watch sources (~3x/year)
+  #
+  # All cadences share one collection lock, so they queue rather than overlap;
+  # a job that finds the lock held is skipped with a WARNING naming its cron
+  # expression. `--once` ignores cadence and runs everything in one pass.
+  # - id: us-occ
+  #   schedule: "0 */4 * * *"
+
+  # `on_enable:` decides what the FIRST run after switching a module on
+  # collects. It is consulted once, at that transition, and never again -
+  # editing it later does not re-cut history you already have.
+  #
+  #   new_only        record the moment you enabled it and collect only
+  #                   what is published after that. Cheap, no history, and
+  #                   the default.
+  #   backfill_from   same, but the watermark is a date you give:
+  #                   `on_enable: backfill_from` + `backfill_from: 2026-01-01`
+  #   backfill_all    no date bound at all.
+  #
+  # Both backfill values are refused outright, before anything is written,
+  # for a source config/regulators/ declares un-backfillable - see the
+  # README's "Declared backfill capability". Note what they do and do not
+  # do: they stop the collector filtering old items out, but the collector
+  # itself only ever reads the current page of a feed. Walking an archive is
+  # a `scripts/backfill_*.py` run, which the enable logs name for you.
+  #
+  # - id: mt-mfsa
+  #   on_enable: backfill_from
+  #   backfill_from: 2026-01-01
+  #
+  # Switching a module OFF is non-destructive: everything already collected
+  # stays in the database, including page_watch baselines, so re-enabling
+  # reports a change only if the watched page really changed while it was
+  # off.

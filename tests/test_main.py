@@ -100,7 +100,7 @@ def test_load_regulators_split_registry_loads_cleanly():
     # The real, current config/regulators/ split - proves the migration
     # produced a directory that loads without duplicate id/label errors.
     regulators = load_regulators("config/regulators")
-    assert len(regulators) == 44
+    assert len(regulators) == 62
     assert {r["id"] for r in regulators} >= {"esma", "amla", "eba", "eiopa", "mt-mfsa"}
 
 

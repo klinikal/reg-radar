@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import feedparser
 
-from collector.adapters.base import FetchContext, RawDocument, SourceAdapter
+from collector.adapters.base import FetchContext, RawDocument, SourceAdapter, parse_text_date
 from collector.adapters.http import fetch_bytes
 
 
@@ -52,6 +52,21 @@ class RssAdapter(SourceAdapter):
                     published_at = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
                 except Exception:
                     pass
+            if published_at is None:
+                # feedparser fills published_parsed only for dates it reads as
+                # RFC 822 / ISO 8601. A feed that renders its date for humans
+                # still carries the string, and dropping it silently gives
+                # every item a fetch-time date with date_inferred=True. The
+                # FCA's news and warnings feeds do exactly that - they publish
+                # "Thursday, September 3, 2026 - 10:35" - so every item from
+                # the UK's primary regulator was dated by when it was
+                # collected rather than when it was published (#67).
+                for key in ("published", "updated", "created"):
+                    raw = entry.get(key)
+                    if raw:
+                        published_at = parse_text_date(str(raw))
+                        if published_at is not None:
+                            break
             if published_at is None:
                 date_inferred = True
 

@@ -32,8 +32,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import httpx
 
 from collector.fetcher import fetch_source
-from collector.main import load_regulators
+from collector.main import load_regulators, BackfillNotSupportedError, require_backfill_supported
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
+from collector.adapters.http import DEFAULT_USER_AGENT
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -50,7 +51,9 @@ def _load_source(label: str) -> dict:
     regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
     regulators = load_regulators(regulators_path)
     reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
-    return next(s for s in reg["sources"] if s["label"] == label)
+    source = next(s for s in reg["sources"] if s["label"] == label)
+    require_backfill_supported(REGULATOR_ID, label, source)
+    return source
 
 
 def _detect_total(html: str) -> int:
@@ -67,7 +70,7 @@ def _page_url(base_url: str, start: int) -> str:
 
 def run(label: str, delay: float, dry_run: bool, max_pages: int | None) -> None:
     source = _load_source(label)
-    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
@@ -133,8 +136,12 @@ def main() -> None:
     args = parser.parse_args()
 
     labels = CATEGORIES if args.category == "all" else [args.category]
-    for label in labels:
-        run(label, args.delay, args.dry_run, args.max_pages)
+    try:
+        for label in labels:
+            run(label, args.delay, args.dry_run, args.max_pages)
+    except BackfillNotSupportedError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

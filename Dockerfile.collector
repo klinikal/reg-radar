@@ -31,7 +31,6 @@ ENV PYTHONPATH=/app \
     DB_PATH=/app/data/reg_radar.db \
     SCHEDULE="0 6 * * *" \
     LOG_LEVEL=INFO \
-    USER_AGENT="reg-radar/2.0 (+https://github.com/klinikal/reg-radar)" \
     REQUEST_TIMEOUT_SECONDS=30 \
     REQUEST_RETRIES=3 \
     REGULATORS_PATH=/app/config/regulators

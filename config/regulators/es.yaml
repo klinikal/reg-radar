@@ -35,6 +35,11 @@
       date_attribute:
       content_selector:
       extract_pdf_text: true
+    backfill:
+      supported: true
+      method: script
+      script: scripts/backfill_cnmv_warnings.py
+      note: "the unregistered-firm warnings archive pages back ~5 pages / ~77 documents (mid-2026); scripts/backfill_cnmv_warnings.py walks it"
 
 - id: es-bde
   name: Banco de España

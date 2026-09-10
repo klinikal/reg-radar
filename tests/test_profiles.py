@@ -88,8 +88,10 @@ def test_expand_profile_jurisdiction_ancestor_union():
     taxonomy = _taxonomy()
     profile = load_profile("uk-equities-dealer", taxonomy, _activities())
     expanded = expand_profile(profile, taxonomy, _activities())
-    # gb has no parents (not an EU member) - the set is just {gb}.
-    assert expanded.jurisdiction_ids == {"gb"}
+    # Neither entry contributes ancestors: gb has no parents (not an EU
+    # member) and intl is a deliberate standalone root with no edges at all
+    # (#47), so the set is exactly what the profile names.
+    assert expanded.jurisdiction_ids == {"gb", "intl"}
 
 
 def test_expand_profile_jurisdiction_ancestor_union_for_member_state(tmp_path):

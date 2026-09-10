@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A perfectly well-formed feed whose newest entry is from July 2020 -
+     FINRA's rss.xml shape. 200, valid RSS, items present, every contract
+     assertion passes: only the staleness assertion catches it. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Authority - News</title>
+    <link>https://example-authority.example/news</link>
+    <description>Latest news</description>
+    <item>
+      <title>Authority publishes 2020 supervisory priorities</title>
+      <link>https://example-authority.example/news/2020-priorities</link>
+      <pubDate>Wed, 15 Jul 2020 09:00:00 +0000</pubDate>
+      <description>Supervisory priorities for the coming year.</description>
+    </item>
+    <item>
+      <title>Authority consults on reporting templates</title>
+      <link>https://example-authority.example/news/2020-templates</link>
+      <pubDate>Mon, 01 Jun 2020 09:00:00 +0000</pubDate>
+      <description>Consultation on revised reporting templates.</description>
+    </item>
+  </channel>
+</rss>

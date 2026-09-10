@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!--
+  Stand-in for the MAS decoy: HTTP 200, no challenge marker anywhere, no
+  Cloudflare or Sucuri header - just a large page of the wrong content
+  where the real response (JSON) should be. The live decoy is 853,817
+  bytes; this fixture is padded to size by the test rather than committed
+  at that size, because a ~1MB blob in git tells a reviewer nothing the
+  padding loop doesn't (see CONTRIBUTING.md's fixture size note).
+
+  Nothing here matches any item selector, so it parses to zero items -
+  large body AND zero items is the only signal that catches it.
+-->
+<html>
+<head><title>Maintenance</title></head>
+<body>
+  <div class="maintenance">
+    <h1>We'll be back shortly</h1>
+    <p>This service is temporarily unavailable while we perform scheduled maintenance.</p>
+  </div>
+  <!--PADDING-->
+</body>
+</html>

@@ -250,6 +250,13 @@ main {
   font-weight: 600;
 }
 
+/* A blocked source is as broken as one that 500s - same danger colour as
+   .reg-warning, not the softer stall amber (issue #39). */
+.reg-blocked {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 label.reg.reg-unhealthy {
   background: var(--danger-bg);
 }
@@ -508,3 +515,62 @@ article.reader .body {
   margin-top: 16px;
   max-width: 720px;
 }
+
+/* Explained empty states and module state (issue #53) - an empty result
+   caused by module configuration must never render as a bare "no results". */
+.empty-state {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  background: var(--surface);
+  padding: 14px 16px;
+  margin: 12px 0;
+  max-width: 760px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--text-strong);
+}
+
+.empty-state p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.empty-state .fix {
+  background: var(--highlight-bg);
+  padding: 8px 10px;
+}
+
+.empty-state .caveat,
+p.caveat {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* The user did enable this one - the registry force-disabled it. Not their
+   fault, so it does not get the "go and fix your config" treatment. */
+.empty-state.empty-registry_disabled {
+  border-left-color: var(--danger);
+}
+
+.empty-state.empty-no_matching_items {
+  border-left-color: var(--border-strong);
+}
+
+p.two-filter,
+.empty-state .two-filter {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.mod-on { color: var(--text-strong); }
+.mod-broken { color: var(--danger); }
+.mod-off { color: var(--text-faint); }
+
+table.modules td { font-size: 12px; vertical-align: top; }
+table.modules .mod-id { color: var(--text-faint); font-size: 11px; }
+tr.module-off td { opacity: 0.75; }

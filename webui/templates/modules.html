@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Modules - reg-radar{% endblock %}
+{% block content %}
+
+<h2>Modules</h2>
+<p class="two-filter">{{ two_filter_line }}</p>
+
+{% if mode == "unconfigured" %}
+<div class="empty-state empty-no_modules_file">
+  <h3>Nothing is being collected</h3>
+  <p>
+    There is no module selection at <code>{{ modules_path }}</code>, so the collector fetches
+    nothing at all &mdash; every regulator below is off.
+  </p>
+  <p class="fix">
+    Copy <code>config/modules.example.yaml</code> to <code>config/modules.yaml</code>, edit it and
+    restart the collector, or set <code>REGRADAR_COLLECT_ALL=true</code> to collect the whole
+    catalogue.
+  </p>
+</div>
+{% elif mode == "invalid" %}
+<div class="empty-state empty-modules_invalid">
+  <h3>Module selection could not be read</h3>
+  <p><code>{{ modules_path }}</code> is present but invalid, so nothing is being collected:</p>
+  <p class="fix"><code>{{ error }}</code></p>
+</div>
+{% elif mode == "unknown" %}
+<p class="note">
+  The regulator catalogue could not be read, so module state is unknown here. Check that
+  <code>config/</code> is mounted into this container.
+</p>
+{% elif mode == "collect_all" %}
+<p class="note">
+  No <code>{{ modules_path }}</code>, and <code>REGRADAR_COLLECT_ALL</code> is set &mdash; every
+  regulator in the catalogue is collected except those the registry marks broken.
+</p>
+{% else %}
+<p class="note">
+  Collecting <strong>{{ collecting_count }}</strong> of <strong>{{ registry_count }}</strong>
+  regulators in the catalogue, selected by <code>{{ modules_path }}</code>. Modules without their
+  own <code>schedule:</code> fall back to <code>{{ default_schedule }}</code>.
+</p>
+{% endif %}
+
+<p class="caveat">
+  Turning a module off is not freely reversible: nothing is collected while it is off, and many
+  feeds only ever expose their most recent items, so that gap may be permanent. Turn something off
+  because you will never want it, not because you are unsure.
+</p>
+
+<table class="items modules">
+  <thead>
+    <tr>
+      <th>State</th>
+      <th>Regulator</th>
+      <th>Selected by</th>
+      <th>Cadence</th>
+      <th>Last run</th>
+      <th>Next run</th>
+      <th>Items</th>
+      <th>History from</th>
+      <th>on_enable</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'module-on' if r.collecting else ('module-broken' if r.selected else 'module-off') }}">
+      <td data-label="State">
+        {% if r.collecting %}<span class="mod-on">collecting</span>
+        {% elif r.selected %}<span class="mod-broken">registry-disabled</span>
+        {% else %}<span class="mod-off">not selected</span>{% endif %}
+      </td>
+      <td data-label="Regulator">{{ r.country }} &middot; {{ r.name }}<br><span class="mod-id">{{ r.id }}</span></td>
+      <td data-label="Selected by">{{ r.module_id or "—" }}</td>
+      <td data-label="Cadence">{% if r.schedule %}<code>{{ r.schedule }}</code>{% else %}—{% endif %}</td>
+      <td data-label="Last run">{{ r.last_fetched_at[:16] if r.last_fetched_at else "never" }}</td>
+      <td data-label="Next run">{{ r.next_run or "—" }}</td>
+      <td data-label="Items">{{ r.total_items }}</td>
+      <td data-label="History from">{{ r.first_fetched_at[:10] if r.first_fetched_at else "—" }}</td>
+      <td data-label="on_enable">{{ r.on_enable or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="note">
+  <strong>registry-disabled</strong> means you selected it and <code>config/regulators/</code> marks
+  it <code>enabled: false</code> &mdash; known broken or blocking us, not something you turned off.
+  <strong>not selected</strong> means it is in the catalogue but not in your
+  <code>{{ modules_path }}</code>, so nothing has ever been collected from it.
+  With <code>on_enable: new_only</code> a module collects from its enable date onwards, so
+  &ldquo;History from&rdquo; is where its record starts.
+</p>
+
+{% endblock %}

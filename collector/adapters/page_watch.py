@@ -1,5 +1,13 @@
 """Page-watch adapter (hash-and-diff a CSS-selected page fragment) - wraps
 v1's `_parse_page_watch` unchanged.
+
+The diff half is deliberately not here: this returns what the page says
+now, and collector.main._page_watch_changes compares it against the stored
+baseline (collector.storage.PageWatchBaselineRow) to decide whether that is
+a change, a first observation, or nothing. Note what an empty return means
+to that comparison - a missing fragment or a selector that stopped matching
+leaves the baseline alone, because an unreadable page is not evidence that
+the page changed.
 """
 from datetime import datetime, timezone
 

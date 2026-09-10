@@ -156,7 +156,12 @@ def test_parse_extract_pdf_text_fetches_and_sets_pdf_text_and_artefact():
 
         docs = ScrapeAdapter().parse(html, PDF_SCRAPE_SOURCE, "test_reg", SAMPLE_CONFIG)
 
-        mock_fetch.assert_called_once_with("https://example.com/notice.pdf", "test-agent/1.0", 10, 1, max_bytes=25 * 1024 * 1024)
+        # raise_on_block=False since #39: a blocked attachment must not
+        # discard the listing items already parsed.
+        mock_fetch.assert_called_once_with(
+            "https://example.com/notice.pdf", "test-agent/1.0", 10, 1,
+            max_bytes=25 * 1024 * 1024, raise_on_block=False,
+        )
         assert docs[0].pdf_text == "Entity warned: SOME UNAUTHORISED FIRM LTD"
         assert docs[0].body == b"%PDF-fake-bytes"
         assert docs[0].mime == "application/pdf"

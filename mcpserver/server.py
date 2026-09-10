@@ -398,6 +398,14 @@ def get_health_tool() -> dict:
     nothing, which usually means the source's page changed and its
     selectors need updating.
 
+    `blocked_sources` is the more serious neighbour of that: every
+    regulator_id/source_label whose last fetch was classified as a WAF block
+    or bot challenge rather than a result - a Cloudflare or Sucuri
+    signature, or a large response body that parsed to zero items. Unlike
+    stalls there is no threshold; one block means a workaround has stopped
+    working and the source is not being watched at all, however healthy its
+    HTTP status looks.
+
     `dataset_import` is {cursor, generated_at, imported_at} if this database
     was seeded from a published dataset (`reg-radar import-dataset`), else
     null. It is a bookmark, not a filter: pass its `cursor` to

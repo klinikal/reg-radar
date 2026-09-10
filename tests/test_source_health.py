@@ -194,7 +194,7 @@ def test_run_all_checks_files_issue_on_failure_and_closes_on_recovery():
         {"label": "healthy", "type": "rss", "url": "https://example.com/healthy"},
     ]}]
 
-    def fake_check(regulator, source, cfg):
+    def fake_check(regulator, source, cfg, warnings=None):
         return "boom" if source["label"] == "broken" else None
 
     with patch("scripts.source_health.check_source", side_effect=fake_check), \

@@ -15,6 +15,7 @@ data/.collector.lock
 
 # Config
 .env
+config/modules.yaml
 docker-compose.override.yml
 
 # Private operator context — instance-specific, never commit

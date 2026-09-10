@@ -38,9 +38,9 @@ import re
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
-from collector.adapters.http import fetch_html
+from collector.adapters.http import fetch_html, DEFAULT_USER_AGENT
 from collector.adapters.scrape import ScrapeAdapter
-from collector.main import load_regulators
+from collector.main import load_regulators, BackfillNotSupportedError, require_backfill_supported
 from collector.pipeline import process_raw_documents
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
@@ -137,7 +137,7 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
 
 
 def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | None) -> None:
-    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()
@@ -156,6 +156,11 @@ def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | Non
         if not targets:
             logger.error("No MFSA scrape source with label '%s' - available: %s", category, [s["label"] for s in all_sources])
             sys.exit(1)
+
+    # Refuse before init_db, before a run row, before an item: a source the
+    # registry says cannot be backfilled must fail where the operator asked.
+    for target in targets:
+        require_backfill_supported(REGULATOR_ID, target["label"], target)
 
     logger.info(
         "Backfilling %d MFSA categor%s%s",
@@ -194,7 +199,11 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Fetch and parse every page but write nothing")
     parser.add_argument("--max-pages", type=int, default=None, help="Cap pages fetched per category (useful for testing)")
     args = parser.parse_args()
-    run(args.category, args.all, args.dry_run, args.max_pages)
+    try:
+        run(args.category, args.all, args.dry_run, args.max_pages)
+    except BackfillNotSupportedError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

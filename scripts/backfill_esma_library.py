@@ -30,8 +30,9 @@ import time
 
 import httpx
 
-from collector.adapters.http import _backoff_with_jitter
+from collector.adapters.http import _backoff_with_jitter, DEFAULT_USER_AGENT
 from collector.fetcher import fetch_source
+from collector.main import load_regulators, BackfillNotSupportedError, require_backfill_supported
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
 logging.basicConfig(
@@ -69,8 +70,19 @@ def _detect_last_page(user_agent: str, timeout: int) -> int:
     return 0
 
 
+def _assert_backfillable() -> None:
+    """SOURCE_TEMPLATE below is local, but the registry is still the
+    authority on whether this source may be backfilled at all - checked
+    before anything is fetched or written."""
+    regulators = load_regulators(os.getenv("REGULATORS_PATH", "/app/config/regulators"))
+    reg = next(r for r in regulators if r["id"] == REGULATOR_ID)
+    source = next(s for s in reg["sources"] if s["label"] == SOURCE_TEMPLATE["label"])
+    require_backfill_supported(REGULATOR_ID, SOURCE_TEMPLATE["label"], source)
+
+
 def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> None:
-    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    _assert_backfillable()
+    user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
@@ -156,7 +168,11 @@ def main() -> None:
     parser.add_argument("--end-page", type=int, default=None, help="Default: auto-detected from the site's pager")
     parser.add_argument("--delay", type=float, default=1.0, help="Seconds to wait between page requests (default 1.0)")
     args = parser.parse_args()
-    run(args.start_page, args.end_page, args.delay, args.dry_run)
+    try:
+        run(args.start_page, args.end_page, args.delay, args.dry_run)
+    except BackfillNotSupportedError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

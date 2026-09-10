@@ -1,0 +1,471 @@
+- id: us-federal-register
+  name: Federal Register
+  full_name: Office of the Federal Register (US)
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.federalregister.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    Single API call covering rulemaking and notices for seven federal agencies
+    (SEC, CFTC, FinCEN, OCC, Federal Reserve, FDIC, CFPB) plus FINRA rule
+    filings, which appear as SEC 'Self-Regulatory Organizations; ...' notices.
+    KNOWN LIMITATION: every item from this source lands under the single
+    us-federal-register regulator id. The per-item `agencies` field is fetched
+    and present in the response, but no adapter splits one source across
+    regulator ids, so an item's issuing agency is not attributed to an SEC/CFTC/
+    FinCEN/OCC/Fed/FDIC/CFPB regulator entry. Working host is
+    www.federalregister.gov/api/v1/ - api.federalregister.gov 302s to an unblock
+    page. No API key required. Brackets in the query string MUST be
+    percent-encoded (%5B%5D); literal [] returns an empty body. per_page is 200,
+    not the API maximum of 1000: at the observed ~317 documents / 30 days that
+    is roughly 19 days of newest-first backlog, ample for daily incremental
+    polling, and it keeps the captured fixture under CONTRIBUTING.md's ~300KB
+    sanity threshold (per_page=1000 returns ~758KB). `count` caps at 10000 and
+    `total_pages` at 50; a historic backfill would need next_page_url's
+    search_after_cursor. The treasury-department slug is deliberately excluded -
+    it drags in IRS/OFAC/TTB/Mint co-listed documents (37 of 75 Treasury hits in
+    a 30-day window were IRS); Treasury is covered by its own scrape source
+    instead. The Federal Register carries NO enforcement, litigation,
+    press-release, speech or testimony content of any kind - those need their own
+    sources. regulations.gov is deliberately not used: it returns 403
+    API_KEY_MISSING and needs an api.data.gov key while covering the same ground.
+  sources:
+    - type: json_api
+      url: "https://www.federalregister.gov/api/v1/documents.json?order=newest&per_page=200&conditions%5Bagencies%5D%5B%5D=securities-and-exchange-commission&conditions%5Bagencies%5D%5B%5D=commodity-futures-trading-commission&conditions%5Bagencies%5D%5B%5D=financial-crimes-enforcement-network&conditions%5Bagencies%5D%5B%5D=comptroller-of-the-currency&conditions%5Bagencies%5D%5B%5D=federal-reserve-system&conditions%5Bagencies%5D%5B%5D=federal-deposit-insurance-corporation&conditions%5Bagencies%5D%5B%5D=consumer-financial-protection-bureau&fields%5B%5D=title&fields%5B%5D=html_url&fields%5B%5D=publication_date&fields%5B%5D=type&fields%5B%5D=agencies&fields%5B%5D=document_number"
+      label: federal_register
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+      json_api:
+        items_path: results
+        title_field: title
+        url_field: html_url
+        published_field: publication_date
+      backfill:
+        supported: true
+        method: paged_api
+        note: "the Federal Register API pages back through its full archive - `count` caps at 10000 and `total_pages` at 50, so a historic walk follows next_page_url's search_after_cursor rather than page numbers"
+      volume_estimate:
+        # ASSUMPTION: per_week is arithmetic on the ~317 documents / 30 days
+        # observed live and recorded in `notes` above, not a separate count.
+        # first_run is deliberately absent - the archive is deep but was never
+        # counted, and "unknown" beats a guess.
+        per_week: 74
+        as_of: 2026-09-10
+
+- id: us-sec
+  name: SEC
+  full_name: Securities and Exchange Commission
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.sec.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    sec.gov HTML and robots.txt 403 under the default reg-radar UA; the
+    /news/*.rss feeds return 200 under both UAs, but a browser-shaped
+    USER_AGENT (#P2) is required before the litigation-releases scrape in #M1
+    works at all. SEC requires >=1 req/sec throttling - a burst of ~8 rapid
+    requests triggered a site-wide penalty box lasting minutes; observed
+    behaviour is stricter than the documented Fair Access policy at
+    https://www.sec.gov/developer. statements.rss is a byte-level duplicate of
+    speeches-statements.rss - do not add both. Rulemaking is NOT collected
+    here: it comes via the Federal Register source (#C1), which also carries
+    FINRA rule filings as SEC 'Self-Regulatory Organizations; ...' notices.
+  sources:
+    - type: rss
+      url: "https://www.sec.gov/news/pressreleases.rss"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.sec.gov/news/speeches-statements.rss"
+      label: speeches_statements
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+    - type: rss
+      url: "https://www.sec.gov/news/testimony.rss"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+      # DISABLED, postponed. The feed itself works - 25 items with real dates,
+      # verified live 2026-09-10 - but congressional testimony is episodic and
+      # its newest item was already 210 days old at capture, past the 90-day
+      # staleness warn. Rather than widen the threshold and lose the signal,
+      # this stays off until someone wants US testimony specifically. Fixture
+      # is kept at tests/fixtures/sources/us-sec/testimony.xml so re-enabling
+      # is a one-line change.
+      enabled: false
+
+- id: us-cftc
+  name: CFTC
+  full_name: Commodity Futures Trading Commission
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.cftc.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    All three feeds carry 10 items with real RFC822 dates. Enforcement is NOT
+    in the Federal Register - verified: CFTC across six weeks returned 15
+    documents, all Rules/Notices, zero enforcement press releases. This feed
+    is the only route to it.
+  sources:
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml"
+      label: enforcement
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSST/rssst.xml"
+      label: speeches_testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+
+- id: us-fed
+  name: Federal Reserve
+  full_name: Board of Governors of the Federal Reserve System
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.federalreserve.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    Dates are wrapped in <![CDATA[...]]>. feedparser handles this correctly; a
+    naive regex date parser does not - do not 'optimise' the adapter here.
+    press_bcreg is the banking supervision & regulation channel and is the
+    supervisory-guidance route that the Federal Register does not carry. Full
+    feed catalogue: https://www.federalreserve.gov/feeds/feeds.htm
+  sources:
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_enforcement.xml"
+      label: press_enforcement
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_bcreg.xml"
+      label: press_bcreg
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_orders.xml"
+      label: press_orders
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/speeches.xml"
+      label: speeches
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/testimony.xml"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+
+- id: us-occ
+  name: OCC
+  full_name: Office of the Comptroller of the Currency
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.occ.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    occ_news.xml has 10-ITEM RETENTION - daily polling is mandatory or items
+    are lost permanently, with no backfill route. Bulletins are supervisory
+    issuances and do not appear in the Federal Register. No enforcement feed
+    exists anywhere on occ.gov. Feed catalogue:
+    https://www.occ.gov/rss/index-rss.html
+  sources:
+    - type: rss
+      url: "https://www.occ.gov/rss/occ_news.xml"
+      label: news
+      preferred_language: en
+      labels: {}
+      tags: [press_releases]
+      backfill:
+        supported: false
+        method: none
+        note: "the feed retains only the 10 most recent items, so there is no history to fetch"
+      volume_estimate:
+        first_run: 10
+        as_of: 2026-09-10
+    - type: rss
+      url: "https://www.occ.gov/rss/occ_bulletins.xml"
+      label: bulletins
+      preferred_language: en
+      labels:
+        document_type: final_guidance
+      tags: [publications]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-speeches.xml"
+      label: speeches
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-publications.xml"
+      label: publications
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-congressional-testimony.xml"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
+
+- id: us-cfpb
+  name: CFPB
+  full_name: Consumer Financial Protection Bureau
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.consumerfinance.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    enforcement_actions feed is genuinely healthy but its CONTENT has been
+    dormant since Aug 2025 - a real activity gap, not a bug. Do not treat a
+    zero-item run as a failure, and set a per-source staleness override once
+    #P4 lands so it does not page on a policy reality.
+  sources:
+    - type: rss
+      url: "https://www.consumerfinance.gov/about-us/newsroom/feed/"
+      label: newsroom
+      preferred_language: en
+      labels: {}
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.consumerfinance.gov/enforcement/actions/feed/"
+      label: enforcement_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      # DISABLED, postponed. The feed is healthy - 25 items with real dates,
+      # verified live 2026-09-10 - but its newest item is 2025-09-22: the
+      # documented CFPB enforcement dormancy, not a broken feed. It would
+      # cross the 365-day error threshold in late September 2026 and hard-fail
+      # source_health nightly. Widening the threshold would hide a genuinely
+      # dead feed later, so this stays off until CFPB enforcement resumes.
+      # Fixture kept at tests/fixtures/sources/us-cfpb/enforcement_actions.xml.
+      enabled: false
+
+- id: us-treasury
+  name: US Treasury
+  full_name: United States Department of the Treasury
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://home.treasury.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    No RSS anywhere on home.treasury.gov. Deliberately NOT covered via the
+    Federal Register treasury-department slug (#C1): that slug co-lists
+    IRS/OFAC/TTB/Mint documents - 37 of 75 Treasury hits in a 30-day window
+    were IRS. Selectors derived from the live page 2026-09-10, NOT from the
+    issue's guesses: `.featured-stories__story` does not exist in the markup
+    at all. The real listing is ten class-less <div> children of
+    `.content--2col__body` inside `.featured-stories`, each holding a
+    `<span class="date-format"><time datetime="...">` and an
+    `<h3 class="featured-stories__headline"><a>`, hence
+    date_attribute: datetime. Ten items per page; a pager follows. The
+    listing container also carries data-news-manifest="/news-data/press-
+    releases/manifest.json" with data-news-total="14848" - a possible
+    json_api route to the full archive, not taken here (out of #M1's scope).
+  sources:
+    - type: scrape
+      url: "https://home.treasury.gov/news/press-releases"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+      scrape:
+        item_selector: ".featured-stories .content--2col__body > div"
+        title_selector: ".featured-stories__headline a"
+        link_selector: ".featured-stories__headline a"
+        date_selector: "time"
+        date_attribute: "datetime"
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+
+- id: us-finra
+  name: FINRA
+  full_name: Financial Industry Regulatory Authority
+  jurisdiction: us
+  jurisdiction_type: sro
+  website: https://www.finra.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    DO NOT USE https://www.finra.org/rss.xml - it returns HTTP 200 with
+    well-formed RSS and 10 items, but the newest entry is from JULY 2020. It
+    is a dead Drupal default and would look permanently healthy while
+    collecting nothing. Scrape is the only working route. FINRA is a private
+    self-regulatory organisation, not a government agency, hence
+    jurisdiction_type: sro (#P3) - its authority is delegated, and FINRA rule
+    changes take effect only once filed with and approved by the SEC, which
+    is why they surface in the Federal Register as SEC 'Self-Regulatory
+    Organizations; ...' notices and are already covered by #C1. Both sources
+    are Drupal views; selectors derived from the live pages 2026-09-10.
+    IMPORTANT, disciplinary_actions URL correction: #M1 named
+    /rules-guidance/oversight-enforcement/finra-disciplinary-actions-online.
+    That page is 95KB of server-side HTML as the issue says, but it is a
+    webform SEARCH FORM - zero <table>, zero .views-row, zero <time>. Any
+    selector against it yields zero items, which #39 would record as
+    `blocked` forever. The actual server-rendered disciplinary listing is
+    /rules-guidance/oversight-enforcement/disciplinary-actions: a Drupal view
+    of the monthly Disciplinary Actions Online reports, one <li> per month,
+    each linking straight to a PDF. Cadence is MONTHLY, so item titles are
+    bare month names ("August 2026") and the date comes from parsing that
+    same anchor text - month and year are exact, the day-of-month is
+    dateutil's fill-in from the collection date. extract_pdf_text is
+    deliberately false: the adapter re-downloads every item's PDF on every
+    run, and these monthly reports are large; the month/URL is the signal.
+  sources:
+    - type: scrape
+      url: "https://www.finra.org/media-center/newsreleases"
+      label: news_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+      scrape:
+        item_selector: ".view-news-releases .views-row"
+        title_selector: ".views-field-title a"
+        link_selector: ".views-field-title a"
+        date_selector: "time"
+        date_attribute: "datetime"
+        date_fuzzy: false
+        content_selector: ".views-field-body .field-content"
+        extract_pdf_text: false
+    - type: scrape
+      url: "https://www.finra.org/rules-guidance/oversight-enforcement/disciplinary-actions"
+      label: disciplinary_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      scrape:
+        item_selector: ".view-disciplinary-actions .item-list li"
+        title_selector: ".views-field-title a"
+        link_selector: ".views-field-title a"
+        date_selector: ".views-field-title a"
+        date_attribute: null
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+      # Monthly cadence: the newest report is up to ~60 days old in the
+      # worst case (e.g. an August report still newest in early October).
+      # The 90-day default warn survives that; anything beyond it is a
+      # genuinely missed month, which is what should be flagged.
+
+- id: us-nmls
+  name: NMLS
+  full_name: Nationwide Multistate Licensing System (CSBS)
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://mortgage.nationwidelicensingsystem.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    CSBS/NMLS is a state-regulator association, not a competent authority, so
+    it sits under `us` rather than any single state - the State Licensing feed
+    is a national aggregator of state licensing developments (TX-OCCC
+    registration types, Massachusetts money-transmitter notices, Kansas virtual
+    currency kiosk legislation), which is exactly what fifty per-state scrapers
+    would be for. Anonymous SharePoint REST list; 50 items at capture, newest
+    2026-08-24, oldest 2023-12-26. TWO adapter requirements, both verified live
+    2026-09-10: (1) the Accept header below is mandatory - without it SharePoint
+    serves Atom XML, and $format=json does NOT override it; (2) the list carries
+    NO url field of any kind, so url_field is null and every item falls back to
+    landing_url. That shared URL does not break dedup: storage.insert_item
+    dedups on item.id and make_item_id hashes regulator_id|url|published_at, so
+    distinct Created timestamps give distinct ids - asserted against the
+    captured fixture in tests/test_nmls_shared_url_ids.py, not assumed. The cost
+    is cosmetic: items link to the hub rather than the underlying notice. Body
+    HTML is in NewsItemDescription; the rendered page is a JS-only SharePoint
+    canvas, so scrape is useless here. Keep the NewsItemCategory filter -
+    unfiltered, roughly 70% of the list is NMLS system-maintenance noise.
+  sources:
+    - type: json_api
+      url: "https://mortgage.nationwidelicensingsystem.org/knowledge/news/_api/web/lists(guid'56c65850-d5ce-4ad3-8d14-66a6b1971afb')/items?$select=Title,NewsItemDescription,NewsItemCategory,Created&$filter=NewsItemCategory eq 'State Licensing'&$orderby=Created desc&$top=50"
+      label: state_licensing
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+      headers:
+        Accept: "application/json;odata=nometadata"
+      json_api:
+        items_path: value
+        title_field: Title
+        url_field: null
+        landing_url: "https://mortgage.nationwidelicensingsystem.org/knowledge/news/SitePages/Home.aspx"
+        published_field: Created
+      backfill:
+        supported: false
+        method: none
+        note: "no paged backfill has been verified - the configured SharePoint call returns the newest 50 items ($top=50) and nothing behind them has been tested"
+      volume_estimate:
+        # 50 items at capture 2026-09-10, newest 2026-08-24, oldest 2023-12-26
+        # (see `notes` above). per_week is left unknown rather than divided out
+        # of a 20-month window that a category filter also narrows.
+        first_run: 50
+        as_of: 2026-09-10

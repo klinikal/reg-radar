@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from collector.adapters.http import (
+    BlockedFetchError,
     extract_pdf_text,
     fetch_bytes,
     fetch_html,
@@ -188,9 +189,11 @@ def test_fetch_via_flaresolverr_backs_off_and_gives_up_on_ban_message():
         }
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        # Since #39 this raises rather than returning None: a ban is a
+        # block, and blocked is its own source state, not "failed to fetch".
+        with pytest.raises(BlockedFetchError):
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3  # exhausts _FLARESOLVERR_MAX_RETRIES, doesn't hammer indefinitely
 
 
@@ -216,9 +219,12 @@ def test_fetch_via_flaresolverr_treats_block_page_as_failure_not_success():
         mock_response.json.return_value = {"status": "ok", "solution": {"response": block_page}}
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        # #39: an unsolved challenge surfaces as blocked, not as a generic
+        # fetch failure - the FATF case, where FlareSolverr quietly stops
+        # working and the source would otherwise just look quiet.
+        with pytest.raises(BlockedFetchError):
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3
 
 
@@ -231,9 +237,9 @@ def test_fetch_via_flaresolverr_rejects_non_2xx_upstream_status():
         }
         mock_post.return_value = mock_response
 
-        result = fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
+        with pytest.raises(BlockedFetchError):  # #39: blocked, not merely unfetchable
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
-        assert result is None
         assert mock_post.call_count == 3
 
 
@@ -334,3 +340,37 @@ def test_ssrf_event_hook_blocks_hostname_resolving_to_private_ip():
         mock_resolve.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
         with pytest.raises(httpx.InvalidURL, match="private"):
             hook(fake_request)
+
+
+def test_sec_gov_requests_are_spaced_at_least_one_second_apart(monkeypatch):
+    """Observed sec.gov behaviour blocks bursts, so consecutive requests to
+    any sec.gov host must be spaced by the configured minimum."""
+    import collector.adapters.http as http_mod
+
+    clock = [1000.0]
+    slept = []
+    monkeypatch.setattr(http_mod.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(http_mod.time, "sleep", lambda s: (slept.append(s), clock.__setitem__(0, clock[0] + s)))
+    monkeypatch.setattr(http_mod, "_last_sec_request_at", float("-inf"))
+
+    http_mod.throttle_sec_gov("https://www.sec.gov/news/pressreleases")
+    assert slept == []            # first request is not delayed
+    http_mod.throttle_sec_gov("https://www.sec.gov/cgi-bin/browse-edgar")
+    assert slept == [1.0]         # immediate second request waits the full interval
+
+    clock[0] += 5.0
+    http_mod.throttle_sec_gov("https://sec.gov/robots.txt")
+    assert slept == [1.0]         # apex domain also throttled, but enough time had passed
+
+
+def test_throttle_is_a_noop_for_non_sec_hosts(monkeypatch):
+    import collector.adapters.http as http_mod
+
+    slept = []
+    monkeypatch.setattr(http_mod.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(http_mod, "_last_sec_request_at", float("-inf"))
+
+    for url in ("https://www.fca.org.uk/news", "https://notsec.gov.example.com/x", "https://www.mas.gov.sg/api"):
+        http_mod.throttle_sec_gov(url)
+        http_mod.throttle_sec_gov(url)
+    assert slept == []

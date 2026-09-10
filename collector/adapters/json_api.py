@@ -18,6 +18,7 @@ all this supports - see the issue's open questions on whether real JSONPath
 """
 import logging
 from datetime import timezone
+from urllib.parse import urljoin
 
 from dateutil.parser import parse as parse_date
 
@@ -59,6 +60,7 @@ class JsonApiAdapter(SourceAdapter):
         content = fetch_bytes(
             source_cfg["url"], ctx.user_agent, ctx.timeout, ctx.retries,
             flaresolverr_url=ctx.flaresolverr_url,
+            extra_headers=source_cfg.get("headers"),
         )
         if content is None:
             raise RuntimeError(f"Failed to fetch {source_cfg['url']} for {ctx.regulator_id}/{source_cfg['label']}")
@@ -90,7 +92,16 @@ class JsonApiAdapter(SourceAdapter):
         docs = []
         for raw_item in raw_items:
             title = resolve_path(raw_item, title_field)
-            url = resolve_path(raw_item, url_field)
+            # url_field: null is an explicit opt-in for an API whose items
+            # carry no URL at all - NMLS's SharePoint list has no such field
+            # in any form. Those items take landing_url (or the source url),
+            # which still yields distinct item ids because make_item_id hashes
+            # the published date alongside the url. The cost is cosmetic: the
+            # item links to the hub rather than the individual notice.
+            if url_field:
+                url = resolve_path(raw_item, url_field)
+            else:
+                url = api_cfg.get("landing_url") or source_cfg.get("url", "")
             if not title or not url:
                 continue
 
@@ -107,7 +118,10 @@ class JsonApiAdapter(SourceAdapter):
                         pass
 
             docs.append(RawDocument(
-                url=str(url),
+                # Several APIs return relative paths only - MAS's Solr index has no
+                # absolute-URL field at all. urljoin returns an already-absolute URL
+                # unchanged, so absolute-URL sources need no branching.
+                url=urljoin(source_cfg.get("url", ""), str(url)),
                 title=str(title),
                 published_at=published_at,
                 date_inferred=date_inferred,

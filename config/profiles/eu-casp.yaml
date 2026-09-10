@@ -4,7 +4,7 @@
 # just English - unlike uk-equities-dealer, which watches a single
 # English-language jurisdiction.
 name: eu-casp
-jurisdictions: [eu/*]
+jurisdictions: [eu/*, intl]
 activities: [casp]
 instruments: []
 exclude_instruments: []

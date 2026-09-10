@@ -24,20 +24,111 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
    ```
    This starts four services: `collector` (fetches on a schedule — see [Configuration](#configuration)), `mcp` (the query server, exposed at `http://localhost:8000/mcp`), `webui` (a browsable list/search view at `http://localhost:8080` — see [Web UI](#web-ui)), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources).
 
-2. **Get some data in.** On a fresh install the database is empty until the first run. To collect immediately:
+2. **Choose what to collect.** `config/regulators/` is a complete catalogue of 62 regulators; a fresh install collects nothing until you select from it.
+   ```bash
+   docker compose exec collector reg-radar setup
+   ```
+   `setup` walks you through jurisdictions → regulators → sources, tells you roughly how many items the first run will collect **before** it writes anything, and writes `config/modules.yaml` for you. Prefer to hand-edit? `cp config/modules.example.yaml config/modules.yaml` and see [Modules](#modules) for the schema. Without this file (and without `REGRADAR_COLLECT_ALL=true`) the collector starts, says so in one line, and exits cleanly.
+
+3. **Get some data in.** On a fresh install the database is empty until the first run. To collect immediately:
    ```bash
    docker compose exec collector python -m collector.main --once
    ```
 
-3. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
+4. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
 
-4. **Give your agent the onboarding skill.** Point it at [`skills/reg-radar-onboarding/SKILL.md`](skills/reg-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/reg-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
+5. **Give your agent the onboarding skill.** Point it at [`skills/reg-radar-onboarding/SKILL.md`](skills/reg-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/reg-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
 
-5. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/reg-radar-operator/SKILL.md`](skills/reg-radar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
+6. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/reg-radar-operator/SKILL.md`](skills/reg-radar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
+
+## Modules
+
+A **module is a regulator** — any `id` in `config/regulators/*.yaml`. `config/modules.yaml` (yours, gitignored, never touched by `git pull`) says which of them this install actually collects. `config/modules.example.yaml` is the committed template.
+
+```yaml
+version: 1
+
+defaults:
+  schedule: "0 6 * * *"          # inherited by any module without its own
+  on_enable: new_only            # new_only | backfill_from | backfill_all
+
+modules:
+  - id: eu/*                     # jurisdiction wildcard - every EU/EEA regulator
+    schedule: "0 6 * * *"
+
+  - id: uk-fca
+    sources: [news, warnings]    # omit `sources:` for all of them
+    schedule: "0 6 * * *"
+```
+
+A **jurisdiction wildcard** (`eu/*`, `gb/*`) is a convenience selector, not a separate concept: it expands to that jurisdiction and every descendant of it in `config/jurisdictions.yaml`, so `eu/*` covers ESMA *and* every member state's authority.
+
+**Resolution order**, narrower always winning: `defaults` → jurisdiction wildcard (`eu/*`) → explicit module id (`uk-fca`) → `sources:` within a module. Between two wildcards, the nearer one wins — `fr/*` beats `eu/*` for the AMF. An explicit module id that omits `sources:` means *all* of them; it does not inherit a wildcard's list.
+
+**The registry wins on `false`.** Anything `config/regulators/` marks `enabled: false` is never collected, however explicitly you select it here — that flag is a maintainer statement that a source is known broken or blocked, not a statement about whether you want it. When it overrides something you asked for by name, the collector logs a `WARNING` naming the module and source, so it is never silent.
+
+Three loader states:
+
+| State | Behaviour |
+|---|---|
+| `config/modules.yaml` present | Collect exactly what it selects |
+| Absent, `REGRADAR_COLLECT_ALL=true` | Collect the whole registry |
+| Absent, no env var | Collect nothing; one line pointing at `reg-radar setup`, clean exit 0 |
+
+An invalid `modules.yaml` — bad cron, unknown module id, unknown source label — is refused at startup with a message naming the file and the offending entry, never a traceback and never a half-configured run.
+
+**`schedule:`** is a per-module cron cadence, resolved through the same order as everything else. The collector adds one scheduled job per *distinct* resolved expression — not per module — so the job count tracks the cadences you actually use, not the size of the registry. A module with no `schedule:` anywhere falls back to `SCHEDULE` in `.env`, so an install with no cadence opinions behaves exactly as before.
+
+Suggested cadences:
+
+| Cadence | Sources | Why |
+|---|---|---|
+| Every 4h (`0 */4 * * *`) | OCC (10-item retention) | Loses documents otherwise |
+| Daily (`0 6 * * *`) | Most RSS and scrape sources | The default |
+| Weekly (`0 6 * * 1`) | FATF grey list, statute `page_watch` sources | Change ~3x/year |
+
+The cadences never overlap each other: every run still takes the same single file lock, so a job that fires while another is still collecting is skipped with a `WARNING` naming its cron expression and the regulators it was carrying. That means a slow cadence can starve a fast one — the log line is there so you can see it happening. An unusable expression on a module logs and skips that group only; the scheduler still starts and the other cadences run. `--once` ignores cadence entirely and runs every enabled module in one pass.
+
+**`on_enable:`** decides what the *first* run after switching a module on collects — and only that run. It is consulted at the transition into enabled and never again, so editing it later never re-cuts history you already have.
+
+| Value | Behaviour |
+|---|---|
+| `new_only` (default) | Records the moment you enabled the module and collects only what is published after it. Cheap, no history |
+| `backfill_from` | Same, with a date you give: `on_enable: backfill_from` plus `backfill_from: 2026-01-01` |
+| `backfill_all` | No date bound at all |
+
+The watermark is recorded *before* the first fetch and is the enable moment, never "the newest item the last run happened to see" — so a first run that fails leaves nothing half-set, and the retry still collects everything published since.
+
+Both backfill values are a **hard error** against a source `config/regulators/` declares un-backfillable, before a run is recorded or an item written (see [Declared backfill capability](#declared-backfill-capability-and-volume)). Where they are allowed, be clear on what they do: they stop the collector *filtering* older items out — the collector itself only ever reads the current page of a feed. Walking an archive is a `scripts/backfill_*.py` run, and the enable log names the script for each source.
+
+**Switching a module off is non-destructive.** Every row already collected stays in the database — items, artefacts, classifications — and so does each `page_watch` source's stored baseline. That baseline is why re-enabling is safe: a `page_watch` source's entire state is a hash of the fragment it watches, so a lost baseline would report a change to a page that never changed. Re-enabling compares against the surviving baseline and reports a change only if the page genuinely changed while the module was off. The first-ever enable of a `page_watch` source records the baseline and reports nothing, logging *"baseline established"* — distinct from *"change detected"*, which is what the same source logs when the fragment actually moves. Pruning rows for a disabled module is a separate decision that has not been taken.
+
+### Choosing modules from the CLI
+
+`reg-radar setup` is the interactive route and `reg-radar modules` the scripted one; both write the same `config/modules.yaml`, and both validate the result against the registry **before** anything is written, so a selection the collector would refuse at startup is refused here with the file untouched.
+
+- **`reg-radar setup`** — asks for jurisdictions (grouped: EU/EEA, UK, US, Asia-Pacific, Middle East, international), then all-or-a-subset within each, then per-regulator source labels if you want to narrow further, then `on_enable`. Before writing it prints the selection, the [declared first-run volume](#declared-backfill-capability-and-volume) — *"approximately 9,733 items from 3 sources that declare a volume estimate, plus 8 sources of unknown volume"*, never a total that quietly treats undeclared sources as zero — and the cadence it is about to write. It writes the [suggested cadences](#modules) per module rather than a flat `defaults.schedule`, so you never have to know that the OCC needs four-hourly polling. Re-running it over an existing file shows what you collect today, names anything the new selection would switch **off** (with the sources that can never be backfilled to fill that gap), asks before overwriting, and leaves the old file as `config/modules.yaml.bak`.
+- **`reg-radar modules list [--all]`** — the current selection with each module's resolved cadence, `on_enable`, and the entry it resolved through. Anything you selected that the registry force-disables is called out with the registry's own reason, because that is a state your file cannot fix. `--all` adds the registry regulators you have not selected.
+- **`reg-radar modules enable <id|jurisdiction/*> ... [--on-enable=new_only|backfill_all|backfill_from=<YYYY-MM-DD>]`** — adds one or more modules, or a whole jurisdiction (quote the wildcard: `'us/*'`). Several ids at once, with or without commas, so the list the [web UI](#web-ui) prints when a jurisdiction is missing pastes straight in. A backfill mode against a source the registry declares un-backfillable is the same hard error the collector raises, before the file changes.
+- **`reg-radar modules disable <id>`** — drops a module, after warning that nothing published while it is off will be collected and naming each source that declares no way to backfill, with the registry's reason (*"the feed retains only the 10 most recent items"*). A module currently selected through a wildcard is dropped by expanding that wildcard into explicit entries, which the command tells you it did.
+
+Two caveats. `modules enable`/`disable` rewrite the file with PyYAML, which has no round-trip mode, so **comments in a hand-edited `config/modules.yaml` do not survive them** — every rewrite keeps the previous file as `config/modules.yaml.bak`. And `setup` is interactive by design: for Docker and scripted installs use `modules enable`, which needs no terminal.
+
+### The trade-off: collection-time filtering is not free to reverse
+
+Modules gate the **fetch**, at country/regulator granularity. [Profiles](#profiles) gate the **view**, at topic granularity. The question that decides which layer a filter belongs to is *would this operator ever plausibly want this data?* Never → a module. Maybe later → a profile.
+
+That split matters because the two are not equally reversible. A profile change re-filters rows you already have, instantly. A module that was off for six months leaves a six-month hole, and filling it later only works if the source supports backfill — many do not, and some feeds only ever expose the last handful of items. Turn a module off because you will never want it, not because you are unsure.
+
+### Upgrading an existing install
+
+Nothing to do. On its first run after upgrading, an install that already has collected items writes `config/modules.yaml` for you, containing `eu/*` and `gb/*` — which resolves to exactly the regulator/source set it collected before. You'll see one `INFO` line saying the file was written and where. It is yours from that point: reg-radar never rewrites it once it exists.
+
+If your `config/` mount is read-only the write fails with a `WARNING` naming the problem; create the file by hand, or set `REGRADAR_COLLECT_ALL=true`.
 
 ## Coverage
 
-44 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA as a deliberate non-EEA exception. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
+62 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA, eight US federal entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC, CFPB and Treasury, plus FINRA as a self-regulatory organisation), three US state-level entries (New York's DFS, California's DFPI, and CSBS's NMLS as a national state-licensing aggregator), Singapore (MAS and Singapore Statutes Online) and the UAE (VARA in Dubai, the CBUAE rulebook, and the DFSA and ADGM FSRA free zones) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
 Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 
@@ -49,7 +140,19 @@ Optional: the `flaresolverr` service (included in Docker Compose by default) ena
 
 ### Non-EEA additions
 
-The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance). It's kept structurally separate so the EEA coverage numbers above stay accurate.
+The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance).
+
+US federal coverage is a second exception, in `config/regulators/us.yaml`: the Federal Register (one API call covering rulemaking and notices for seven agencies, plus FINRA rule filings), and news, enforcement and speeches feeds for the SEC, CFTC, Federal Reserve, OCC and CFPB. Treasury and FINRA publish no usable feed at all — Treasury has no RSS anywhere, and `finra.org/rss.xml` is a dead Drupal default whose newest entry is from July 2020 — so both are scraped: Treasury's press releases, and FINRA's news releases plus its monthly disciplinary-action reports. FINRA is the registry's only `jurisdiction_type: sro`, a private self-regulatory organisation rather than a government agency. SEC litigation releases are not yet covered: they exist only as HTML, and `www.sec.gov`'s HTML path currently answers a 403 rate-limit page.
+
+US state coverage is deliberately three bodies, not fifty, in `config/regulators/us-ny.yaml`, `us-ca.yaml` and the NMLS entry in `us.yaml`. NYDFS is the state regulator whose crypto rules firms elsewhere actually read — BitLicense, virtual-currency listing guidance, consent orders — and contributes its newsroom, industry letters and enforcement tables plus a `page_watch` on the virtual-currency licensee hub. California's DFPI is the only other state with a machine-readable feed and an active crypto docket. CSBS's NMLS `State Licensing` feed is a national aggregator of state licensing developments maintained by state-regulator staff — one anonymous JSON endpoint covering all fifty states — so it sits under `us` rather than any single state, and building 49 state scrapers to rediscover it is work not worth doing. Texas DOB (RSS with zero items), Florida OFR (~10 items a year) and Wyoming (no feed) were checked and rejected; NASAA is hard geo-blocked outside the US and is unverified.
+
+Singapore is a third exception, in `config/regulators/sg.yaml`: MAS publishes no RSS anywhere, so all eight MAS sources — media releases, speeches, consultations, enforcement actions, notices, circulars, guidelines and legislation — come from its open Solr search API, plus two scoped `page_watch` sources on Singapore Statutes Online tracking amendments to the Payment Services Act 2019 and the Financial Services and Markets Act 2022.
+
+FATF is a fourth exception, in `config/regulators/intl.yaml`, under a standalone `intl` jurisdiction for international standard-setting bodies. It covers the black-and-grey lists (a `page_watch` — the watched fragment carries the actual country lists, so the diff is the substance) and the home-page news carousel. `intl` deliberately has no parent/child edges in `config/jurisdictions.yaml`: FATF Recommendations bind nobody directly, they are transposed into national and supranational law, so modelling FATF as an ancestor of any jurisdiction would assert an applicability that does not exist. Profiles opt in by naming `intl` explicitly. FATF is Cloudflare-protected and collects only with `FLARESOLVERR_URL` set.
+
+The UAE financial free zones are a fifth exception, in `config/regulators/ae.yaml`: the DIFC's DFSA and Abu Dhabi Global Market's FSRA, modelled as `ae-difc` and `ae-adgm`, children of an onshore `ae` they are constitutionally carved out of — only the financial-services acquis is disapplied, federal AML/CFT law still bites, so over-inclusion upward is the safe direction. Both regulators' rulebook updates come from Thomson Reuters-hosted mirrors: DFSA's own site returns a deterministic Cloudflare 403 on `/alerts`, `/rulebook` and `/public-register` while serving `/news` and `/rss` at 200, so the mirror is not a convenience but the only route in. ADGM's announcements source ships disabled — `adgm.com`'s sitemap `lastmod` is a last-edit timestamp rather than a publication date, so its items would carry confidently wrong dates. Dubai's VARA sits alongside them under its own `ae-dubai` jurisdiction — an emirate-level regime, a flat sibling of `ae-difc`/`ae-adgm` rather than their parent, because the free zones are carved out of emirate law too and an `ae-dubai → ae-difc` edge would push VARA rulebook changes at DFSA-regulated firms. VARA's news and regulatory notices are scraped from `vara.ae`, its rulebook revisions from `rulebooks.vara.ae`, and its public register keeps a `page_watch` because it has no feed of any kind. CBUAE is covered through `rulebook.centralbank.ae` only — that host is unprotected and carries the Payment Token Services Regulation, the UAE Virtual Assets Travel Rule and the SVF Regulation, while `www.centralbank.ae` sits behind a Cloudflare managed challenge site-wide and is deliberately left unconfigured rather than guessed at.
+
+These are kept structurally separate so the EEA coverage numbers above stay accurate — and neither is collected unless you select it, since `config/modules.yaml` gates collection per regulator.
 
 ### Cloudflare coverage
 
@@ -69,6 +172,32 @@ The regular collector only scrapes the first page of each scrape-type source on 
 *More to come. Feel free to use the same format to contribute additional backfills, or more regulators.*
 
 Always `--dry-run` first — backfill scripts fetch and parse every page exactly as a real run would, just without writing to the database, so you can sanity-check counts before committing to a multi-hundred-request crawl of someone else's site.
+
+#### Declared backfill capability and volume
+
+**Backfill capability is a property of the source, not a choice you get to make.** The OCC's RSS feeds retain the ten most recent items: a source switched off for a week has permanently lost that week, and no script or setting recovers it. Two optional per-source fields in `config/regulators/<jurisdiction>.yaml` say so out loud, so the tool can refuse an impossible request instead of quietly returning ten items and calling it a success:
+
+```yaml
+backfill:
+  supported: true
+  method: script            # script | paged_api | none
+  script: scripts/backfill_esma_library.py
+  note: "~7,260 docs across ~363 pages"
+
+volume_estimate:
+  first_run: 7260           # items a full backfill would produce
+  per_week: 40              # steady-state new items per week
+  as_of: 2026-09-10         # required whenever a figure is given
+```
+
+- `method: paged_api` — the fetcher itself can walk back through pages (MAS's Solr index, the Federal Register API). `method: script` — a dedicated script under `scripts/` does it, and `script:` must name a file that exists. `method: none` — someone checked and there is no path.
+- **A source with no `backfill:` block is `supported: false`.** That is the safe default: asserting backfill nobody verified is precisely the failure this field exists to close. A source with no `volume_estimate:` is reported as *unknown*, never assumed to be small.
+- Asking for `on_enable: backfill_all` or `backfill_from` (see [Modules](#modules)) against a source declared unsupported is a **hard error at startup**, before a run is recorded or an item written — naming the source, the reason, and what you can have instead:
+
+  > `us-occ/news does not support backfill: the feed retains only the 10 most recent items, so there is no history to fetch. Use on_enable: new_only — you will get everything published from now on.`
+
+  The backfill scripts under `scripts/` refuse on the same rule, at the same point: before the first fetch.
+- Figures are declared only where they were actually counted — OCC (10), NMLS (50), ADGM (1,113), FCA (~5,980 + ~3,743), ESMA's library (~7,260), each MAS content type (`numFound`) — and left undeclared everywhere else rather than guessed. `as_of` is what makes a stale estimate visible instead of invisible.
 
 ### Maintenance scripts
 
@@ -332,10 +461,12 @@ Copy `.env.example` to `.env` and adjust:
 | `DB_PATH` | `/app/data/reg_radar.db` | SQLite database path |
 | `SCHEDULE` | `0 6 * * *` | Cron schedule (UTC) |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `USER_AGENT` | `reg-radar/2.0 (+https://github.com/klinikal/reg-radar)` | HTTP User-Agent header |
+| `USER_AGENT` | `Mozilla/5.0 (compatible; reg-radar/2.0; +https://github.com/klinikal/reg-radar)` | HTTP User-Agent header |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
 | `REGULATORS_PATH` | `/app/config/regulators` | Regulator registry directory (a single file path also still works) |
+| `MODULES_PATH` | `/app/config/modules.yaml` | Module selection — what this install collects; see [Modules](#modules) |
+| `REGRADAR_COLLECT_ALL` | *(unset)* | Set to `true` to collect the whole registry when there is no `modules.yaml` |
 | `TAXONOMY_PATH` | `/app/config/taxonomy.yaml` | Classification axis/value vocabulary — see [Classification](#classification) |
 | `JURISDICTIONS_PATH` | `/app/config/jurisdictions.yaml` | Jurisdiction hierarchy |
 | `ACTIVITIES_PATH` | `/app/config/activities.yaml` | Activity-to-instrument mapping — see [Profiles](#profiles) |
