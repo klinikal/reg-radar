@@ -18,6 +18,7 @@ all this supports - see the issue's open questions on whether real JSONPath
 """
 import logging
 from datetime import timezone
+from urllib.parse import urljoin
 
 from dateutil.parser import parse as parse_date
 
@@ -107,7 +108,10 @@ class JsonApiAdapter(SourceAdapter):
                         pass
 
             docs.append(RawDocument(
-                url=str(url),
+                # Several APIs return relative paths only - MAS's Solr index has no
+                # absolute-URL field at all. urljoin returns an already-absolute URL
+                # unchanged, so absolute-URL sources need no branching.
+                url=urljoin(source_cfg.get("url", ""), str(url)),
                 title=str(title),
                 published_at=published_at,
                 date_inferred=date_inferred,
