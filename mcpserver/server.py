@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -23,6 +24,7 @@ from mcpserver.queries import (
     search_items_advanced,
 )
 from regradar.classification import classify_batch, write_classification
+from regradar.exporter import export_profile, read_cursor, resolve_since, write_cursor
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 from mcpserver.queries import get_changes
@@ -521,6 +523,76 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
                                 profile=_resolve_profile(profile), include_body=include_body,
                                 taxonomy=get_taxonomy())
     return {"items": items, "next_cursor": next_cursor}
+
+
+def _resolve_export_dir(subdir: str | None) -> Path:
+    """Confines export_tool's output to a directory under the export root
+    (EXPORT_DIR env, default /app/data/exports) - see export_tool's
+    docstring for why this exists. `subdir`, if given, must be a relative
+    name with no `..` traversal and must not resolve (following symlinks)
+    outside the root; an absolute path is rejected outright. Creates the
+    resolved directory if it doesn't exist yet.
+    """
+    root = Path(os.getenv("EXPORT_DIR", "/app/data/exports")).resolve()
+    if subdir is None:
+        target = root
+    else:
+        if Path(subdir).is_absolute():
+            raise ValueError(f"subdir must be a relative path under the export root, got: {subdir}")
+        target = (root / subdir).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"subdir escapes the export root ({root}): {subdir}")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+@mcp.tool()
+def export_tool(profile: str | None = None, format: list[str] | None = None, subdir: str | None = None,
+                 since: str | None = None, with_originals: bool = False) -> dict:
+    """Writes a markdown/JSONL export of items matching `profile` to disk
+    and returns where it landed - the MCP equivalent of `reg-radar export`
+    (architecture doc section 6), wrapping the same regradar.exporter.
+    export_profile() the CLI subcommand calls, with the same cursor
+    bookkeeping (a `.reg-radar-cursor` file in the output directory): omit
+    `since` to resume from wherever the last export into this directory
+    left off, or pass a cursor (e.g. from get_health_tool's dataset_import,
+    or a prior export_tool call's `cursor`) to override it for one run.
+
+    `format` is a list of "markdown" and/or "jsonl" (default ["markdown"]);
+    both share one pass over the change stream and one cursor - see
+    regradar.exporter's module docstring if calling this repeatedly with
+    different formats into the same `subdir`. `with_originals=True` also
+    copies each item's original artefact alongside its export.
+
+    Output is confined to a directory under the export root (the EXPORT_DIR
+    env var, default /app/data/exports): `subdir` is an optional relative
+    name under that root, not a free path - an absolute path, `..`
+    traversal, or a symlink resolving outside the root is rejected. This
+    tool writes files to disk but is not behind any extra auth gate beyond
+    what already protects classify_item_tool/classify_items_tool (which
+    write to the database) - the export root confinement is what limits the
+    blast radius, not a separate permission check.
+
+    Returns {"written": int, "cursor": str | None, "out_dir": str} -
+    `written` counts items whose output actually changed, `cursor` is the
+    new stream head to persist for your own bookkeeping if you want it (it
+    is also saved to `.reg-radar-cursor` in `out_dir` automatically), and
+    `out_dir` is the resolved absolute path the files were written to.
+    """
+    def _export():
+        out_dir = _resolve_export_dir(subdir)
+        export_formats = list(dict.fromkeys(format or ["markdown"]))
+        persisted = read_cursor(out_dir)
+        resolved_since = resolve_since(out_dir, since)
+        result = export_profile(
+            get_engine(), out_dir, profile=_resolve_profile(profile), since=resolved_since,
+            with_originals=with_originals, export_formats=export_formats, taxonomy=get_taxonomy(),
+            since_from_out_dir=resolved_since is not None and resolved_since == persisted,
+        )
+        if result["cursor"] and result["cursor"] != resolved_since:
+            write_cursor(out_dir, result["cursor"])
+        return {"written": result["written"], "cursor": result["cursor"], "out_dir": str(out_dir)}
+    return _safe("export_tool", _export)
 
 
 if __name__ == "__main__":
