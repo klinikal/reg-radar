@@ -43,3 +43,228 @@
         title_field: title
         url_field: html_url
         published_field: publication_date
+
+- id: us-sec
+  name: SEC
+  full_name: Securities and Exchange Commission
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.sec.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    sec.gov HTML and robots.txt 403 under the default reg-radar UA; the
+    /news/*.rss feeds return 200 under both UAs, but a browser-shaped
+    USER_AGENT (#P2) is required before the litigation-releases scrape in #M1
+    works at all. SEC requires >=1 req/sec throttling - a burst of ~8 rapid
+    requests triggered a site-wide penalty box lasting minutes; observed
+    behaviour is stricter than the documented Fair Access policy at
+    https://www.sec.gov/developer. statements.rss is a byte-level duplicate of
+    speeches-statements.rss - do not add both. Rulemaking is NOT collected
+    here: it comes via the Federal Register source (#C1), which also carries
+    FINRA rule filings as SEC 'Self-Regulatory Organizations; ...' notices.
+  sources:
+    - type: rss
+      url: "https://www.sec.gov/news/pressreleases.rss"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.sec.gov/news/speeches-statements.rss"
+      label: speeches_statements
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+    - type: rss
+      url: "https://www.sec.gov/news/testimony.rss"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+      # DISABLED, postponed. The feed itself works - 25 items with real dates,
+      # verified live 2026-09-10 - but congressional testimony is episodic and
+      # its newest item was already 210 days old at capture, past the 90-day
+      # staleness warn. Rather than widen the threshold and lose the signal,
+      # this stays off until someone wants US testimony specifically. Fixture
+      # is kept at tests/fixtures/sources/us-sec/testimony.xml so re-enabling
+      # is a one-line change.
+      enabled: false
+
+- id: us-cftc
+  name: CFTC
+  full_name: Commodity Futures Trading Commission
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.cftc.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    All three feeds carry 10 items with real RFC822 dates. Enforcement is NOT
+    in the Federal Register - verified: CFTC across six weeks returned 15
+    documents, all Rules/Notices, zero enforcement press releases. This feed
+    is the only route to it.
+  sources:
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSENF/rssenf.xml"
+      label: enforcement
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSGP/rssgp.xml"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.cftc.gov/RSS/RSSST/rssst.xml"
+      label: speeches_testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+
+- id: us-fed
+  name: Federal Reserve
+  full_name: Board of Governors of the Federal Reserve System
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.federalreserve.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    Dates are wrapped in <![CDATA[...]]>. feedparser handles this correctly; a
+    naive regex date parser does not - do not 'optimise' the adapter here.
+    press_bcreg is the banking supervision & regulation channel and is the
+    supervisory-guidance route that the Federal Register does not carry. Full
+    feed catalogue: https://www.federalreserve.gov/feeds/feeds.htm
+  sources:
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_enforcement.xml"
+      label: press_enforcement
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_bcreg.xml"
+      label: press_bcreg
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/press_orders.xml"
+      label: press_orders
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/speeches.xml"
+      label: speeches
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+    - type: rss
+      url: "https://www.federalreserve.gov/feeds/testimony.xml"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+
+- id: us-occ
+  name: OCC
+  full_name: Office of the Comptroller of the Currency
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.occ.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    occ_news.xml has 10-ITEM RETENTION - daily polling is mandatory or items
+    are lost permanently, with no backfill route. Bulletins are supervisory
+    issuances and do not appear in the Federal Register. No enforcement feed
+    exists anywhere on occ.gov. Feed catalogue:
+    https://www.occ.gov/rss/index-rss.html
+  sources:
+    - type: rss
+      url: "https://www.occ.gov/rss/occ_news.xml"
+      label: news
+      preferred_language: en
+      labels: {}
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.occ.gov/rss/occ_bulletins.xml"
+      label: bulletins
+      preferred_language: en
+      labels:
+        document_type: final_guidance
+      tags: [publications]
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-speeches.xml"
+      label: speeches
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-publications.xml"
+      label: publications
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+    - type: rss
+      url: "https://www.occ.gov/rss/occ-congressional-testimony.xml"
+      label: testimony
+      preferred_language: en
+      labels:
+        document_type: speech
+      tags: [speeches]
+
+- id: us-cfpb
+  name: CFPB
+  full_name: Consumer Financial Protection Bureau
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://www.consumerfinance.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    enforcement_actions feed is genuinely healthy but its CONTENT has been
+    dormant since Aug 2025 - a real activity gap, not a bug. Do not treat a
+    zero-item run as a failure, and set a per-source staleness override once
+    #P4 lands so it does not page on a policy reality.
+  sources:
+    - type: rss
+      url: "https://www.consumerfinance.gov/about-us/newsroom/feed/"
+      label: newsroom
+      preferred_language: en
+      labels: {}
+      tags: [press_releases]
+    - type: rss
+      url: "https://www.consumerfinance.gov/enforcement/actions/feed/"
+      label: enforcement_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      # DISABLED, postponed. The feed is healthy - 25 items with real dates,
+      # verified live 2026-09-10 - but its newest item is 2025-09-22: the
+      # documented CFPB enforcement dormancy, not a broken feed. It would
+      # cross the 365-day error threshold in late September 2026 and hard-fail
+      # source_health nightly. Widening the threshold would hide a genuinely
+      # dead feed later, so this stays off until CFPB enforcement resumes.
+      # Fixture kept at tests/fixtures/sources/us-cfpb/enforcement_actions.xml.
+      enabled: false

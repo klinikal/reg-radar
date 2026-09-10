@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:og="http://ogp.me/ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:schema="http://schema.org/" xmlns:sioc="http://rdfs.org/sioc/ns#" xmlns:sioct="http://rdfs.org/sioc/types#" xmlns:skos="http://www.w3.org/2004/02/skos/core#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" version="2.0" xml:base="https://www.cftc.gov/">
+  <channel>
+    <title>Press Releases</title>
+    <link>https://www.cftc.gov/</link>
+    <description/>
+    <language>en</language>
+    
+    <item>
+  <title>CFTC Secures Court Orders Directing Texas and Florida Residents to Pay Over $500,000 in Disgorgement and Civil Monetary Penalties and Imposing Trading Bans for Commodity Pool Fraud </title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9294-26</link>
+  <description/>
+  <pubDate>Wed, 09 Sep 2026 13:44:33 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9294-26</guid>
+    </item>
+<item>
+  <title>CFTC Resolves Action Against Swaps Trader for Making False Statements </title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9291-26</link>
+  <description/>
+  <pubDate>Tue, 01 Sep 2026 18:45:49 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9291-26</guid>
+    </item>
+<item>
+  <title>CFTC Orders Gabriel Perez to Pay $172,000 for  Insider Trading of Mention Market Event Contracts</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9289-26</link>
+  <description/>
+  <pubDate>Fri, 28 Aug 2026 22:59:51 +0000</pubDate>
+    <dc:creator>mwoodland</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9289-26</guid>
+    </item>
+<item>
+  <title>CFTC Resolves Actions Against Former Alameda CEO, and Alameda and FTX Co-Founder</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9285-26</link>
+  <description/>
+  <pubDate>Wed, 19 Aug 2026 14:21:35 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9285-26</guid>
+    </item>
+<item>
+  <title>CFTC Charges Goliath Ventures Inc. and CEO with $400 Million Fraud Scheme</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9280-26</link>
+  <description/>
+  <pubDate>Tue, 11 Aug 2026 18:11:08 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9280-26</guid>
+    </item>
+<item>
+  <title>CFTC Orders UBS Financial Services Inc. to Pay $8 Million for Supervision Failures Impacting Its AML Transaction Monitoring Systems</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9277-26</link>
+  <description/>
+  <pubDate>Mon, 03 Aug 2026 12:39:00 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9277-26</guid>
+    </item>
+<item>
+  <title>CFTC Orders George Santos to Pay $35,000 for Manipulative Trading of State-of-the-Union Event Contract</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9276-26</link>
+  <description/>
+  <pubDate>Fri, 31 Jul 2026 19:26:52 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9276-26</guid>
+    </item>
+<item>
+  <title>CFTC Charges North Carolina Commodity Pool Operator and His Company with Fraud </title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9264-26</link>
+  <description/>
+  <pubDate>Tue, 07 Jul 2026 18:59:40 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9264-26</guid>
+    </item>
+<item>
+  <title>CFTC Orders Two Foreign Firms to Pay $2.5 Million for Illegal Off-Exchange Transactions with U.S. Customers</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9263-26</link>
+  <description/>
+  <pubDate>Mon, 29 Jun 2026 15:10:21 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9263-26</guid>
+    </item>
+<item>
+  <title>CFTC Resolves Action Against Celsius Founder</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9256-26</link>
+  <description/>
+  <pubDate>Thu, 18 Jun 2026 18:40:00 +0000</pubDate>
+    <dc:creator>aturner</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9256-26</guid>
+    </item>
+
+  </channel>
+</rss>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:og="http://ogp.me/ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:schema="http://schema.org/" xmlns:sioc="http://rdfs.org/sioc/ns#" xmlns:sioct="http://rdfs.org/sioc/types#" xmlns:skos="http://www.w3.org/2004/02/skos/core#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#" version="2.0" xml:base="https://www.cftc.gov/">
+  <channel>
+    <title>Press Releases</title>
+    <link>https://www.cftc.gov/</link>
+    <description/>
+    <language>en</language>
+    
+    <item>
+  <title>CFTC Staff Issues No-Action Position on Large Trader Reporting for Direct Participants</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9293-26</link>
+  <description/>
+  <pubDate>Wed, 02 Sep 2026 17:27:34 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9293-26</guid>
+    </item>
+<item>
+  <title>CFTC Issues Final Rule to Modify Clearing Requirement for Canadian Dollar- and Mexican Peso-Denominated Interest Rate Swaps </title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9292-26</link>
+  <description/>
+  <pubDate>Wed, 02 Sep 2026 16:04:52 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9292-26</guid>
+    </item>
+<item>
+  <title>CFTC Further Extends Compliance Date for Amendments to Form PF</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9290-26</link>
+  <description/>
+  <pubDate>Mon, 31 Aug 2026 18:54:03 +0000</pubDate>
+    <dc:creator>mwoodland</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9290-26</guid>
+    </item>
+<item>
+  <title>ICYMI: Members of the CFTC’s Innovation Advisory Committee Join Chairman Selig in Washington at Inaugural Meeting</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9288-26</link>
+  <description/>
+  <pubDate>Fri, 21 Aug 2026 16:46:19 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9288-26</guid>
+    </item>
+<item>
+  <title>CFTC Seeks Public Comments on Proposed Elimination of SEF Order Book Requirement for Permitted Transactions</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9287-26</link>
+  <description/>
+  <pubDate>Thu, 20 Aug 2026 16:53:39 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9287-26</guid>
+    </item>
+<item>
+  <title>CFTC Requests Comment on the Listing of Compute Derivatives Contracts</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9286-26</link>
+  <description/>
+  <pubDate>Wed, 19 Aug 2026 16:36:53 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9286-26</guid>
+    </item>
+<item>
+  <title>CFTC Seeks Public Comment on Proposed Rule Changes for Commodity Pool Operator and Commodity Trading Advisor Registration</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9284-26</link>
+  <description/>
+  <pubDate>Tue, 18 Aug 2026 13:01:02 +0000</pubDate>
+    <dc:creator>CCollins</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9284-26</guid>
+    </item>
+<item>
+  <title>Chairman Selig Announces Agenda for August 20 Innovation Advisory Committee Meeting in Washington</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9283-26</link>
+  <description/>
+  <pubDate>Thu, 13 Aug 2026 14:00:32 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9283-26</guid>
+    </item>
+<item>
+  <title>CFTC Releases Advisory on Self-Certification of Incentive Programs for Prediction Markets</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9282-26</link>
+  <description/>
+  <pubDate>Wed, 12 Aug 2026 19:27:08 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9282-26</guid>
+    </item>
+<item>
+  <title>CFTC Exercises Emergency Authority to Ensure Market Stability</title>
+  <link>https://www.cftc.gov/PressRoom/PressReleases/9281-26</link>
+  <description/>
+  <pubDate>Tue, 11 Aug 2026 20:40:28 +0000</pubDate>
+    <dc:creator>dfaulk-white</dc:creator>
+    <guid isPermaLink="true">https://www.cftc.gov/PressRoom/PressReleases/9281-26</guid>
+    </item>
+
+  </channel>
+</rss>

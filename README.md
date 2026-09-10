@@ -93,7 +93,7 @@ If your `config/` mount is read-only the write fails with a `WARNING` naming the
 
 ## Coverage
 
-45 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA and the US Federal Register as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
+50 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA and six US federal entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC and CFPB) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
 Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 
@@ -105,7 +105,11 @@ Optional: the `flaresolverr` service (included in Docker Compose by default) ena
 
 ### Non-EEA additions
 
-The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance). It's kept structurally separate so the EEA coverage numbers above stay accurate.
+The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance).
+
+US federal coverage is a second exception, in `config/regulators/us.yaml`: the Federal Register (one API call covering rulemaking and notices for seven agencies, plus FINRA rule filings), and news, enforcement and speeches feeds for the SEC, CFTC, Federal Reserve, OCC and CFPB.
+
+Both are kept structurally separate so the EEA coverage numbers above stay accurate — and neither is collected unless you select it, since `config/modules.yaml` gates collection per regulator.
 
 ### Cloudflare coverage
 
