@@ -1,6 +1,7 @@
 import importlib
 import typing
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -436,3 +437,66 @@ def test_get_unclassified_tool_count_decreases_by_exactly_n_after_n_classify_wri
     after = len(server.get_unclassified_tool(axis="document_type", limit=200))
     assert before - after == 50
     assert after == 0
+
+
+def test_export_tool_writes_files_under_export_root(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued"))
+
+    result = server.export_tool(subdir="run1")
+    assert result["written"] == 1
+    assert result["cursor"] is not None
+    out_dir = Path(result["out_dir"])
+    assert out_dir == (export_root / "run1").resolve()
+    assert next(out_dir.rglob("*.md"), None) is not None
+
+
+def test_export_tool_cursor_advances_across_two_calls(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("first item"))
+
+    first = server.export_tool(subdir="run1")
+    assert first["written"] == 1
+
+    second = server.export_tool(subdir="run1")
+    assert second["written"] == 0
+    assert second["cursor"] == first["cursor"]
+
+    insert_item(write_engine, _item("second item"))
+    third = server.export_tool(subdir="run1")
+    assert third["written"] == 1
+    assert third["cursor"] != first["cursor"]
+
+
+def test_export_tool_rejects_absolute_subdir(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir=str(tmp_path / "elsewhere"))
+
+
+def test_export_tool_rejects_dotdot_traversal(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir="../escape")
+
+
+def test_export_tool_rejects_symlink_escape(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    export_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (export_root / "link").symlink_to(outside)
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir="link")
