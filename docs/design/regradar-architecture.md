@@ -253,7 +253,7 @@ New table `classifications`:
 
 Effective labels per axis, computed on every write and on `reclassify`, materialised into `items.labels` (JSON) and `items.updated_at`:
 
-1. Any live `human:*` row wins for that axis outright. For multi-valued axes, human rows define the full set.
+1. Any live `human:*` row wins for that axis outright. For multi-valued axes, human rows define the full set. On a single-valued axis with more than one live human row (different authors correcting the same axis), the most recently written one wins (`created_at`); if `created_at` is missing/equal across the competing rows, the fallback is the alphabetically last value, purely to keep the result deterministic.
 2. Otherwise, take all live non-human rows with `confidence >= threshold` (default 0.5, per axis override in taxonomy.yaml). Single-valued axes take the highest confidence, ties broken by `llm > rule > source_default`. Multi-valued axes take the union.
 3. Otherwise the axis is unset. Unset is a real state: profiles include unset items by default (section 5).
 
