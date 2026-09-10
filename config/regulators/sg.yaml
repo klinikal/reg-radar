@@ -1,0 +1,222 @@
+- id: sg-mas
+  name: MAS
+  full_name: Monetary Authority of Singapore
+  jurisdiction: sg
+  jurisdiction_type: non_eea
+  website: https://www.mas.gov.sg
+  mica_competent_authority: false
+  enabled: true
+  # Plain UA filtering, NOT a JS challenge - no FlareSolverr needed.
+  cloudflare_protected: false
+  notes: >-
+    MAS publishes NO RSS anywhere - /rss, /news/rss, /rss.xml and /feed all
+    return an 853,817-byte decoy "Maintenance" page at HTTP 200. Every listing
+    page is a JS shell over the open Solr endpoint at /api/v1/search (7,412
+    docs, no auth), which is the only route into MAS content. Requires the
+    browser-shaped DEFAULT_USER_AGENT (#37): with a bare tool UA the endpoint
+    returns 200 + the decoy and the collector would log success while
+    collecting nothing, indefinitely - this is the case #39's
+    large-body-zero-items heuristic was built for. page_url_s is relative and
+    the index has no absolute-URL field at all, so #36 (urljoin in the json_api
+    adapter) is mandatory. Enforcement spans TWO content types: filtering on
+    "Enforcement Actions" alone returns 55 of the 137 items (verified live
+    2026-09-10), so the OR filter is not optional. MAS Notices are classified
+    `legislation`, not a new "notice" document_type: "notice" is already
+    claimed in this corpus by `enforcement` (config/rules.yaml scores "final
+    notice"/"decision notice" at 0.85 and uk-fca/notices_and_decisions is
+    stamped `enforcement`), and MAS Notices are binding statutory directions,
+    so `legislation` describes what they actually are. sitemap.xml is a trap:
+    7,372 <loc> entries with ZERO <lastmod> - do not switch to it.
+    https://www.mas.gov.sg/publications is the same empty JS shell as /news
+    (243,864 vs 243,795 bytes, byte-identical apart from <title>, meta tags and
+    the per-session __RequestVerificationToken); its eleven /publications/...
+    links are category navigation, not documents - do not use it. Consultations
+    additionally expose mas_consultationstatus_s (Open/...) and
+    masconsultation_closingdate_tdt - response deadlines available for free,
+    future enrichment, not wired up in v1. Financial Institutions Directory
+    (eservices.mas.gov.sg/fid) deliberately out of scope - 245 Major Payment
+    Institutions span 3 pages and page_watch fetches one URL only, so it needs
+    pagination the adapters do not have.
+  sources:
+
+  # rows=100 across the board: newest-first, and even the busiest content type
+  # (media_releases, 1,824 docs) publishes nowhere near 100 items between daily
+  # runs. Keeps every fixture under CONTRIBUTING.md's ~300KB threshold.
+  - type: json_api
+    url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Media%20Releases%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+    label: media_releases          # numFound 1824, verified live 2026-09-10
+    preferred_language: en
+    labels:
+      document_type: press_release
+    tags: [press_releases]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s        # relative - resolved by the adapter's urljoin (#36)
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Speeches%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+    label: speeches                # numFound 1039
+    preferred_language: en
+    labels:
+      document_type: speech
+    tags: [speeches]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Consultations%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+    label: consultations           # numFound 427
+    preferred_language: en
+    labels:
+      document_type: consultation
+    tags: [publications]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  # CRITICAL: enforcement lives under TWO content types. Filtering on
+  # "Enforcement Actions" alone returns 55 of 137 items - the other 82 sit
+  # under "Enforcement Actions Media Releases" and are lost silently. Both
+  # figures verified live 2026-09-10. Spaces and parentheses are left
+  # unencoded: httpx encodes them on the wire and the endpoint answers 137
+  # either way (verified, not assumed).
+  - type: json_api
+    url: 'https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:("Enforcement Actions" OR "Enforcement Actions Media Releases")&q=*:*&rows=100&sort=mas_date_tdt%20desc'
+    label: enforcement_actions     # numFound 137
+    preferred_language: en
+    labels:
+      document_type: enforcement
+    tags: [enforcement]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Notices%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+    label: notices                 # numFound 338
+    preferred_language: en
+    labels:
+      document_type: legislation   # binding statutory directions - see notes:
+    tags: [publications]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Circulars%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+    label: circulars               # numFound 181
+    preferred_language: en
+    labels:
+      document_type: final_guidance
+    tags: [publications]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: 'https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:("Guidelines" OR "Guidance" OR "Practice Notes" OR "Codes")&q=*:*&rows=100&sort=mas_date_tdt%20desc'
+    label: guidelines_and_guidance # numFound 169
+    preferred_language: en
+    labels:
+      document_type: final_guidance
+    tags: [publications]
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  - type: json_api
+    url: 'https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:("Regulations" OR "Subsidiary Legislation" OR "Acts" OR "Orders" OR "Directives" OR "Notifications" OR "Exemptions")&q=*:*&rows=100&sort=mas_date_tdt%20desc'
+    label: regulations_and_legislation  # numFound 261
+    preferred_language: en
+    labels:
+      document_type: legislation
+    tags: [publications]
+    # Genuinely episodic, not broken: newest item at capture was 2025-09-01
+    # (374 days old) and the largest real gap in its history is ~460 days
+    # (2024-05-10 -> 2025-08-14). Singapore amends primary/subsidiary
+    # legislation in clusters, so the 90/365 defaults would page on a policy
+    # reality. Thresholds sit above the observed gap, not so high that a
+    # genuinely dead source hides behind them.
+    staleness:
+      warn_days: 550
+      error_days: 1100
+    json_api:
+      items_path: response.docs
+      title_field: document_title_string_s
+      url_field: page_url_s
+      published_field: mas_date_tdt
+
+  # Optional extra - Parliamentary Replies (611 docs) is a strong early signal
+  # of policy direction. Ships off; enable if the volume is welcome.
+  # - type: json_api
+  #   url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Parliamentary%20Replies%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
+  #   label: parliamentary_replies
+  #   preferred_language: en
+  #   labels: {}
+  #   tags: [publications]
+  #   json_api:
+  #     items_path: response.docs
+  #     title_field: document_title_string_s
+  #     url_field: page_url_s
+  #     published_field: mas_date_tdt
+
+- id: sg-sso
+  name: SSO
+  full_name: Singapore Statutes Online (Attorney-General's Chambers)
+  jurisdiction: sg
+  jurisdiction_type: non_eea
+  website: https://sso.agc.gov.sg
+  mica_competent_authority: false
+  enabled: true
+  # sso.agc.gov.sg 403s from CloudFront under a bare tool UA, but that is UA
+  # filtering, not a JS challenge - the browser-shaped DEFAULT_USER_AGENT (#37)
+  # fetches it at 200. No FlareSolverr.
+  cloudflare_protected: false
+  notes: >-
+    Separate registry entry from sg-mas on purpose: SSO is published by the
+    Attorney-General's Chambers, not MAS, and regulator_id is stamped on every
+    item - filing an AGC statute-version change under "MAS" would misattribute
+    it in the UI and in every per-regulator query. The two Acts watched here
+    are the ones that bind a Singapore CASP/payments firm. watch_selector MUST
+    stay scoped to #docTimeline: SSO injects the current date ("Current version
+    as at 10 Sep 2026") into the page body, so a whole-page watch would report
+    a change every single day, forever. #docTimeline is ~230-400 characters of
+    pure legislative version history and only gains a row when the Act is
+    actually amended. SSO's robots.txt sets crawl-delay: 6 - keep these two
+    watches on the daily cadence, do not poll them tighter.
+  sources:
+  - type: page_watch
+    url: "https://sso.agc.gov.sg/Act/PSA2019"
+    label: psa_2019_amendments
+    preferred_language: en
+    labels:
+      document_type: page_change
+      instrument:
+      - sg_psa
+    tags: [page_watch]
+    watch_selector: "#docTimeline"
+  - type: page_watch
+    url: "https://sso.agc.gov.sg/Act/FSMA2022"
+    label: fsm_act_2022_amendments
+    preferred_language: en
+    labels:
+      document_type: page_change
+      instrument:
+      - sg_fsma
+    tags: [page_watch]
+    watch_selector: "#docTimeline"

@@ -3,7 +3,7 @@
 #
 # Bump `version` on any change to values; it is recorded on every
 # classification row written (see regradar/classification.py).
-version: 1
+version: 2
 axes:
   - id: document_type
     cardinality: one
@@ -133,4 +133,33 @@ axes:
         name: UK Market Abuse Regulation
         aliases: ["UK MAR"]
         jurisdiction: gb
+      - id: sg_psa
+        name: Payment Services Act 2019
+        aliases: ["PSA 2019", "Payment Services Act", "PS Act"]
+        jurisdiction: sg
+      - id: sg_fsma
+        name: Financial Services and Markets Act 2022
+        aliases: ["FSMA 2022", "FSM Act", "Act 18 of 2022"]
+        jurisdiction: sg
+      - id: sg_dtsp
+        name: FSM Act 2022 digital token service provider regime
+        aliases: ["DTSP", "DTSP regime", "digital token service provider",
+                  "Guidelines on Licensing for Digital Token Service Providers"]
+        jurisdiction: sg
+      - id: sg_psn01
+        name: MAS Notice PSN01 (AML/CFT - specified payment services)
+        aliases: ["PSN01", "Notice PSN01", "MAS Notice PSN01"]
+        jurisdiction: sg
+      - id: sg_psn02
+        name: MAS Notice PSN02 (AML/CFT - digital payment token service)
+        aliases: ["PSN02", "Notice PSN02", "MAS Notice PSN02"]
+        jurisdiction: sg
+      - id: sg_stablecoin
+        name: MAS stablecoin regulatory framework
+        aliases: ["SCS", "single-currency stablecoin", "MAS stablecoin framework"]
+        jurisdiction: sg
+      - id: sg_ps_g02
+        name: Guidelines on Provision of Digital Payment Token Services to the Public (PS-G02)
+        aliases: ["PS-G02", "DPT consumer access guidelines"]
+        jurisdiction: sg
       # ... grows by PR, no code change

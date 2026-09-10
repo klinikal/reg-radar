@@ -104,3 +104,9 @@
   note: >-
     Federal level. CSBS/NMLS and NASAA are state-regulator associations, not
     competent authorities - their sources sit here.
+- id: sg
+  name: Singapore
+  note: >-
+    Non-EEA. MAS is the single integrated regulator (central bank, banking,
+    securities, payments and insurance); Singapore Statutes Online (AGC) is
+    the statute publisher, listed separately.
