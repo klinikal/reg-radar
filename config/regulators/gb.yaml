@@ -27,6 +27,16 @@
     preferred_language: en
     labels:
       document_type: enforcement
+    backfill:
+      supported: true
+      method: script
+      script: scripts/backfill_fca_publications.py
+      note: "the publications search pages back through the full archive; run scripts/backfill_fca_publications.py --category notices_and_decisions deliberately, --dry-run first"
+    volume_estimate:
+      # as_of is 2026-07-02, the date this count was taken and recorded in
+      # `notes` above - not today. The field exists to make that visible.
+      first_run: 5980
+      as_of: 2026-07-02
     scrape:
       item_selector: "li.search-item"
       title_selector: "h3.search-item__title a"
@@ -40,6 +50,15 @@
     label: policy_and_guidance
     preferred_language: en
     labels: {}
+    backfill:
+      supported: true
+      method: script
+      script: scripts/backfill_fca_publications.py
+      note: "the publications search pages back through the full archive; run scripts/backfill_fca_publications.py --category policy_and_guidance deliberately, --dry-run first"
+    volume_estimate:
+      # as_of 2026-07-02, the date of the recorded count - see above.
+      first_run: 3743
+      as_of: 2026-07-02
     scrape:
       item_selector: "li.search-item"
       title_selector: "h3.search-item__title a"

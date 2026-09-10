@@ -54,6 +54,13 @@
       title_field: document_title_string_s
       url_field: page_url_s        # relative - resolved by the adapter's urljoin (#36)
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 1824    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Speeches%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
@@ -67,6 +74,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 1039    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Consultations%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
@@ -80,6 +94,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 427    # numFound, verified live
+      as_of: 2026-09-10
 
   # CRITICAL: enforcement lives under TWO content types. Filtering on
   # "Enforcement Actions" alone returns 55 of 137 items - the other 82 sit
@@ -99,6 +120,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 137    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Notices%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
@@ -112,6 +140,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 338    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: "https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:%22Circulars%22&q=*:*&rows=100&sort=mas_date_tdt%20desc"
@@ -125,6 +160,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 181    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: 'https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:("Guidelines" OR "Guidance" OR "Practice Notes" OR "Codes")&q=*:*&rows=100&sort=mas_date_tdt%20desc'
@@ -138,6 +180,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 169    # numFound, verified live
+      as_of: 2026-09-10
 
   - type: json_api
     url: 'https://www.mas.gov.sg/api/v1/search?fq=site_s:MAS&fq=mas_contenttype_s:("Regulations" OR "Subsidiary Legislation" OR "Acts" OR "Orders" OR "Directives" OR "Notifications" OR "Exemptions")&q=*:*&rows=100&sort=mas_date_tdt%20desc'
@@ -160,6 +209,13 @@
       title_field: document_title_string_s
       url_field: page_url_s
       published_field: mas_date_tdt
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the MAS Solr endpoint pages deeply - start=/rows= walks the whole content type, newest-first, so the full archive is reachable without a dedicated script"
+    volume_estimate:
+      first_run: 261    # numFound, verified live
+      as_of: 2026-09-10
 
   # Optional extra - Parliamentary Replies (611 docs) is a strong early signal
   # of policy direction. Ships off; enable if the volume is welcome.

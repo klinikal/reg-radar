@@ -136,6 +136,13 @@ def load_regulators(config_path: str, modules_path: str | None = None,
                     sys.exit(1)
                 seen_labels.add(label)
 
+                problem = _source_backfill_error(source)
+                if problem:
+                    logger.error(
+                        "%s: regulator '%s' source '%s': %s", path, reg_id, label, problem
+                    )
+                    sys.exit(1)
+
             regulators.append(reg)
 
     if modules_path is None:
@@ -145,6 +152,9 @@ def load_regulators(config_path: str, modules_path: str | None = None,
         try:
             doc = _load_modules_file(modules_path)
             return _resolve_modules(regulators, doc, jurisdictions_path, modules_path)
+        except BackfillNotSupportedError as e:
+            logger.error("%s", e)
+            sys.exit(1)
         except ModulesConfigError as e:
             # Same contract as every other bad config file in this module:
             # a readable message naming the offending entry and a clean
@@ -179,6 +189,104 @@ class ModulesConfigError(Exception):
     """A structurally invalid config/modules.yaml. Always carries the file
     and the offending entry in its message - the operator has to be able to
     find it without reading this code."""
+
+
+BACKFILL_METHODS = ("script", "paged_api", "none")
+
+# Resolves `backfill.script:` paths, which are written relative to the repo
+# root the way the README and CONTRIBUTING.md quote them
+# (scripts/backfill_esma_library.py).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class BackfillNotSupportedError(ModulesConfigError):
+    """A backfill was asked for against a source the registry says cannot be
+    backfilled (issue #50). Subclasses ModulesConfigError so the config-load
+    path already treats it as fatal; the message is written for the operator,
+    not for the log, and always names the source, the reason and the
+    alternative."""
+
+
+def source_backfill(source: dict) -> dict:
+    """The normalised backfill declaration for one registry source.
+
+    A source with no `backfill:` block is `supported: false` - the safe
+    default, since asserting backfill nobody verified is exactly the failure
+    this field exists to close."""
+    block = source.get("backfill") or {}
+    supported = bool(block.get("supported", False))
+    return {
+        "supported": supported,
+        "method": block.get("method") or (None if supported else "none"),
+        "script": block.get("script"),
+        "note": block.get("note"),
+    }
+
+
+def _source_backfill_error(source: dict) -> str | None:
+    """Registry validation for the two optional per-source fields. Returns a
+    readable problem description, or None when the source is valid."""
+    block = source.get("backfill")
+    if block is not None:
+        if not isinstance(block, dict):
+            return f"'backfill' must be a mapping, got {type(block).__name__}"
+        if not isinstance(block.get("supported", False), bool):
+            return "'backfill.supported' must be true or false"
+        method = block.get("method")
+        if method is not None and method not in BACKFILL_METHODS:
+            return f"invalid backfill.method {method!r} - expected one of {', '.join(BACKFILL_METHODS)}"
+        supported = bool(block.get("supported", False))
+        if supported:
+            if method in (None, "none"):
+                return "backfill.supported: true needs a method of 'script' or 'paged_api'"
+            if method == "script":
+                script = block.get("script")
+                if not isinstance(script, str) or not script.strip():
+                    return "backfill.method: script needs a 'script:' naming the backfill script"
+                if not os.path.isfile(os.path.join(_REPO_ROOT, script)):
+                    return f"backfill.script {script!r} does not exist"
+        elif method not in (None, "none"):
+            return (
+                f"backfill.supported: false cannot declare method {method!r} - "
+                "use 'none', or drop the block entirely"
+            )
+
+    estimate = source.get("volume_estimate")
+    if estimate is not None:
+        if not isinstance(estimate, dict):
+            return f"'volume_estimate' must be a mapping, got {type(estimate).__name__}"
+        for key in ("first_run", "per_week"):
+            value = estimate.get(key)
+            if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+                return f"'volume_estimate.{key}' must be a non-negative whole number, got {value!r}"
+        if estimate.get("as_of") is None:
+            # Without a date the figure is unfalsifiable - `as_of` is what
+            # makes a stale estimate visible rather than invisible.
+            return "'volume_estimate' needs an 'as_of' date"
+    return None
+
+
+def require_backfill_supported(regulator_id: str, label: str, source: dict) -> None:
+    """Raise unless the registry says this source can actually be backfilled.
+
+    Called at the point the operator *asks* - `on_enable: backfill_all` /
+    `backfill_from` in modules.yaml, and the entry points under scripts/ -
+    so the refusal lands before a run is recorded or an item written. The
+    alternative it names is the honest one: a source whose feed retains ten
+    items has no history to fetch at any price, but everything published from
+    now on is still yours."""
+    declared = source_backfill(source)
+    if declared["supported"]:
+        return
+    reason = (declared["note"] or "").strip()
+    if not reason:
+        reason = "the registry declares no verified way to page back through its history, so there is no history to fetch"
+    if not reason.endswith("."):
+        reason += "."
+    raise BackfillNotSupportedError(
+        f"{regulator_id}/{label} does not support backfill: {reason} "
+        f"Use on_enable: new_only - you will get everything published from now on."
+    )
 
 
 def _validate_module_keys(where: str, entry: dict) -> None:
@@ -343,6 +451,15 @@ def _resolve_modules(regulators: list[dict], doc: dict, jurisdictions_path: str,
                         "enabled: false (known broken or blocked) - it will not be collected.",
                         entry["id"], reg_id, source.get("label"),
                     )
+
+        if resolved.get("on_enable") in ("backfill_all", "backfill_from"):
+            # The refusal fires here, at load, because this is where the
+            # operator asked - before init_db, before a run row, before an
+            # item. `enabled: false` sources are never collected, so they are
+            # never backfilled either and are not worth refusing over.
+            for source in sources:
+                if source.get("enabled", True):
+                    require_backfill_supported(reg_id, source.get("label"), source)
 
         selected.append({**reg, "sources": sources, "module": resolved})
 

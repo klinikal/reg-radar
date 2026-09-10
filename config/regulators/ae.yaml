@@ -136,6 +136,16 @@
     tags: [press_releases]
     sitemap:
       url_pattern: "/media/announcements/"
+    backfill:
+      supported: true
+      method: paged_api
+      note: "the sitemap lists every announcement in one document - 1,113 matching /media/announcements/ out of 5,370 <url> entries - so the full history arrives in a single fetch with no paging to do"
+    volume_estimate:
+      # Verified live 2026-09-10. per_week is unknown and stays unknown: the
+      # sitemap's <lastmod> is a last-edit stamp, not a publication date (see
+      # `notes` above), so it cannot be counted per week honestly.
+      first_run: 1113
+      as_of: 2026-09-10
 
 - id: ae-vara
   name: VARA

@@ -150,6 +150,32 @@ The regular collector only scrapes the first page of each scrape-type source on 
 
 Always `--dry-run` first — backfill scripts fetch and parse every page exactly as a real run would, just without writing to the database, so you can sanity-check counts before committing to a multi-hundred-request crawl of someone else's site.
 
+#### Declared backfill capability and volume
+
+**Backfill capability is a property of the source, not a choice you get to make.** The OCC's RSS feeds retain the ten most recent items: a source switched off for a week has permanently lost that week, and no script or setting recovers it. Two optional per-source fields in `config/regulators/<jurisdiction>.yaml` say so out loud, so the tool can refuse an impossible request instead of quietly returning ten items and calling it a success:
+
+```yaml
+backfill:
+  supported: true
+  method: script            # script | paged_api | none
+  script: scripts/backfill_esma_library.py
+  note: "~7,260 docs across ~363 pages"
+
+volume_estimate:
+  first_run: 7260           # items a full backfill would produce
+  per_week: 40              # steady-state new items per week
+  as_of: 2026-09-10         # required whenever a figure is given
+```
+
+- `method: paged_api` — the fetcher itself can walk back through pages (MAS's Solr index, the Federal Register API). `method: script` — a dedicated script under `scripts/` does it, and `script:` must name a file that exists. `method: none` — someone checked and there is no path.
+- **A source with no `backfill:` block is `supported: false`.** That is the safe default: asserting backfill nobody verified is precisely the failure this field exists to close. A source with no `volume_estimate:` is reported as *unknown*, never assumed to be small.
+- Asking for `on_enable: backfill_all` or `backfill_from` (see [Modules](#modules)) against a source declared unsupported is a **hard error at startup**, before a run is recorded or an item written — naming the source, the reason, and what you can have instead:
+
+  > `us-occ/news does not support backfill: the feed retains only the 10 most recent items, so there is no history to fetch. Use on_enable: new_only — you will get everything published from now on.`
+
+  The backfill scripts under `scripts/` refuse on the same rule, at the same point: before the first fetch.
+- Figures are declared only where they were actually counted — OCC (10), NMLS (50), ADGM (1,113), FCA (~5,980 + ~3,743), ESMA's library (~7,260), each MAS content type (`numFound`) — and left undeclared everywhere else rather than guessed. `as_of` is what makes a stale estimate visible instead of invisible.
+
 ### Maintenance scripts
 
 Two other one-off scripts under `scripts/` are for disaster recovery or after bulk imports — not part of the daily collector:

@@ -55,6 +55,45 @@
 #         warn_days: 200
 #         error_days: 550
 #
+#       # Optional, valid on ANY source type (issue #50). Backfill capability
+#       # is a property of the SOURCE, not a user choice: a feed that retains
+#       # ten items has no history to fetch at any price. Declare it so the
+#       # CLI can refuse an impossible request at the point it is made
+#       # instead of quietly returning ten items and reporting success.
+#       #
+#       # NO `backfill:` BLOCK MEANS `supported: false`. That is the safe
+#       # default - only declare `supported: true` for a source where someone
+#       # actually walked the archive.
+#       backfill:
+#         supported: true
+#         method: script            # script | paged_api | none
+#                                   #   paged_api - the fetcher itself can walk
+#                                   #     back through pages (MAS Solr, the
+#                                   #     Federal Register API)
+#                                   #   script    - a dedicated script under
+#                                   #     scripts/ does it; `script:` names it
+#                                   #     and the file must exist on disk
+#                                   #   none      - someone checked and there
+#                                   #     is no path. The only method allowed
+#                                   #     with `supported: false`.
+#         script: scripts/backfill_esma_library.py
+#         note: "~7,260 docs across ~363 pages"
+#                                   # With supported: false this note becomes
+#                                   # the REASON in the refusal message the
+#                                   # operator reads, so write it as prose:
+#                                   # "the feed retains only the 10 most recent
+#                                   # items, so there is no history to fetch".
+#
+#       # Optional. What `reg-radar setup` tells the operator BEFORE it writes
+#       # anything: "this will collect approximately 7,260 items on first run".
+#       # Omit any figure that was not actually counted - a missing block is
+#       # reported as "unknown", which is honest; a guessed number is not.
+#       volume_estimate:
+#         first_run: 7260           # items a backfill_all would produce
+#         per_week: 40              # steady-state new items per week
+#         as_of: 2026-09-10         # required whenever a figure is given -
+#                                   # it is what makes a stale estimate visible
+#
 #     # --- scrape: CSS-selector listing page ------------------------------
 #     - type: scrape
 #       url: "https://example-authority.example/publications"

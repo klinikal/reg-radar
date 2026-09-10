@@ -43,6 +43,17 @@
         title_field: title
         url_field: html_url
         published_field: publication_date
+      backfill:
+        supported: true
+        method: paged_api
+        note: "the Federal Register API pages back through its full archive - `count` caps at 10000 and `total_pages` at 50, so a historic walk follows next_page_url's search_after_cursor rather than page numbers"
+      volume_estimate:
+        # ASSUMPTION: per_week is arithmetic on the ~317 documents / 30 days
+        # observed live and recorded in `notes` above, not a separate count.
+        # first_run is deliberately absent - the archive is deep but was never
+        # counted, and "unknown" beats a guess.
+        per_week: 74
+        as_of: 2026-09-10
 
 - id: us-sec
   name: SEC
@@ -204,6 +215,13 @@
       preferred_language: en
       labels: {}
       tags: [press_releases]
+      backfill:
+        supported: false
+        method: none
+        note: "the feed retains only the 10 most recent items, so there is no history to fetch"
+      volume_estimate:
+        first_run: 10
+        as_of: 2026-09-10
     - type: rss
       url: "https://www.occ.gov/rss/occ_bulletins.xml"
       label: bulletins
@@ -211,6 +229,10 @@
       labels:
         document_type: final_guidance
       tags: [publications]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
     - type: rss
       url: "https://www.occ.gov/rss/occ-speeches.xml"
       label: speeches
@@ -218,12 +240,20 @@
       labels:
         document_type: speech
       tags: [speeches]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
     - type: rss
       url: "https://www.occ.gov/rss/occ-publications.xml"
       label: publications
       preferred_language: en
       labels: {}
       tags: [publications]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
     - type: rss
       url: "https://www.occ.gov/rss/occ-congressional-testimony.xml"
       label: testimony
@@ -231,6 +261,10 @@
       labels:
         document_type: speech
       tags: [speeches]
+      backfill:
+        supported: false
+        method: none
+        note: "OCC's RSS feeds are the only machine-readable route and occ.gov has no paged archive behind them - once an item ages off the feed it is gone"
 
 - id: us-cfpb
   name: CFPB
@@ -425,3 +459,13 @@
         url_field: null
         landing_url: "https://mortgage.nationwidelicensingsystem.org/knowledge/news/SitePages/Home.aspx"
         published_field: Created
+      backfill:
+        supported: false
+        method: none
+        note: "no paged backfill has been verified - the configured SharePoint call returns the newest 50 items ($top=50) and nothing behind them has been tested"
+      volume_estimate:
+        # 50 items at capture 2026-09-10, newest 2026-08-24, oldest 2023-12-26
+        # (see `notes` above). per_week is left unknown rather than divided out
+        # of a 20-month window that a category filter also narrows.
+        first_run: 50
+        as_of: 2026-09-10

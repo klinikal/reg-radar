@@ -21,31 +21,36 @@ from regradar.taxonomy import Taxonomy, load_jurisdictions
 from sqlalchemy import text as sa_text
 
 
-REGISTRY = """\
+# The eu/* regulators declare backfill support because one test below asks
+# for `on_enable: backfill_all` over them, and an undeclared source is
+# refused outright (issue #50) - see tests/test_backfill_declaration.py.
+BACKFILLABLE = "backfill: {supported: true, method: paged_api}"
+
+REGISTRY = f"""\
 - id: esma
   jurisdiction: eu
   sources:
-  - {label: news, type: rss}
-  - {label: warnings, type: rss}
+  - {{label: news, type: rss, {BACKFILLABLE}}}
+  - {{label: warnings, type: rss, {BACKFILLABLE}}}
 - id: fr-amf
   jurisdiction: fr
   sources:
-  - {label: news, type: rss}
+  - {{label: news, type: rss, {BACKFILLABLE}}}
 - id: mt-mfsa
   jurisdiction: mt
   sources:
-  - {label: news, type: rss}
-  - {label: solvency, type: rss, enabled: false}
+  - {{label: news, type: rss, {BACKFILLABLE}}}
+  - {{label: solvency, type: rss, enabled: false}}
 - id: uk-fca
   jurisdiction: gb
   sources:
-  - {label: news, type: rss}
-  - {label: warnings, type: rss}
+  - {{label: news, type: rss}}
+  - {{label: warnings, type: rss}}
 - id: us-sec
   jurisdiction: us
   enabled: false
   sources:
-  - {label: news, type: rss}
+  - {{label: news, type: rss}}
 """
 
 JURISDICTIONS = """\
