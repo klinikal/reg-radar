@@ -10,7 +10,23 @@
 #   name: Example Authority
 #   full_name: Example Financial Supervisory Authority
 #   jurisdiction: xx                    # must be an id in config/jurisdictions.yaml, lower-case
-#   jurisdiction_type: national         # "national" or "supranational"
+#   jurisdiction_type: member_state     # free text, unvalidated, display-only - see below
+#
+#   jurisdiction_type is a plain string. Nothing validates it and nothing branches
+#   on it; it is stored and displayed as written, so a typo will not fail any test.
+#   Values in use, and the two the global coverage expansion adds:
+#
+#     supranational   EU-level body - ESMA, EBA, EIOPA, AMLA
+#     member_state    competent authority of an EU member state
+#     eea_non_eu      EEA-EFTA state authority - Iceland, Norway
+#     non_eea         national authority outside the EEA - the UK's FCA
+#     national        national competent authority, for countries outside the
+#                     EEA framing above - e.g. the US SEC
+#     sro             private self-regulatory organisation exercising delegated
+#                     authority, not a government agency - e.g. FINRA
+#     international   international standard-setting body with no jurisdiction of
+#                     its own; its standards are transposed rather than applied
+#                     directly - e.g. FATF
 #   website: https://example-authority.example
 #   mica_competent_authority: true      # true if this body is a MiCA competent authority
 #   enabled: true                       # false disables every source below without deleting them

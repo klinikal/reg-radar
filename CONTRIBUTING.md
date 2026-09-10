@@ -57,6 +57,13 @@ fails loudly - not silently - on:
 Run `.venv/bin/python -m pytest tests/test_main.py -k load_regulators` after
 adding or editing an entry to catch these before opening a PR.
 
+Note what is *not* validated. `jurisdiction_type` is a plain string - nothing
+checks it and nothing branches on it, so a typo is stored and displayed as
+written and no test will fail. The values in use, each with its meaning, are
+documented in the commented header of `config/regulators/_template.yaml`;
+that comment is the single list, deliberately not repeated here, because two
+divergent copies are how it came to be wrong in the first place.
+
 ## Source adapter framework
 
 Each `sources[].type` maps to an adapter under `collector/adapters/` -
