@@ -105,7 +105,7 @@ If your `config/` mount is read-only the write fails with a `WARNING` naming the
 
 ## Coverage
 
-53 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA, six US federal entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC and CFPB) and Singapore (MAS and Singapore Statutes Online) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
+55 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA, eight US entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC, CFPB and Treasury, plus FINRA as a self-regulatory organisation) and Singapore (MAS and Singapore Statutes Online) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
 Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 
@@ -119,7 +119,7 @@ Optional: the `flaresolverr` service (included in Docker Compose by default) ena
 
 The UK's FCA is included as a deliberate exception to the EEA scope above — see `config/regulators/gb.yaml` for why and what's collected (news, warnings, notices and decisions, policy and guidance).
 
-US federal coverage is a second exception, in `config/regulators/us.yaml`: the Federal Register (one API call covering rulemaking and notices for seven agencies, plus FINRA rule filings), and news, enforcement and speeches feeds for the SEC, CFTC, Federal Reserve, OCC and CFPB.
+US federal coverage is a second exception, in `config/regulators/us.yaml`: the Federal Register (one API call covering rulemaking and notices for seven agencies, plus FINRA rule filings), and news, enforcement and speeches feeds for the SEC, CFTC, Federal Reserve, OCC and CFPB. Treasury and FINRA publish no usable feed at all — Treasury has no RSS anywhere, and `finra.org/rss.xml` is a dead Drupal default whose newest entry is from July 2020 — so both are scraped: Treasury's press releases, and FINRA's news releases plus its monthly disciplinary-action reports. FINRA is the registry's only `jurisdiction_type: sro`, a private self-regulatory organisation rather than a government agency. SEC litigation releases are not yet covered: they exist only as HTML, and `www.sec.gov`'s HTML path currently answers a 403 rate-limit page.
 
 Singapore is a third exception, in `config/regulators/sg.yaml`: MAS publishes no RSS anywhere, so all eight MAS sources — media releases, speeches, consultations, enforcement actions, notices, circulars, guidelines and legislation — come from its open Solr search API, plus two scoped `page_watch` sources on Singapore Statutes Online tracking amendments to the Payment Services Act 2019 and the Financial Services and Markets Act 2022.
 

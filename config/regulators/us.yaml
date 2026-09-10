@@ -268,3 +268,116 @@
       # dead feed later, so this stays off until CFPB enforcement resumes.
       # Fixture kept at tests/fixtures/sources/us-cfpb/enforcement_actions.xml.
       enabled: false
+
+- id: us-treasury
+  name: US Treasury
+  full_name: United States Department of the Treasury
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://home.treasury.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    No RSS anywhere on home.treasury.gov. Deliberately NOT covered via the
+    Federal Register treasury-department slug (#C1): that slug co-lists
+    IRS/OFAC/TTB/Mint documents - 37 of 75 Treasury hits in a 30-day window
+    were IRS. Selectors derived from the live page 2026-09-10, NOT from the
+    issue's guesses: `.featured-stories__story` does not exist in the markup
+    at all. The real listing is ten class-less <div> children of
+    `.content--2col__body` inside `.featured-stories`, each holding a
+    `<span class="date-format"><time datetime="...">` and an
+    `<h3 class="featured-stories__headline"><a>`, hence
+    date_attribute: datetime. Ten items per page; a pager follows. The
+    listing container also carries data-news-manifest="/news-data/press-
+    releases/manifest.json" with data-news-total="14848" - a possible
+    json_api route to the full archive, not taken here (out of #M1's scope).
+  sources:
+    - type: scrape
+      url: "https://home.treasury.gov/news/press-releases"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+      scrape:
+        item_selector: ".featured-stories .content--2col__body > div"
+        title_selector: ".featured-stories__headline a"
+        link_selector: ".featured-stories__headline a"
+        date_selector: "time"
+        date_attribute: "datetime"
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+
+- id: us-finra
+  name: FINRA
+  full_name: Financial Industry Regulatory Authority
+  jurisdiction: us
+  jurisdiction_type: sro
+  website: https://www.finra.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    DO NOT USE https://www.finra.org/rss.xml - it returns HTTP 200 with
+    well-formed RSS and 10 items, but the newest entry is from JULY 2020. It
+    is a dead Drupal default and would look permanently healthy while
+    collecting nothing. Scrape is the only working route. FINRA is a private
+    self-regulatory organisation, not a government agency, hence
+    jurisdiction_type: sro (#P3) - its authority is delegated, and FINRA rule
+    changes take effect only once filed with and approved by the SEC, which
+    is why they surface in the Federal Register as SEC 'Self-Regulatory
+    Organizations; ...' notices and are already covered by #C1. Both sources
+    are Drupal views; selectors derived from the live pages 2026-09-10.
+    IMPORTANT, disciplinary_actions URL correction: #M1 named
+    /rules-guidance/oversight-enforcement/finra-disciplinary-actions-online.
+    That page is 95KB of server-side HTML as the issue says, but it is a
+    webform SEARCH FORM - zero <table>, zero .views-row, zero <time>. Any
+    selector against it yields zero items, which #39 would record as
+    `blocked` forever. The actual server-rendered disciplinary listing is
+    /rules-guidance/oversight-enforcement/disciplinary-actions: a Drupal view
+    of the monthly Disciplinary Actions Online reports, one <li> per month,
+    each linking straight to a PDF. Cadence is MONTHLY, so item titles are
+    bare month names ("August 2026") and the date comes from parsing that
+    same anchor text - month and year are exact, the day-of-month is
+    dateutil's fill-in from the collection date. extract_pdf_text is
+    deliberately false: the adapter re-downloads every item's PDF on every
+    run, and these monthly reports are large; the month/URL is the signal.
+  sources:
+    - type: scrape
+      url: "https://www.finra.org/media-center/newsreleases"
+      label: news_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+      scrape:
+        item_selector: ".view-news-releases .views-row"
+        title_selector: ".views-field-title a"
+        link_selector: ".views-field-title a"
+        date_selector: "time"
+        date_attribute: "datetime"
+        date_fuzzy: false
+        content_selector: ".views-field-body .field-content"
+        extract_pdf_text: false
+    - type: scrape
+      url: "https://www.finra.org/rules-guidance/oversight-enforcement/disciplinary-actions"
+      label: disciplinary_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      scrape:
+        item_selector: ".view-disciplinary-actions .item-list li"
+        title_selector: ".views-field-title a"
+        link_selector: ".views-field-title a"
+        date_selector: ".views-field-title a"
+        date_attribute: null
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+      # Monthly cadence: the newest report is up to ~60 days old in the
+      # worst case (e.g. an August report still newest in early October).
+      # The 90-day default warn survives that; anything beyond it is a
+      # genuinely missed month, which is what should be flagged.
