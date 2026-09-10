@@ -34,17 +34,19 @@ _HERE = os.path.dirname(__file__)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Loads taxonomy and activities once at startup so a broken
-    config/taxonomy.yaml, jurisdictions.yaml or activities.yaml kills the
-    process at boot. Loading them lazily inside a request handler meant
-    load_and_exit_on_error()'s sys.exit surfaced as a per-request 500 on a
-    server that stayed up. Request handlers keep calling get_taxonomy()/
-    get_activities(), which now only ever return the already-loaded
-    objects (and still load on demand when the lifespan never ran - a
-    TestClient not used as a context manager, which is how the tests
-    inject their own config paths)."""
+    """Loads taxonomy, activities and the engine once at startup so a
+    broken config/taxonomy.yaml, jurisdictions.yaml or activities.yaml, or
+    an unopenable DB_PATH, kills the process at boot. Loading them lazily
+    inside a request handler meant load_and_exit_on_error()'s sys.exit
+    surfaced as a per-request 500 on a server that stayed up. Request
+    handlers keep calling get_taxonomy()/get_activities()/get_engine(),
+    which now only ever return the already-loaded objects (and still load
+    on demand when the lifespan never ran - a TestClient not used as a
+    context manager, which is how the tests inject their own config
+    paths)."""
     get_taxonomy()
     get_activities()
+    get_engine()
     yield
 
 

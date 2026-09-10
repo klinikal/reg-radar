@@ -77,6 +77,30 @@ def test_search_items_finds_by_raw_content_not_just_snippet():
         os.unlink(db_path)
 
 
+def test_search_items_multi_regulator_ids_is_or():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = search_items(engine, "", regulator_ids=["esma", "eba"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eba"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_regulator_id_and_regulator_ids_combine():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = search_items(engine, "", regulator_id="eiopa", regulator_ids=["esma"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eiopa"}
+    finally:
+        os.unlink(db_path)
+
+
 def test_search_items_fts_finds_by_title():
     engine, db_path = setup_engine()
     try:
@@ -452,6 +476,90 @@ def test_get_recent_filters_by_tag():
         results = get_recent(engine, tags=["casp"])
         assert len(results) == 1
         assert "casp" in json.loads(results[0]["source_tags"])
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_multi_regulator_ids_is_or():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = get_recent(engine, regulator_ids=["esma", "eba"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eba"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_regulator_id_and_regulator_ids_combine():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = get_recent(engine, regulator_id="eiopa", regulator_ids=["esma"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eiopa"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_filters_by_jurisdiction():
+    """jurisdictions matches the regulator's jurisdiction id OR any ancestor
+    of it - e.g. filtering on "eu" also picks up a member-state regulator."""
+    from regradar.taxonomy import build_taxonomy
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {
+            "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+            "jurisdiction": "fr", "jurisdiction_type": "member_state",
+        })
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        upsert_regulator(engine, {"id": "us-sec", "name": "SEC", "full_name": "SEC", "jurisdiction": "us"})
+        insert_item(engine, make_item(regulator_id="fr-amf", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="us-sec", url="https://example.com/3"))
+
+        taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+        results = get_recent(engine, jurisdictions=["fr"], taxonomy=taxonomy)
+
+        assert {r["regulator_id"] for r in results} == {"fr-amf", "esma"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_jurisdictions_without_taxonomy_raises():
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        insert_item(engine, make_item(regulator_id="esma"))
+
+        with pytest.raises(ValueError, match="jurisdictions filter requires a taxonomy"):
+            get_recent(engine, jurisdictions=["fr"], taxonomy=None)
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_recent_filters_by_labels():
+    from regradar.classification import write_classification
+    from regradar.taxonomy import build_taxonomy
+
+    engine, db_path = setup_engine()
+    try:
+        upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+        classified = make_item(regulator_id="esma", url="https://example.com/1")
+        unclassified = make_item(regulator_id="esma", url="https://example.com/2")
+        insert_item(engine, classified)
+        insert_item(engine, unclassified)
+
+        taxonomy = build_taxonomy("config/taxonomy.yaml", "config/jurisdictions.yaml")
+        write_classification(engine, taxonomy, classified.id, "instrument", "mica",
+                              by="rule", confidence=0.9)
+
+        results = get_recent(engine, labels={"instrument": ["mica"]})
+
+        assert [r["id"] for r in results] == [classified.id]
     finally:
         os.unlink(db_path)
 

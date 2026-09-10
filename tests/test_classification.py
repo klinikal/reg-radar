@@ -36,8 +36,11 @@ def _make_taxonomy():
     return Taxonomy(1, {"document_type": document_type, "instrument": instrument}, {})
 
 
-def row(axis, value, by, confidence, superseded_at=None):
-    return {"axis": axis, "value": value, "by": by, "confidence": confidence, "superseded_at": superseded_at}
+def row(axis, value, by, confidence, superseded_at=None, created_at=None):
+    return {
+        "axis": axis, "value": value, "by": by, "confidence": confidence,
+        "superseded_at": superseded_at, "created_at": created_at,
+    }
 
 
 # --- effective_labels() case table (docs/issues/03-*.md scope) -------------
@@ -123,6 +126,36 @@ def test_unknown_axis_in_rows_is_ignored():
     taxonomy = _make_taxonomy()
     rows = [row("not_a_real_axis", "x", "rule", 0.9)]
     assert effective_labels(rows, taxonomy) == {}
+
+
+def test_single_valued_human_tie_broken_by_most_recent_write_not_alphabetical():
+    taxonomy = _make_taxonomy()
+    rows = [
+        # "warning" sorts after "consultation" alphabetically, but bob wrote
+        # it first - alice's later write must win despite "consultation"
+        # sorting first.
+        row("document_type", "warning", "human:bob", 1.0, created_at="2024-01-01 10:00:00"),
+        row("document_type", "consultation", "human:alice", 1.0, created_at="2024-01-02 09:00:00"),
+    ]
+    assert effective_labels(rows, taxonomy) == {"document_type": "consultation"}
+
+
+def test_single_valued_human_tie_falls_back_to_alphabetical_when_created_at_missing():
+    taxonomy = _make_taxonomy()
+    rows = [
+        row("document_type", "consultation", "human:alice", 1.0),
+        row("document_type", "warning", "human:bob", 1.0),
+    ]
+    assert effective_labels(rows, taxonomy) == {"document_type": "warning"}
+
+
+def test_single_valued_human_tie_falls_back_to_alphabetical_when_created_at_equal():
+    taxonomy = _make_taxonomy()
+    rows = [
+        row("document_type", "consultation", "human:alice", 1.0, created_at="2024-01-01 10:00:00"),
+        row("document_type", "warning", "human:bob", 1.0, created_at="2024-01-01 10:00:00"),
+    ]
+    assert effective_labels(rows, taxonomy) == {"document_type": "warning"}
 
 
 def test_human_rows_on_multi_valued_axis_form_the_full_union_set():

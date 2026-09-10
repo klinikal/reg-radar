@@ -1,6 +1,7 @@
 import importlib
 import typing
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -31,11 +32,25 @@ def _server_with_db(tmp_path, monkeypatch):
     return server, write_engine
 
 
-def test_get_engine_exits_if_db_missing(tmp_path, monkeypatch):
+def test_get_engine_raises_runtime_error_if_db_missing(tmp_path, monkeypatch):
+    # get_engine() used to sys.exit(1) here - but it's called from inside
+    # every tool handler, and _safe() does not catch SystemExit, so a
+    # missing DB could kill the process mid-request instead of failing at
+    # boot (see __main__'s get_engine() preload). It must raise a normal
+    # exception instead.
     monkeypatch.setenv("DB_PATH", str(tmp_path / "missing.db"))
     server = _fresh_server_module()
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError):
         server.get_engine()
+
+
+def test_tool_call_with_missing_db_raises_runtime_error_not_system_exit(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "missing.db"))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    server = _fresh_server_module()
+    with pytest.raises(RuntimeError):
+        server.list_regulators_tool()
 
 
 def test_get_engine_opens_existing_db_read_only_and_rejects_writes(tmp_path, monkeypatch):
@@ -77,7 +92,7 @@ def test_transport_security_allows_extra_hosts_from_env(monkeypatch):
 def test_search_items_tool_signature_uses_optional_types():
     server = _fresh_server_module()
     hints = typing.get_type_hints(server.search_items_tool)
-    for name in ("regulator_id", "language", "tags", "source_tags", "content_tags", "date_from", "date_to"):
+    for name in ("regulator_id", "regulator_ids", "language", "tags", "source_tags", "content_tags", "date_from", "date_to"):
         assert type(None) in typing.get_args(hints[name]), f"{name} is not Optional"
 
 
@@ -209,6 +224,63 @@ def test_search_items_tool_returns_list_not_json_string(tmp_path, monkeypatch):
     assert result[0]["title"] == "MiCA warning issued"
 
 
+def test_search_items_tool_regulator_ids_filters_multiple(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.search_items_tool(query="", regulator_ids=["esma", "eba"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eba"}
+
+
+def test_search_items_tool_regulator_id_and_regulator_ids_combine(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.search_items_tool(query="", regulator_id="eiopa", regulator_ids=["esma"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eiopa"}
+
+
+def test_get_recent_tool_regulator_ids_filters_multiple(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.get_recent_tool(regulator_ids=["esma", "eba"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eba"}
+
+
+def test_get_recent_tool_filters_by_jurisdiction(tmp_path, monkeypatch):
+    from collector.storage import insert_item, upsert_regulator
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    upsert_regulator(write_engine, {
+        "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+        "jurisdiction": "fr", "jurisdiction_type": "member_state",
+    })
+    upsert_regulator(write_engine, {"id": "us-sec", "name": "SEC", "full_name": "SEC", "jurisdiction": "us"})
+    insert_item(write_engine, _item("AMF notice", regulator_id="fr-amf"))
+    insert_item(write_engine, _item("SEC notice", regulator_id="us-sec"))
+    result = server.get_recent_tool(jurisdictions=["fr"])
+    assert {r["regulator_id"] for r in result} == {"fr-amf"}
+
+
+def test_get_recent_tool_filters_by_labels(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    classified = _item("MiCA notice")
+    unclassified = _item("Unrelated notice")
+    insert_item(write_engine, classified)
+    insert_item(write_engine, unclassified)
+    server.write_classification(write_engine, server.get_taxonomy(), classified.id, "instrument", "mica",
+                                 by="rule", confidence=0.9)
+    result = server.get_recent_tool(labels={"instrument": ["mica"]})
+    assert [r["id"] for r in result] == [classified.id]
+
+
 def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
@@ -217,6 +289,18 @@ def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):
     insert_item(write_engine, item)
     result = server.get_item_tool(item_id=item.id, max_content_chars=10)
     assert len(result["raw_content"]) == 10
+
+
+def test_get_item_tool_max_content_chars_truncates_body_md(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("MiCA warning issued")
+    item.raw_content = "x" * 1000
+    item.body_md = "y" * 1000
+    insert_item(write_engine, item)
+    result = server.get_item_tool(item_id=item.id, max_content_chars=10)
+    assert len(result["raw_content"]) == 10
+    assert len(result["body_md"]) == 10
 
 
 def test_get_item_tool_missing_id_returns_none(tmp_path, monkeypatch):
@@ -353,3 +437,66 @@ def test_get_unclassified_tool_count_decreases_by_exactly_n_after_n_classify_wri
     after = len(server.get_unclassified_tool(axis="document_type", limit=200))
     assert before - after == 50
     assert after == 0
+
+
+def test_export_tool_writes_files_under_export_root(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued"))
+
+    result = server.export_tool(subdir="run1")
+    assert result["written"] == 1
+    assert result["cursor"] is not None
+    out_dir = Path(result["out_dir"])
+    assert out_dir == (export_root / "run1").resolve()
+    assert next(out_dir.rglob("*.md"), None) is not None
+
+
+def test_export_tool_cursor_advances_across_two_calls(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("first item"))
+
+    first = server.export_tool(subdir="run1")
+    assert first["written"] == 1
+
+    second = server.export_tool(subdir="run1")
+    assert second["written"] == 0
+    assert second["cursor"] == first["cursor"]
+
+    insert_item(write_engine, _item("second item"))
+    third = server.export_tool(subdir="run1")
+    assert third["written"] == 1
+    assert third["cursor"] != first["cursor"]
+
+
+def test_export_tool_rejects_absolute_subdir(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir=str(tmp_path / "elsewhere"))
+
+
+def test_export_tool_rejects_dotdot_traversal(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir="../escape")
+
+
+def test_export_tool_rejects_symlink_escape(tmp_path, monkeypatch):
+    export_root = tmp_path / "exports"
+    export_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (export_root / "link").symlink_to(outside)
+    monkeypatch.setenv("EXPORT_DIR", str(export_root))
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        server.export_tool(subdir="link")

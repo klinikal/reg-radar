@@ -72,6 +72,22 @@ def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") ->
     return conditions, params
 
 
+def _regulator_id_conditions(regulator_ids, prefix: str = "") -> tuple[list[str], dict]:
+    """Builds a `regulator_id IN (...)` condition/params for a list of ids,
+    shared by search_items() and _search_conditions()."""
+    if not regulator_ids:
+        return [], {}
+    conditions = []
+    params = {}
+    placeholders = []
+    for i, rid in enumerate(regulator_ids):
+        key = f"{prefix}reg_{i}"
+        placeholders.append(f":{key}")
+        params[key] = rid
+    conditions.append(f"regulator_id IN ({', '.join(placeholders)})")
+    return conditions, params
+
+
 def _sanitize_fts_terms(terms: list[str]) -> str:
     quoted = []
     for term in terms:
@@ -103,9 +119,9 @@ def _parse_search_terms(query: str, exact: bool) -> list[str]:
     return terms
 
 
-def search_items(engine, query: str, regulator_id=None, language=None, tags=None, source_tags=None,
-                  content_tags=None, jurisdictions=None, labels=None, taxonomy=None, profile=None,
-                  date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
+def search_items(engine, query: str, regulator_id=None, regulator_ids=None, language=None, tags=None,
+                  source_tags=None, content_tags=None, jurisdictions=None, labels=None, taxonomy=None,
+                  profile=None, date_from=None, date_to=None, limit: int = 20, offset: int = 0) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
@@ -136,9 +152,14 @@ def search_items(engine, query: str, regulator_id=None, language=None, tags=None
                     f"(title LIKE :q_{i} ESCAPE '!' OR content_snippet LIKE :q_{i} ESCAPE '!' OR raw_content LIKE :q_{i} ESCAPE '!')"
                 )
                 params[f"q_{i}"] = f"%{_escape_like(term)}%"
-        if regulator_id:
-            conditions.append("regulator_id = :regulator_id")
-            params["regulator_id"] = regulator_id
+        # regulator_id (single, back-compat) and regulator_ids (list) combine
+        # into one set of ids rather than fighting each other.
+        combined_ids = list(regulator_ids) if regulator_ids else []
+        if regulator_id and regulator_id not in combined_ids:
+            combined_ids.append(regulator_id)
+        reg_conditions, reg_params = _regulator_id_conditions(combined_ids)
+        conditions.extend(reg_conditions)
+        params.update(reg_params)
         if language:
             conditions.append("language = :language")
             params["language"] = language
@@ -204,13 +225,9 @@ def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = T
                     f"(title LIKE :term_{i} ESCAPE '!' OR content_snippet LIKE :term_{i} ESCAPE '!' OR raw_content LIKE :term_{i} ESCAPE '!')"
                 )
                 params[f"term_{i}"] = f"%{_escape_like(term)}%"
-    if regulator_ids:
-        placeholders = []
-        for i, rid in enumerate(regulator_ids):
-            key = f"reg_{i}"
-            placeholders.append(f":{key}")
-            params[key] = rid
-        conditions.append(f"regulator_id IN ({', '.join(placeholders)})")
+    reg_conditions, reg_params = _regulator_id_conditions(regulator_ids)
+    conditions.extend(reg_conditions)
+    params.update(reg_params)
     return conditions, params
 
 
@@ -444,23 +461,37 @@ def get_month_facets(engine, query: str = "", exact: bool = False, regulator_ids
         return _run(use_fts=False)
 
 
-def get_recent(engine, limit: int = 20, regulator_id=None, tags=None, source_tags=None, content_tags=None,
-                language=None, profile=None) -> list[dict]:
+def get_recent(engine, limit: int = 20, regulator_id=None, regulator_ids=None, tags=None, source_tags=None,
+                content_tags=None, language=None, jurisdictions=None, labels=None, taxonomy=None,
+                profile=None) -> list[dict]:
     try:
         limit = max(1, min(int(limit), 100))
     except (TypeError, ValueError):
         limit = 20
     conditions = []
     params = {"limit": limit}
-    if regulator_id:
-        conditions.append("regulator_id = :regulator_id")
-        params["regulator_id"] = regulator_id
+    # regulator_id (single, back-compat) and regulator_ids (list) combine
+    # into one set of ids rather than fighting each other - see search_items().
+    combined_ids = list(regulator_ids) if regulator_ids else []
+    if regulator_id and regulator_id not in combined_ids:
+        combined_ids.append(regulator_id)
+    reg_conditions, reg_params = _regulator_id_conditions(combined_ids)
+    conditions.extend(reg_conditions)
+    params.update(reg_params)
     if language:
         conditions.append("language = :language")
         params["language"] = language
     tag_conditions, tag_params = _tag_filter_conditions(tags, source_tags, content_tags)
     conditions.extend(tag_conditions)
     params.update(tag_params)
+    if jurisdictions:
+        jur_conditions, jur_params = _jurisdiction_filter_conditions(jurisdictions, taxonomy)
+        conditions.extend(jur_conditions)
+        params.update(jur_params)
+    if labels:
+        label_conditions, label_params = _labels_filter_conditions(labels)
+        conditions.extend(label_conditions)
+        params.update(label_params)
     if profile is not None:
         profile_conditions, profile_params = _profile_filter_conditions(profile)
         conditions.extend(profile_conditions)
@@ -606,7 +637,7 @@ def get_item(engine, item_id: str, taxonomy=None) -> dict | None:
         ).fetchone()
         classification_rows = (
             [dict(r._mapping) for r in conn.execute(
-                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at "
+                text("SELECT axis, value, by, confidence, taxonomy_version, superseded_at, created_at "
                      "FROM classifications WHERE item_id = :id"),
                 {"id": item_id},
             ).fetchall()]
@@ -971,7 +1002,7 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False, ta
 
         if taxonomy is not None:
             crows = conn.execute(
-                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at "
+                text(f"SELECT item_id, axis, value, by, confidence, taxonomy_version, superseded_at, created_at "
                      f"FROM classifications WHERE item_id IN ({placeholders})"),
                 aparams,
             ).fetchall()
@@ -979,6 +1010,7 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False, ta
                 classifications_by_item.setdefault(r[0], []).append({
                     "axis": r[1], "value": r[2], "by": r[3],
                     "confidence": r[4], "taxonomy_version": r[5], "superseded_at": r[6],
+                    "created_at": r[7],
                 })
 
     documents = []

@@ -48,6 +48,13 @@ def winning_classification_rows(rows: list, taxonomy) -> list:
     full history rather than pre-filtering themselves. Axes unknown to
     `taxonomy`, or values no longer in its vocab (e.g. a stale `import`
     row - see import_classification()), are ignored.
+
+    When two live `human:*` rows from different authors land on the same
+    single-valued axis, the most recently written one wins (`created_at`,
+    compared as sortable strings). `created_at` is optional on `rows` - if
+    it's missing/empty on a row, or ties across the competing rows, the
+    fallback is the alphabetically last value, purely to stay deterministic
+    rather than depending on dict/list iteration order.
     """
     live = [r for r in rows if r.get("superseded_at") is None]
     by_axis: dict = {}
@@ -69,8 +76,14 @@ def winning_classification_rows(rows: list, taxonomy) -> list:
                     by_value.setdefault(r["value"], r)
                 winners.extend(by_value[v] for v in sorted(by_value))
             else:
-                best_value = sorted({r["value"] for r in human_rows})[-1]
-                winners.append(next(r for r in human_rows if r["value"] == best_value))
+                # Most recent write wins (created_at, ISO-ish strings sort
+                # correctly lexicographically). A row with missing/empty
+                # created_at sorts as if it were oldest, so it only wins
+                # when nothing else has a real timestamp. On a tie (equal
+                # or all-missing created_at) fall back to the alphabetically
+                # last value - arbitrary but deterministic, not "whatever
+                # dict iteration order happened to produce".
+                winners.append(max(human_rows, key=lambda r: (r.get("created_at") or "", r["value"])))
             continue
 
         threshold = taxonomy.min_confidence(axis)
@@ -95,6 +108,9 @@ def effective_labels(rows: list, taxonomy) -> dict:
 
     1. Any live `human:*` row wins outright for that axis. For multi-valued
        axes, ALL live human rows for that axis together define the full set.
+       On a single-valued axis with more than one live human row (different
+       authors), the most recent write (`created_at`) wins; see
+       winning_classification_rows() for the tie-break/fallback rule.
     2. Otherwise, live non-human rows with confidence >= the axis's
        min_confidence are considered: multi-valued axes take the union;
        single-valued axes take the highest confidence, ties broken by
@@ -131,11 +147,14 @@ def _materialize_labels_conn(conn, taxonomy, item_id: str) -> dict:
     transaction for the whole batch, per architecture doc §4.5's
     transactional write interface)."""
     rows = conn.execute(
-        text("SELECT axis, value, by, confidence, superseded_at FROM classifications WHERE item_id = :id"),
+        text(
+            "SELECT axis, value, by, confidence, superseded_at, created_at "
+            "FROM classifications WHERE item_id = :id"
+        ),
         {"id": item_id},
     ).fetchall()
     row_dicts = [
-        {"axis": r[0], "value": r[1], "by": r[2], "confidence": r[3], "superseded_at": r[4]}
+        {"axis": r[0], "value": r[1], "by": r[2], "confidence": r[3], "superseded_at": r[4], "created_at": r[5]}
         for r in rows
     ]
     labels = effective_labels(row_dicts, taxonomy)

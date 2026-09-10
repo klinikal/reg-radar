@@ -1,6 +1,6 @@
 import logging
 import os
-import sys
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -24,6 +24,7 @@ from mcpserver.queries import (
     search_items_advanced,
 )
 from regradar.classification import classify_batch, write_classification
+from regradar.exporter import export_profile, read_cursor, resolve_since, write_cursor
 from regradar.profiles import get_expanded_profile, load_activities
 from regradar.taxonomy import load_and_exit_on_error
 from mcpserver.queries import get_changes
@@ -72,7 +73,7 @@ def get_engine():
                 "The MCP server opens the DB read-only and does not create the schema itself.",
                 db_path,
             )
-            sys.exit(1)
+            raise RuntimeError(f"Database file not found at {db_path}")
         _engine = create_engine(
             f"sqlite:///file:{db_path}?mode=ro&uri=true",
             connect_args={"timeout": 30},
@@ -129,13 +130,19 @@ def _safe(label: str, fn, *args, **kwargs):
 
 
 @mcp.tool()
-def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
+def search_items_tool(query: str, regulator_id: str | None = None, regulator_ids: list[str] | None = None,
+                       language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
                        content_tags: list[str] | None = None, jurisdictions: list[str] | None = None,
                        labels: dict[str, list[str]] | None = None, profile: str | None = None,
                        date_from: str | None = None,
                        date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
+
+    `regulator_id` filters to a single regulator; `regulator_ids` filters to
+    any of a list of regulators (e.g. several EEA regulators at once). Both
+    must be valid ids from list_regulators_tool. Passing both combines them
+    into one set of ids.
 
     `tags` searches both the notice-type (source_tags) and topic (content_tags)
     buckets combined. Use `source_tags` to filter by notice kind only (e.g.
@@ -146,9 +153,10 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     provenance (see list_labels_tool).
 
     `jurisdictions` filters to items from a regulator in one of these
-    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any of their
-    descendants (e.g. "eu" also matches "fr", "de", ...). `labels` filters
-    by classification axis, e.g. {"document_type": ["warning"]} or
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any ancestor of it
+    (e.g. "fr" also matches "eu"). There is no descendant expansion -
+    filtering on "eu" does not include member-state regulators. `labels`
+    filters by classification axis, e.g. {"document_type": ["warning"]} or
     {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
     values within one axis OR together. Call list_labels_tool to see valid
     axes/values with their counts.
@@ -163,6 +171,7 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     filter above (AND).
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
+                     regulator_ids=regulator_ids,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
                      jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
                      profile=_resolve_profile(profile),
@@ -171,22 +180,38 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
 
 
 @mcp.tool()
-def get_recent_tool(limit: int = 20, regulator_id: str | None = None, tags: list[str] | None = None,
+def get_recent_tool(limit: int = 20, regulator_id: str | None = None, regulator_ids: list[str] | None = None,
+                     tags: list[str] | None = None,
                      source_tags: list[str] | None = None, content_tags: list[str] | None = None,
-                     language: str | None = None, profile: str | None = None) -> list[dict]:
+                     language: str | None = None, jurisdictions: list[str] | None = None,
+                     labels: dict[str, list[str]] | None = None, profile: str | None = None) -> list[dict]:
     """Returns the most recent regulatory items (ordered by fetched_at,
     newest first), with optional filters.
 
-    limit defaults to 20, max 100. regulator_id must be a valid id from
-    list_regulators_tool. language is an ISO 639-1 code (e.g. "en", "de").
-    `tags` searches both notice-type (source_tags) and topic (content_tags)
-    buckets combined; use `source_tags`/`content_tags` to filter one bucket
-    only. Call list_tags_tool to see valid tag values with their counts.
+    limit defaults to 20, max 100. `regulator_id` filters to a single
+    regulator; `regulator_ids` filters to any of a list of regulators.
+    Both must be valid ids from list_regulators_tool - passing both
+    combines them into one set of ids. language is an ISO 639-1 code
+    (e.g. "en", "de"). `tags` searches both notice-type (source_tags) and
+    topic (content_tags) buckets combined; use `source_tags`/`content_tags`
+    to filter one bucket only. Call list_tags_tool to see valid tag values
+    with their counts.
+
+    `jurisdictions` filters to items from a regulator in one of these
+    jurisdiction ids (lower-case, e.g. "fr", "gb") OR any ancestor of it
+    (e.g. "fr" also matches "eu"). There is no descendant expansion -
+    filtering on "eu" does not include member-state regulators. `labels`
+    filters by classification axis, e.g. {"document_type": ["warning"]} or
+    {"instrument": ["mica", "dora"]} - multiple axes AND together, multiple
+    values within one axis OR together. Call list_labels_tool to see valid
+    axes/values with their counts.
 
     `profile` narrows to a named filter profile - see search_items_tool.
     """
-    results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id, tags=tags,
+    results = _safe("get_recent_tool", get_recent, get_engine(), limit=limit, regulator_id=regulator_id,
+                     regulator_ids=regulator_ids, tags=tags,
                      source_tags=source_tags, content_tags=content_tags, language=language,
+                     jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
                      profile=_resolve_profile(profile))
     return results
 
@@ -215,13 +240,17 @@ def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | 
     object holding the canonical document frontmatter fields (section 3.2
     of the architecture doc) for this item.
 
-    raw_content can be large (a full regulator notice/PDF text) - pass
-    max_content_chars to truncate it and protect your context window; omit
-    for the full text. Returns None if the id doesn't exist.
+    raw_content and body_md can both be large (a full regulator notice/PDF
+    text) - pass max_content_chars to truncate both and protect your
+    context window; omit for the full text. Returns None if the id doesn't
+    exist.
     """
     result = _safe("get_item_tool", get_item, get_engine(), item_id, taxonomy=get_taxonomy())
-    if result and max_content_chars is not None and result.get("raw_content"):
-        result["raw_content"] = result["raw_content"][:max_content_chars]
+    if result and max_content_chars is not None:
+        if result.get("raw_content"):
+            result["raw_content"] = result["raw_content"][:max_content_chars]
+        if result.get("body_md"):
+            result["body_md"] = result["body_md"][:max_content_chars]
     return result
 
 
@@ -496,13 +525,86 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
     return {"items": items, "next_cursor": next_cursor}
 
 
+def _resolve_export_dir(subdir: str | None) -> Path:
+    """Confines export_tool's output to a directory under the export root
+    (EXPORT_DIR env, default /app/data/exports) - see export_tool's
+    docstring for why this exists. `subdir`, if given, must be a relative
+    name with no `..` traversal and must not resolve (following symlinks)
+    outside the root; an absolute path is rejected outright. Creates the
+    resolved directory if it doesn't exist yet.
+    """
+    root = Path(os.getenv("EXPORT_DIR", "/app/data/exports")).resolve()
+    if subdir is None:
+        target = root
+    else:
+        if Path(subdir).is_absolute():
+            raise ValueError(f"subdir must be a relative path under the export root, got: {subdir}")
+        target = (root / subdir).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"subdir escapes the export root ({root}): {subdir}")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+@mcp.tool()
+def export_tool(profile: str | None = None, format: list[str] | None = None, subdir: str | None = None,
+                 since: str | None = None, with_originals: bool = False) -> dict:
+    """Writes a markdown/JSONL export of items matching `profile` to disk
+    and returns where it landed - the MCP equivalent of `reg-radar export`
+    (architecture doc section 6), wrapping the same regradar.exporter.
+    export_profile() the CLI subcommand calls, with the same cursor
+    bookkeeping (a `.reg-radar-cursor` file in the output directory): omit
+    `since` to resume from wherever the last export into this directory
+    left off, or pass a cursor (e.g. from get_health_tool's dataset_import,
+    or a prior export_tool call's `cursor`) to override it for one run.
+
+    `format` is a list of "markdown" and/or "jsonl" (default ["markdown"]);
+    both share one pass over the change stream and one cursor - see
+    regradar.exporter's module docstring if calling this repeatedly with
+    different formats into the same `subdir`. `with_originals=True` also
+    copies each item's original artefact alongside its export.
+
+    Output is confined to a directory under the export root (the EXPORT_DIR
+    env var, default /app/data/exports): `subdir` is an optional relative
+    name under that root, not a free path - an absolute path, `..`
+    traversal, or a symlink resolving outside the root is rejected. This
+    tool writes files to disk but is not behind any extra auth gate beyond
+    what already protects classify_item_tool/classify_items_tool (which
+    write to the database) - the export root confinement is what limits the
+    blast radius, not a separate permission check.
+
+    Returns {"written": int, "cursor": str | None, "out_dir": str} -
+    `written` counts items whose output actually changed, `cursor` is the
+    new stream head to persist for your own bookkeeping if you want it (it
+    is also saved to `.reg-radar-cursor` in `out_dir` automatically), and
+    `out_dir` is the resolved absolute path the files were written to.
+    """
+    def _export():
+        out_dir = _resolve_export_dir(subdir)
+        export_formats = list(dict.fromkeys(format or ["markdown"]))
+        persisted = read_cursor(out_dir)
+        resolved_since = resolve_since(out_dir, since)
+        result = export_profile(
+            get_engine(), out_dir, profile=_resolve_profile(profile), since=resolved_since,
+            with_originals=with_originals, export_formats=export_formats, taxonomy=get_taxonomy(),
+            since_from_out_dir=resolved_since is not None and resolved_since == persisted,
+        )
+        if result["cursor"] and result["cursor"] != resolved_since:
+            write_cursor(out_dir, result["cursor"])
+        return {"written": result["written"], "cursor": result["cursor"], "out_dir": str(out_dir)}
+    return _safe("export_tool", _export)
+
+
 if __name__ == "__main__":
-    # Load taxonomy and activities before serving anything: both go through
-    # load_and_exit_on_error()/ProfileError, and doing that lazily inside a
-    # tool call meant a broken config raised SystemExit per request (which
-    # _safe() does not catch) instead of failing this process at boot.
-    # Module import stays side-effect free so the tests can import this
-    # module and point get_taxonomy() at their own config paths.
+    # Load taxonomy, activities, and the engine before serving anything:
+    # taxonomy/activities go through load_and_exit_on_error()/ProfileError,
+    # and get_engine() used to sys.exit(1) on a missing DB_PATH - doing
+    # either lazily inside a tool call meant a broken config/missing DB
+    # raised SystemExit per request (which _safe() does not catch) instead
+    # of failing this process at boot. Module import stays side-effect free
+    # so the tests can import this module and point get_taxonomy()/
+    # get_engine() at their own config/DB paths.
     get_taxonomy()
     get_activities()
+    get_engine()
     mcp.run(transport="streamable-http")
