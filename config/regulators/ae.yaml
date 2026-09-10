@@ -2,7 +2,7 @@
   name: DFSA
   full_name: Dubai Financial Services Authority
   jurisdiction: ae-difc
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.dfsa.ae
   mica_competent_authority: false
   enabled: true
@@ -63,7 +63,7 @@
   name: ADGM FSRA
   full_name: Abu Dhabi Global Market Financial Services Regulatory Authority
   jurisdiction: ae-adgm
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.adgm.com
   mica_competent_authority: false
   enabled: true
@@ -151,7 +151,7 @@
   name: VARA
   full_name: Virtual Assets Regulatory Authority (Dubai)
   jurisdiction: ae-dubai
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.vara.ae
   mica_competent_authority: false
   enabled: true
@@ -277,7 +277,7 @@
   name: CBUAE
   full_name: Central Bank of the United Arab Emirates
   jurisdiction: ae
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.centralbank.ae
   mica_competent_authority: false
   enabled: true

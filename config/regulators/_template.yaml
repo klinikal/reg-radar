@@ -19,9 +19,12 @@
 #     supranational   EU-level body - ESMA, EBA, EIOPA, AMLA
 #     member_state    competent authority of an EU member state
 #     eea_non_eu      EEA-EFTA state authority - Iceland, Norway
-#     non_eea         national authority outside the EEA - the UK's FCA
-#     national        national competent authority, for countries outside the
-#                     EEA framing above - e.g. the US SEC
+#                     (`member_state` and `eea_non_eu` name genuinely different
+#                     relationships to EU law - it applies directly, versus once
+#                     incorporated into the EEA Agreement - so they are not
+#                     synonyms for `national`. `non_eea` was, and was retired.)
+#     national        national competent authority of a country outside the EU
+#                     and the EEA - the UK's FCA, the US SEC, Singapore's MAS
 #     state           sub-national authority of a federal state - New York's
 #                     DFS, California's DFPI
 #     sro             private self-regulatory organisation exercising delegated

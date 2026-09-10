@@ -2,7 +2,7 @@
   name: MAS
   full_name: Monetary Authority of Singapore
   jurisdiction: sg
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.mas.gov.sg
   mica_competent_authority: false
   enabled: true
@@ -235,7 +235,7 @@
   name: SSO
   full_name: Singapore Statutes Online (Attorney-General's Chambers)
   jurisdiction: sg
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://sso.agc.gov.sg
   mica_competent_authority: false
   enabled: true

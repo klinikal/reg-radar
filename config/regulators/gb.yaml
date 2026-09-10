@@ -2,7 +2,7 @@
   name: FCA
   full_name: Financial Conduct Authority
   jurisdiction: gb
-  jurisdiction_type: non_eea
+  jurisdiction_type: national
   website: https://www.fca.org.uk
   mica_competent_authority: false
   enabled: true
