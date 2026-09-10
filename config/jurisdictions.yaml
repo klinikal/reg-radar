@@ -110,6 +110,22 @@
     Non-EEA. MAS is the single integrated regulator (central bank, banking,
     securities, payments and insurance); Singapore Statutes Online (AGC) is
     the statute publisher, listed separately.
+- id: ae
+  name: United Arab Emirates
+  note: >-
+    Federal (onshore) regime. SCA/UAE CMA and CBUAE regulate here. The DIFC and
+    ADGM financial free zones are constitutionally carved out of federal
+    financial-services law and are modelled as separate children, not as part of
+    ae's own scope: a profile selecting `ae` gets onshore only; `ae/*` opts into
+    the free zones as well.
+- id: ae-difc
+  name: Dubai International Financial Centre
+  parents: [ae]
+  note: Financial free zone; DFSA. Own civil/commercial law; federal financial-services law disapplied.
+- id: ae-adgm
+  name: Abu Dhabi Global Market
+  parents: [ae]
+  note: Financial free zone; FSRA. Own civil/commercial law; federal financial-services law disapplied.
 # Standalone root, NO parent/child edges. Profiles opt in explicitly with
 # `jurisdictions: [eu/*, intl]`.
 - id: intl

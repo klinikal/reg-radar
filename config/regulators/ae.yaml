@@ -1,0 +1,138 @@
+- id: ae-dfsa
+  name: DFSA
+  full_name: Dubai Financial Services Authority
+  jurisdiction: ae-difc
+  jurisdiction_type: non_eea
+  website: https://www.dfsa.ae
+  mica_competent_authority: false
+  enabled: true
+  # Not a JS challenge and not rate limiting: dfsa.ae returns 403 on some
+  # paths and 200 on others, deterministically, under the same UA in the
+  # same second. FlareSolverr is the wrong tool - the Thomson Reuters
+  # mirror is the right one.
+  cloudflare_protected: false
+  notes: >-
+    DFSA's own site blocks by path, deterministically: /alerts, /rulebook and
+    /public-register return Cloudflare 403 on every retry while /news and /rss
+    return 200 on every retry (all six verified live 2026-09-10). Retrying and
+    backoff cannot help - it is a per-path WAF rule. The Thomson Reuters
+    rulebook host dfsaen.thomsonreuters.com mirrors the same material
+    (waivers, media releases, notices, consultation papers, policy statements)
+    unprotected, and is used instead. /rss is the only genuine RSS in the
+    whole UAE set but is curated, not complete: 20 items spanning 2022-04-04
+    to 2026-05-06, and <description> is always the literal string
+    "No Content." - do not treat it as DFSA's full output. Bilingual
+    (?_lcl=ar_AE), English primary. The Thomson Reuters host paginates at
+    10/page via ?page=0..N; the bare URL is the newest page, which is what a
+    daily run wants.
+  sources:
+  - type: rss
+    url: "https://www.dfsa.ae/rss"
+    label: rss
+    preferred_language: en
+    labels: {}
+    tags: [news]
+    # Curated, not complete: 20 items over four years, and the feed's own
+    # history contains a 792-day gap (2024-01-03 -> 2026-03-05) with the
+    # newest item 127 days old at capture. The 90/365 defaults would page on
+    # a feed that is behaving exactly as it always has. Warn sits just above
+    # the largest real gap; error still catches a feed that has genuinely
+    # died rather than gone quiet.
+    staleness:
+      warn_days: 850
+      error_days: 1200
+  - type: scrape
+    url: "https://dfsaen.thomsonreuters.com/view-revision-updates"
+    label: rulebook_updates
+    preferred_language: en
+    labels: {}
+    tags: [publications]
+    # Shared shape across all four UAE Drupal rulebook hosts (DFSA, ADGM,
+    # and VARA/CBUAE in #M3) - identical markup, do not re-derive per host.
+    scrape:
+      item_selector: ".book-detail"
+      title_selector: "a"
+      link_selector: "a"
+      date_selector: "time"
+      date_attribute: "datetime"
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false
+
+- id: ae-fsra
+  name: ADGM FSRA
+  full_name: Abu Dhabi Global Market Financial Services Regulatory Authority
+  jurisdiction: ae-adgm
+  jurisdiction_type: non_eea
+  website: https://www.adgm.com
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    English only - /ar returns 404 (verified live 2026-09-10). Rulebook
+    updates come off the Thomson Reuters host, the same Drupal revision-feed
+    shape as DFSA: FSRA legislation, guidance, policy statements and public
+    consultations. Announcements come from the main sitemap: 5,370 <url>
+    entries, 1,113 matching /media/announcements/ - A FIRST RUN INGESTS 1,113
+    ITEMS, there is no cutoff in the sitemap adapter today. robots.txt
+    disallows /mediacentre/, /media-center/, /doing-business/, /adgm-academy/
+    and /api/ but NOT /media/, the path this filter uses. WARNING on dates:
+    sitemap <lastmod> on adgm.com is a LAST-EDIT timestamp, not a publication
+    date - of 12 pages spot-checked against the date the page itself carries,
+    only 3 matched (e.g. lastmod 2026-05-12 on a page published 2023-10-25).
+    660 of the 1,113 carry the single timestamp 2024-11-04, a CMS-migration
+    bulk re-stamp; those pages' own dates span 2016-2024. Items from this
+    source are therefore dated by when ADGM last touched the page. The
+    real publication date IS on the page (an <adgm-body> line of the form
+    "ADGM FSRA: 05 Sep 2019"), so a future content_selector/enrichment pass
+    could correct it; the sitemap adapter cannot. ADGM's own
+    /legal-framework/public-consultations pages are deliberately skipped:
+    fully JS-rendered, no discoverable JSON endpoint, /api/ robots-disallowed,
+    and largely redundant with the rulebook feed.
+  sources:
+  - type: scrape
+    url: "https://adgmen.thomsonreuters.com/view-revision-updates"
+    label: rulebook_updates
+    preferred_language: en
+    labels: {}
+    tags: [publications]
+    scrape:
+      item_selector: ".book-detail"
+      title_selector: "a"
+      link_selector: "a"
+      date_selector: "time"
+      date_attribute: "datetime"
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false
+    # Rulebook revisions land in bursts - a whole chapter set re-published on
+    # one day, then months of silence. Observed live 2026-09-10: the newest
+    # revision was 45 days old, and the visible history has only four
+    # distinct revision dates (2025-12-29/30, 2026-06-26, 2026-07-20,
+    # 2026-07-27) - a real 178-day gap between the first two. The 90-day
+    # default warn would fire on normal ADGM behaviour.
+    staleness:
+      warn_days: 200
+      error_days: 400
+  - type: sitemap
+    url: "https://www.adgm.com/sitemap.xml"
+    label: announcements
+    preferred_language: en
+    # DISABLED, postponed. The source works - 1,113 items, HTTP 200, verified
+    # live 2026-09-10 - but adgm.com's sitemap <lastmod> is a LAST-EDIT
+    # timestamp, not a publication date. Spot-checked 12 announcements against
+    # the date printed in each page's own body: only 3 matched. 660 of the
+    # 1,113 share the single stamp 2024-11-04T16:39:26+04:00, a CMS-migration
+    # bulk re-stamp, while their real dates span 2016-2024. The sitemap adapter
+    # returns date_inferred=False for a parsed lastmod, so these would enter the
+    # corpus as ASSERTED publication dates, driving export paths, digests,
+    # recency queries and the staleness check - confidently wrong is worse than
+    # unknown. Re-enable once the date is either marked inferred or recovered
+    # from the page body (each carries an "ADGM FSRA: 05 Sep 2019" line).
+    # Separately, a first run would ingest all 1,113 at once: there is no
+    # first-run cutoff anywhere in the collector today.
+    enabled: false
+    labels: {}
+    tags: [press_releases]
+    sitemap:
+      url_pattern: "/media/announcements/"
