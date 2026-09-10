@@ -1,5 +1,5 @@
-"""`reg-radar digest --profile <p> --preview|--send` (docs/issues/11-
-digests-and-notifications.md, architecture doc section 6).
+"""`reg-radar digest --profile <p> --preview|--send` (see
+../wiki/content/cli-digest.md).
 
 Wired into regradar/cli.py's subcommand registry (add_subparser()/run() -
 see that module's docstring for the convention).

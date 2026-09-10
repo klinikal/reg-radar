@@ -144,7 +144,7 @@ def test_uk_equities_dealer_exclude_instruments_removes_mica_only_items(tmp_path
 
 def test_profile_param_on_get_recent_search_items_advanced_get_warnings_get_items_since():
     """Every query function the design notes list gets a profile param that
-    actually filters (docs/issues/05-*.md design notes)."""
+    actually filters (../wiki/content/concept-profiles-activities.md design notes)."""
     engine = _engine()
     _seed_esma_and_bafin(engine)
     expanded = _expanded("eu-casp")

@@ -9,7 +9,7 @@ from collector.storage import init_db, insert_item, upsert_regulator
 from regradar.changes import encode_cursor
 from regradar.cli import main
 
-SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
+SCHEMA = json.loads((Path(__file__).parent.parent / "regradar" / "schema" / "document-v1.json").read_text())
 
 
 def _setup_db(tmp_path, with_artefact=False):

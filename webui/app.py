@@ -441,8 +441,8 @@ def item_classify(item_id: str, axis: str = Form(...), value: str = Form(...), a
 
 @app.get("/alerts")
 def alerts_view():
-    # Renamed to /rules and rebuilt on config/rules.yaml (architecture doc
-    # §4.3) - this issue owns the migration; see scripts/migrate_alerts_to_rules.py.
+    # Renamed to /rules and rebuilt on config/rules.yaml
+    # (../wiki/content/component-rules.md) - this issue owns the migration; see scripts/migrate_alerts_to_rules.py.
     return RedirectResponse("/rules", status_code=308)
 
 
@@ -596,7 +596,7 @@ def api_regulators():
 
 @app.post("/api/items/{item_id}/classifications")
 def api_classify_item(item_id: str, body: dict = Body(...)):
-    """Human correction endpoint (architecture doc §4.5): writes through
+    """Human correction endpoint (../wiki/content/component-classification.md): writes through
     the same write_classification() the collector and migrations use.
 
     Body: {"axis": str, "value": str, "by": str, "confidence"?: float,
@@ -628,7 +628,7 @@ def api_classify_item(item_id: str, body: dict = Body(...)):
     return {"item_id": item_id, "labels": _parse_labels(item.get("labels")) if item else {}}
 
 
-# Export and sync (architecture doc section 6) - the change-stream
+# Export and sync (../wiki/content/concept-export-sync-contract.md) - the change-stream
 # primitive and its Atom feed adapter, same query layer as everything
 # else. /api/changes mirrors get_changes_tool; /feeds/<profile>.atom
 # reuses get_latest_changes(), which orders newest-first (get_changes()
@@ -651,7 +651,7 @@ def _now_z() -> str:
 
 def _atom_summary(doc: dict) -> str:
     # Summary content only, linking to the item - never the full body
-    # (architecture doc section 6: outbound feeds are a discovery
+    # (../wiki/content/concept-export-sync-contract.md: outbound feeds are a discovery
     # mechanism, not a bulk-export channel).
     regulator = doc.get("regulator_name") or doc.get("regulator") or ""
     published = doc.get("published_at") or ""

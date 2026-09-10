@@ -1,5 +1,5 @@
-# eu/* selects EU-level output plus every member state (architecture doc
-# §5.3). regulators stays empty per the task-7 ruling; languages stays
+# eu/* selects EU-level output plus every member state (see
+# wiki/content/concept-profiles-activities.md). regulators stays empty per the task-7 ruling; languages stays
 # empty (all) since a pan-EU firm needs member-state-language output, not
 # just English - unlike uk-equities-dealer, which watches a single
 # English-language jurisdiction.

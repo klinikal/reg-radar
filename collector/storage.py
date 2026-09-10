@@ -24,8 +24,8 @@ from collector.schema import Item
 
 logger = logging.getLogger(__name__)
 
-# Original-artefact storage (docs/design/regradar-architecture.md section
-# 3.3). Read at call time (not import time) so tests can point a single
+# Original-artefact storage (../wiki/content/concept-canonical-document-format.md).
+# Read at call time (not import time) so tests can point a single
 # call at a temp directory without needing to reload this module.
 _DEFAULT_ARTEFACTS_DIR = "/app/data/originals"
 _DEFAULT_MAX_ARTEFACT_BYTES = 25 * 1024 * 1024  # matches MAX_PDF_DOWNLOAD_BYTES's existing default
@@ -152,7 +152,7 @@ class ItemArtefactRow(Base):
 
 
 class ClassificationRow(Base):
-    """One classification event with provenance (architecture doc §4.4).
+    """One classification event with provenance (see ../wiki/content/component-classification.md).
     `items.labels`/`items.updated_at` and `item_labels` are materialised
     from the live (superseded_at IS NULL) rows here by
     regradar.classification.materialize_labels() - never written directly.
@@ -177,7 +177,7 @@ Index("ix_classifications_item_axis_live", ClassificationRow.item_id, Classifica
 class ItemLabelRow(Base):
     """Denormalised (item_id, axis, value) index over the live effective
     labels, rebuilt on every write - the query-speed side table recommended
-    in architecture doc §4.4 (see the measurement in the task report)."""
+    in ../wiki/content/component-classification.md (see the measurement in the task report)."""
     __tablename__ = "item_labels"
 
     item_id = Column(String, primary_key=True)
@@ -537,8 +537,8 @@ class WebhookSubscriptionRow(Base):
     `id` config field if set, else derived from profile+url (see
     regradar.webhooks.subscriber_id; the derived form changes, orphaning
     this row, if `url` is later rotated without an explicit `id`).
-    `cursor` is that subscriber's own head of the change stream (architecture
-    doc section 6), advanced only after a successful delivery. A later
+    `cursor` is that subscriber's own head of the change stream (see
+    ../wiki/content/concept-export-sync-contract.md), advanced only after a successful delivery. A later
     digest feature (issue #13) reuses this same table under its own
     subscriber id convention, per the task ruling that both share this
     mechanism.

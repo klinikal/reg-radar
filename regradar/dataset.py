@@ -1,5 +1,4 @@
-"""Published dataset packaging and import (architecture doc section 8, row
-10 / issue #12): the manifest + tarball builder `.github/workflows/
+"""Published dataset packaging and import (row 10 / issue #12): the manifest + tarball builder `.github/workflows/
 publish-dataset.yml` drives, and the `regradar import-dataset <url|path>`
 command that loads a published dataset into an empty database - which
 saves a new install the historic backfill scripts, not the routine

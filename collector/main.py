@@ -250,7 +250,7 @@ def _migrate_modules_file(engine, modules_path: str) -> None:
 
 def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: dict) -> None:
     """Writes each of a source's configured `labels` (regulators.yaml
-    sources[].labels, architecture doc §4.3) as a `by: source_default`
+    sources[].labels, see ../wiki/content/component-rules.md) as a `by: source_default`
     classification for a newly-inserted item, at that axis's configured
     source_default_confidence (config/taxonomy.yaml - see Taxonomy.
     source_default_confidence()). Code deliberately doesn't branch on axis
@@ -273,7 +273,7 @@ def _apply_rule_labels(engine, taxonomy, rules_engine, item_id: str, rule_labels
     engine (collector.pipeline.classify(), regradar.rules.RulesEngine) for a
     newly-inserted item as a `by: rule` classification, classifier_id set to
     the engine's classifier_id (sha256 of rules.yaml + taxonomy version -
-    docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md)."""
+    ../wiki/content/component-rules.md)."""
     for (axis, value), confidence in (rule_labels or {}).items():
         try:
             write_classification(
@@ -719,7 +719,7 @@ def _schedule_collection(scheduler: BlockingScheduler, engine, regulators: list[
 
 def _dispatch_webhooks(engine, cfg: dict, taxonomy) -> None:
     """Delivers to every configured config/webhooks.yaml subscriber after a
-    collection run completes (architecture doc section 6). A no-op if the
+    collection run completes (see ../wiki/content/concept-export-sync-contract.md). A no-op if the
     file at cfg["webhooks_path"] doesn't exist - webhooks are opt-in - or if
     taxonomy failed to load (profiles can't be expanded without it).
     """

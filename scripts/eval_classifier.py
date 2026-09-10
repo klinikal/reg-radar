@@ -1,6 +1,5 @@
 """Precision/recall of the classification store against a hand-labelled
-gold sample (docs/issues/04-rules-engine-write-interface-llm-classifier
--skill.md): "This is how we find out the early classifications are wrong."
+gold sample (../wiki/content/script-eval-classifier.md): "This is how we find out the early classifications are wrong."
 
 Reads `tests/fixtures/classification/gold.csv` (item_id, axis,
 expected_value - see that file's header for how rows were chosen) and the

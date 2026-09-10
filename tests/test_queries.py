@@ -355,7 +355,8 @@ def test_get_item_includes_body_md_and_document_frontmatter():
 def test_get_item_document_frontmatter_includes_labels_provenance_and_jurisdiction_ancestors():
     """A classified item's frontmatter carries effective labels, one
     label_provenance entry per effective value, and jurisdiction_ancestors
-    from the real jurisdiction hierarchy (architecture doc §3.2/§4.4) -
+    from the real jurisdiction hierarchy (../wiki/content/concept-canonical-document-format.md,
+    ../wiki/content/component-classification.md) -
     e.g. a French regulator's ancestors are [eu]."""
     from regradar.classification import write_classification
     from regradar.taxonomy import build_taxonomy

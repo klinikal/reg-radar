@@ -1,8 +1,7 @@
 # Classification gold sample
 
 `gold.csv` is the hand-labelled sample `scripts/eval_classifier.py` measures
-precision/recall against (docs/issues/04-rules-engine-write-interface-llm
--classifier-skill.md). Columns: `item_id` (a real Task 9 item id, per
+precision/recall against (../../../wiki/content/component-classification.md). Columns: `item_id` (a real Task 9 item id, per
 `collector.schema.make_item_id`), `axis`, `expected_value` (per
 `config/taxonomy.yaml`), plus `title` and `regulator_id` kept for
 readability/audit - the eval script only reads the first three.

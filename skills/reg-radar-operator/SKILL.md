@@ -9,6 +9,8 @@ How to run, query, and navigate reg-radar — a regulatory intelligence tool tha
 
 **Read your context first:** check `skills/reg-radar-operator/refs/context.md` (relative to repo root). If it exists, read it — it tells you what entity is operating this instance and what's relevant to them. That file is git-ignored on purpose (it's instance-specific and contains private company details) so it won't exist in a fresh clone. If it's missing, read `refs/example.context.md` instead — a template showing what that file should contain — and treat this as an unconfigured instance until the operator fills one in (see the `reg-radar-onboarding` skill, in the sibling `skills/reg-radar-onboarding/` folder, to generate it interactively).
 
+For component-level detail beyond this skill (every module, config file, script and runbook), see [`wiki/README.md`](../../wiki/README.md).
+
 ---
 
 ## Is it running?

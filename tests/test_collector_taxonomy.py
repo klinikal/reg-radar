@@ -1,6 +1,6 @@
 """Tests for the collector's taxonomy integration: failing loudly at
 startup on bad config, and writing source-default classifications on
-insert (architecture doc §4.3, docs/issues/03-*.md scope)."""
+insert (../wiki/content/concept-taxonomy-classification.md scope)."""
 import json
 import os
 import tempfile

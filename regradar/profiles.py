@@ -1,5 +1,5 @@
 """Loads config/activities.yaml and profile files, and implements the
-profile expansion algorithm (architecture doc §5) shared by every consumer:
+profile expansion algorithm (../wiki/content/concept-profiles-activities.md) shared by every consumer:
 mcpserver query tools, the webui, and later the exporter.
 
 `document_types` on a profile names the "document_type" taxonomy axis
@@ -41,7 +41,7 @@ def _load_yaml(path: str):
 def load_activities(path: str, taxonomy) -> dict:
     """Loads config/activities.yaml: id -> {"name": str, "instruments":
     [ids]}. Every instrument id must be a valid value of the taxonomy's
-    instrument axis (architecture doc §5.1) - unknown ones are a hard
+    instrument axis (../wiki/content/concept-profiles-activities.md) - unknown ones are a hard
     error, not a warning."""
     data = _load_yaml(path)
     if not isinstance(data, list) or not data:
@@ -70,7 +70,7 @@ def _resolve_profile_path(name_or_path: str, profiles_dir: str) -> str:
 
 
 def load_profile(name_or_path: str, taxonomy, activities: dict, profiles_dir: str = DEFAULT_PROFILES_DIR) -> dict:
-    """Loads and validates one profile file (architecture doc §5.2).
+    """Loads and validates one profile file (../wiki/content/concept-profiles-activities.md).
     Raises ProfileError naming the file on any unknown jurisdiction,
     activity, instrument or document_type id."""
     path = _resolve_profile_path(name_or_path, profiles_dir)
@@ -117,7 +117,7 @@ def load_profile(name_or_path: str, taxonomy, activities: dict, profiles_dir: st
 class ExpandedProfile:
     """jurisdiction_ids, instrument_ids, document_types, regulators,
     languages (all sets), include_unclassified (bool) - the output of
-    expand_profile(), architecture doc §5.3.
+    expand_profile(), ../wiki/content/concept-profiles-activities.md.
 
     No exclude_instrument_ids: §5.2's "hard exclude" is applied once during
     expansion (the excluded ids are already subtracted from
@@ -176,7 +176,7 @@ def expand_profile(profile: dict, taxonomy, activities: dict) -> ExpandedProfile
 
 
 # Cache parsed+expanded profiles per process - invalidated only by restart
-# (docs/issues/05-*.md design notes). A profile is a config file, same as
+# (see ../wiki/content/concept-profiles-activities.md). A profile is a config file, same as
 # taxonomy/activities, which mcpserver.server and webui.app already cache
 # as process-global singletons.
 _expanded_cache: dict = {}

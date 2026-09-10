@@ -43,7 +43,7 @@ def row(axis, value, by, confidence, superseded_at=None, created_at=None):
     }
 
 
-# --- effective_labels() case table (docs/issues/03-*.md scope) -------------
+# --- effective_labels() case table (../wiki/content/concept-taxonomy-classification.md scope) -------------
 
 def test_human_override_wins_regardless_of_confidence():
     taxonomy = _make_taxonomy()
@@ -322,7 +322,7 @@ def test_import_classification_bypasses_validation_and_is_inert_for_unknown_valu
     assert count == 1
 
 
-# --- classify_batch (docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md) ---
+# --- classify_batch (../wiki/content/component-classification.md) ---
 
 def test_classify_batch_writes_valid_entries_and_reports_invalid():
     from regradar.classification import classify_batch
@@ -385,7 +385,7 @@ def test_classify_batch_over_max_size_raises():
 def test_classify_batch_rolls_back_all_writes_on_mid_batch_failure(monkeypatch):
     """A DB-level failure on the second entry's write must roll back the
     first entry's write too - classify_batch's transactional guarantee
-    (architecture doc §4.5) is "all valid entries written, or none are",
+    (../wiki/content/component-classification.md) is "all valid entries written, or none are",
     not "whatever happened to complete before the failure"."""
     import regradar.classification as classification_module
 

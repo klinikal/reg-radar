@@ -1,4 +1,4 @@
-"""Adapter output contract (docs/issues/08-source-adapter-framework-registry-split.md).
+"""Adapter output contract (../../wiki/content/concept-source-adapter-framework.md).
 
 `RawDocument` is what every adapter's `fetch()` returns; `collector.pipeline`
 turns a list of them into `collector.schema.Item` rows. The fields beyond the
@@ -64,7 +64,7 @@ class RawDocument:
     # Content for the shared pipeline to build body_md/raw_content from -
     # distinct from body/mime (the artefact to store), see module docstring.
     # Exactly one of these is normally set; none set means "no content beyond
-    # the snippet fallback" (docs/design/regradar-architecture.md section 3.2).
+    # the snippet fallback" (../../wiki/content/concept-canonical-document-format.md).
     content_html: str | None = None
     content_text: str | None = None
     pdf_text: str | None = None

@@ -56,7 +56,7 @@ def test_list_labels_counts_sorted_most_common_first():
 def test_list_labels_appears_for_a_newly_added_axis_with_no_code_change(tmp_path):
     """A test asserts that adding a new axis to a copy of the config makes
     it appear in list_labels output with no code change (design notes,
-    docs/issues/03-*.md)."""
+    ../wiki/content/concept-taxonomy-classification.md)."""
     extra_taxonomy = tmp_path / "taxonomy.yaml"
     extra_taxonomy.write_text("""\
 version: 1

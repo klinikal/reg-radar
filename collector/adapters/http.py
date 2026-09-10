@@ -1,8 +1,9 @@
 """HTTP plumbing shared by every adapter that fetches over plain HTTP or
 FlareSolverr: SSRF guards, FlareSolverr throttle/backoff/block-page
 detection, and bounded PDF byte fetch + text extraction. Adapter-agnostic -
-moved out of collector/fetcher.py unchanged (docs/issues/08-source-adapter
--framework-registry-split.md) so `rss.py`/`scrape.py`/`page_watch.py` (and
+moved out of collector/fetcher.py unchanged
+(../../wiki/content/concept-source-adapter-framework.md) so
+`rss.py`/`scrape.py`/`page_watch.py` (and
 new adapters) share one implementation instead of duplicating it.
 """
 import ipaddress

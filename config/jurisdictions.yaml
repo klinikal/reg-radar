@@ -1,4 +1,4 @@
-# Jurisdiction hierarchy (architecture doc §4.2). `parents` is a list so the
+# Jurisdiction hierarchy (see wiki/content/concept-taxonomy-classification.md). `parents` is a list so the
 # graph can be a DAG; ancestors are the transitive closure. Every regulator's
 # `jurisdiction` in config/regulators/*.yaml must be an id in this file - the
 # collector fails loudly at startup if it is not (regradar/taxonomy.py).

@@ -1,4 +1,4 @@
-"""The classifications store and write path (architecture doc §4.4-§4.5).
+"""The classifications store and write path (../wiki/content/component-classification.md).
 
 `write_classification()` is the single write path - every caller (the
 collector's source defaults, the migration of legacy content_tags, the
@@ -18,7 +18,7 @@ from collector.storage import db_now
 logger = logging.getLogger(__name__)
 
 # Tie-break order for automated provenances on a single-valued axis, lowest
-# first (architecture doc §4.4: "llm > rule > source_default"; §4.7 ranks
+# first (../wiki/content/component-classification.md: "llm > rule > source_default"; ../wiki/content/concept-taxonomy-classification.md ranks
 # `import` below source defaults so migrated legacy tags never outrank a
 # fresh classification of any other kind).
 _BY_RANK = {"import": 0, "source_default": 1, "rule": 2}
@@ -38,10 +38,10 @@ def winning_classification_rows(rows: list, taxonomy) -> list:
     """Returns the live classification rows that determine the effective
     label for each axis - one row per single-valued axis, one row per
     qualifying value on a multi-valued axis - applying the same precedence
-    as effective_labels() (architecture doc §4.4) but returning the winning
+    as effective_labels() (../wiki/content/component-classification.md) but returning the winning
     rows themselves (axis, value, by, confidence, taxonomy_version, ...)
     rather than just their values. This is what the canonical document's
-    `label_provenance` (architecture doc §3.2) is built from.
+    `label_provenance` (../wiki/content/concept-canonical-document-format.md) is built from.
 
     `rows` are dicts with at least axis/value/by/confidence/superseded_at;
     already-superseded rows are filtered out here so callers can pass a
@@ -104,7 +104,7 @@ def winning_classification_rows(rows: list, taxonomy) -> list:
 
 def effective_labels(rows: list, taxonomy) -> dict:
     """Computes the effective per-axis labels for one item from its
-    classification rows, per architecture doc §4.4:
+    classification rows, per ../wiki/content/component-classification.md:
 
     1. Any live `human:*` row wins outright for that axis. For multi-valued
        axes, ALL live human rows for that axis together define the full set.
@@ -144,7 +144,7 @@ def _materialize_labels_conn(conn, taxonomy, item_id: str) -> dict:
     """Core of materialize_labels() - runs entirely on the given open
     connection, no commit. Shared by materialize_labels() (its own
     connection, commits itself) and classify_batch() (one connection/
-    transaction for the whole batch, per architecture doc §4.5's
+    transaction for the whole batch, per ../wiki/content/component-classification.md's
     transactional write interface)."""
     rows = conn.execute(
         text(
@@ -176,9 +176,8 @@ def materialize_labels(engine, taxonomy, item_id: str) -> dict:
     """Recomputes effective_labels() for one item from its full
     classification history and writes items.labels (JSON) /
     items.updated_at, plus rebuilds its rows in the item_labels side table
-    (the query-speed index recommended in architecture doc §4.4 - see
-    docs/issues/03-*.md's "Design notes" and the measurement in the task
-    report)."""
+    (the query-speed index recommended in
+    ../wiki/content/concept-taxonomy-classification.md)."""
     with engine.connect() as conn:
         labels = _materialize_labels_conn(conn, taxonomy, item_id)
         conn.commit()
@@ -292,7 +291,7 @@ def import_classification(engine, item_id: str, axis: str, value: str, taxonomy_
     """Inserts one classification row WITHOUT taxonomy validation - used by
     scripts/migrate_content_tags.py (always `by="import"`, the default) to
     preserve legacy content_tags as history even where a value no longer
-    maps to a current taxonomy value (architecture doc §4.7: imported rows
+    maps to a current taxonomy value (../wiki/content/concept-taxonomy-classification.md: imported rows
     "survive but rank below anything better"; effective_labels() already
     ignores axes/values it doesn't recognise, so an unmappable import is
     inert rather than an error), and by regradar/dataset.py's
@@ -323,7 +322,7 @@ def import_classification(engine, item_id: str, axis: str, value: str, taxonomy_
 def supersede_axis(engine, item_id: str, axis: str, by: str | None = None) -> int:
     """Supersedes all live non-human rows for (item_id, axis), optionally
     restricted to a specific `by` value. Human rows are never touched by
-    any automated path (architecture doc §4.4). Returns the number of rows
+    any automated path (../wiki/content/component-classification.md). Returns the number of rows
     superseded. Used by `regradar reclassify`."""
     now = db_now()
     conditions = "item_id=:i AND axis=:a AND superseded_at IS NULL AND by NOT LIKE 'human:%'"
@@ -355,8 +354,8 @@ def _known_item_ids(engine, item_ids: list) -> set:
 
 
 def classify_batch(engine, taxonomy, classifications: list) -> dict:
-    """Batch write interface (docs/issues/04-rules-engine-write-interface
-    -llm-classifier-skill.md): validates every entry against the current
+    """Batch write interface (see ../wiki/content/component-classification.md):
+    validates every entry against the current
     taxonomy before writing any of them, so one bad entry in a large batch
     (e.g. an agent working through 100 unclassified items) never loses the
     rest. Returns {"written": [item_id, ...], "errors": [{"index", "item_id",
@@ -373,7 +372,7 @@ def classify_batch(engine, taxonomy, classifications: list) -> dict:
     in), not a per-entry validation problem, so it fails the whole call
     rather than producing 100+ per-entry errors.
 
-    Transactional per architecture doc §4.5: every valid entry is written
+    Transactional per ../wiki/content/component-classification.md: every valid entry is written
     (row insert/supersede plus its item's materialize_labels()) inside ONE
     connection/transaction - if a write fails partway through, the whole
     transaction rolls back and NONE of the batch's rows are written, rather

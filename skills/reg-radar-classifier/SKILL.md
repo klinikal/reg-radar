@@ -5,9 +5,11 @@ description: Use when asked to classify unclassified reg-radar items on the docu
 
 # reg-radar Classifier
 
-Classifies reg-radar items on the `document_type` and `instrument` taxonomy axes (architecture doc §4.1) via the MCP write interface (§4.5), so an agent can work the classification backlog without the repo holding any provider keys or picking a vendor (§4.6). No code here calls an LLM API directly - the agent reading this skill *is* the classifier.
+Classifies reg-radar items on the `document_type` and `instrument` taxonomy axes via the MCP write interface, so an agent can work the classification backlog without the repo holding any provider keys or picking a vendor. No code here calls an LLM API directly - the agent reading this skill *is* the classifier. See [`wiki/content/concept-taxonomy-classification.md`](../../wiki/content/concept-taxonomy-classification.md) for the full model.
 
 **Read your operator context first, if it exists:** check `skills/reg-radar-operator/refs/context.md` (relative to repo root). If present, it names the entity this instance serves - that tells you which items are *worth reading closely* (prioritise), never which label to assign. The taxonomy is objective: what an item *is* (its document type, the legal instruments it substantively concerns) does not change based on who's asking. Do not label something `mica` just because the operator is a Maltese CASP and MiCA is relevant to them - label it `mica` only if the document is actually about MiCA.
+
+For component-level detail (rules engine, classification store, providers), see [`wiki/README.md`](../../wiki/README.md).
 
 ## Before you start
 
@@ -21,7 +23,7 @@ Call `get_taxonomy_tool()`. It returns every axis, its cardinality (`one` or `ma
 1. Pick one axis to work (`document_type` or `instrument` - don't mix in one pass, it's easier to stay consistent).
 2. Call `get_unclassified_tool(axis=<axis>, limit=50)` to get a page of items with no live classification on that axis. Each item includes `title`, `body_md` (truncated to ~6000 characters), `regulator`, `jurisdiction`, and `labels` (its current classifications on other axes, for context - e.g. knowing `document_type` is already `warning` helps judge `instrument`).
 3. Read `title` and `body_md`. For a short item, the title alone is often enough; for anything ambiguous, read the body.
-4. Decide a value (or, for `instrument`, a set of values) and a confidence 0.0-1.0. **Prefer leaving an axis unset over guessing below 0.5** - unset is a real, visible state (architecture doc principle 5); a low-confidence guess just adds noise to `scripts/eval_classifier.py`'s precision numbers without helping anyone.
+4. Decide a value (or, for `instrument`, a set of values) and a confidence 0.0-1.0. **Prefer leaving an axis unset over guessing below 0.5** - unset is a real, visible state (see [Principles](../../wiki/content/concept-principles.md), principle 5); a low-confidence guess just adds noise to `scripts/eval_classifier.py`'s precision numbers without helping anyone.
 5. Batch up to 100 decisions and write them with `classify_items_tool(classifications=[...])`. Use `by: "llm:<provider>/<model>"` (e.g. `"llm:anthropic/claude-sonnet-5"`) - name what's actually classifying, not a placeholder. Check the `errors` list in the response: an entry with a typo'd value - or a stale/typo'd `item_id` that is not in the database - still gets reported even though the rest of the batch was written.
 6. Repeat with `offset` (or just call `get_unclassified_tool` again - it always returns what's still unclassified) until the backlog for that axis is empty or you've done enough for this session.
 

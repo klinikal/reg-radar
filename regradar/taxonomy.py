@@ -1,5 +1,5 @@
 """Loads and validates config/taxonomy.yaml and config/jurisdictions.yaml
-(architecture doc §4.1, §4.2).
+(see ../wiki/content/concept-taxonomy-classification.md).
 
 Code must not name any taxonomy axis except "jurisdiction" - axes and their
 vocabularies come entirely from taxonomy.yaml; jurisdiction hierarchy comes
@@ -99,10 +99,9 @@ class Taxonomy:
     def to_dict(self) -> dict:
         """Renders the taxonomy as the plain dict shape both the
         `get_taxonomy_tool` MCP tool and the batch LLM classifier
-        (regradar/classify.py, architecture doc §4.6) hand to their
+        (regradar/classify.py, see ../wiki/content/cli-classify.md) hand to their
         respective classifiers - a single rendering so the two paths can't
-        drift on what they tell the model is valid (docs/issues/12-batch
-        -llm-classifier-runner.md design notes)."""
+        drift on what they tell the model is valid."""
         return {
             "version": self._version,
             "axes": [
@@ -122,7 +121,7 @@ class Taxonomy:
     def descendants(self, jurisdiction_id: str) -> list:
         """Every jurisdiction id for which `jurisdiction_id` is an ancestor
         (the reverse of ancestors()) - used by profile expansion's `<id>/*`
-        wildcard (architecture doc §5.3). Built by walking ancestors() for
+        wildcard (see ../wiki/content/concept-profiles-activities.md). Built by walking ancestors() for
         every known jurisdiction rather than maintaining a second reverse
         graph; the jurisdiction table is small and this only runs at
         profile-expansion time, not per query."""
@@ -237,7 +236,7 @@ def load_jurisdictions(jurisdictions_path: str) -> dict:
 def build_taxonomy(taxonomy_path: str, jurisdictions_path: str) -> Taxonomy:
     """Loads and validates both config files, cross-checking that every
     instrument value's optional `jurisdiction` (informational only - never
-    rejected, see architecture doc §4.1) references a known jurisdiction id.
+    rejected, see ../wiki/content/concept-taxonomy-classification.md) references a known jurisdiction id.
     Raises TaxonomyError naming the file on any structural problem.
     """
     version, axes = load_taxonomy(taxonomy_path)

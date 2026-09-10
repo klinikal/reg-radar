@@ -1,5 +1,4 @@
-"""Tests for `reg-radar classify` (docs/issues/12-batch-llm-classifier
--runner.md): validation, parsing, prompt building, rate limiting, cost
+"""Tests for `reg-radar classify` (../wiki/content/cli-classify.md): validation, parsing, prompt building, rate limiting, cost
 logging, each provider (mocked HTTP / injected client / a stub script for
 `command`), and a full CLI run wired through regradar/cli.py."""
 import json

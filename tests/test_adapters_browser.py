@@ -3,8 +3,8 @@
 Importable and testable without the playwright browser binary present -
 parse() (used here) never launches a browser, it just runs the `scrape`
 parser against already-rendered HTML. The fixture below reproduces AMLA's
-document library DOM shape (docs/issues/08-source-adapter-framework
--registry-split.md: "browser is proven against a fixture reproducing a real
+document library DOM shape (../wiki/content/concept-source-adapter-framework.md:
+"browser is proven against a fixture reproducing a real
 JS-rendered target's DOM shape"). A real Playwright launch is only exercised
 if REGRADAR_TEST_REAL_BROWSER=1 is set (never in CI).
 """

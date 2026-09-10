@@ -1,5 +1,5 @@
-# Price table for `reg-radar classify` cost logging (docs/issues/12-batch
-# -llm-classifier-runner.md). Only used for API-metered providers
+# Price table for `reg-radar classify` cost logging
+# (../wiki/content/cli-classify.md). Only used for API-metered providers
 # (anthropic, openai) - ollama and command always log "unmetered", never a
 # fabricated cost. A missing entry for a model just logs "cost unknown",
 # it is not an error.

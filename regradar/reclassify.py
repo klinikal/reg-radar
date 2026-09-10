@@ -1,5 +1,5 @@
 """`regradar reclassify --axis <a> [--by <provenance>] [--dry-run]`
-(architecture doc §4.4).
+(../wiki/content/component-classification.md).
 
 This issue re-applies source defaults only; a later issue adds the rules
 engine and the LLM classifier skill to the same command.
@@ -64,10 +64,10 @@ def source_defaults(regulators: list) -> dict:
 
 def _run_rule_reclassify(engine, taxonomy, args) -> int:
     """`reclassify --axis <a> --by rule`: rescoring every item against the
-    current config/rules.yaml (docs/issues/04-rules-engine-write-interface
-    -llm-classifier-skill.md), superseding and rewriting only this axis's
+    current config/rules.yaml (see ../wiki/content/component-rules.md),
+    superseding and rewriting only this axis's
     prior `by: rule` rows - human rows are untouched (supersede_axis()'s own
-    NOT LIKE 'human:%' guard, architecture doc §4.4)."""
+    NOT LIKE 'human:%' guard)."""
     rules_engine = RulesEngine.load(args.rules_path, taxonomy)
     with engine.connect() as conn:
         live_rule_item_ids = {
@@ -91,7 +91,7 @@ def _run_rule_reclassify(engine, taxonomy, args) -> int:
             # still be live - supersede it so a rule that stopped matching
             # doesn't leave a stale classification winning forever (same
             # supersede-then-rewrite property as the source_default path,
-            # architecture doc §4.4).
+            # ../wiki/content/component-classification.md).
             if item_id not in live_rule_item_ids:
                 continue
             to_supersede_only += 1

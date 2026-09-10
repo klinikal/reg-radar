@@ -98,7 +98,7 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
 def parse_fixture(source: dict, regulator_id: str, content: bytes, fetch_pdf: bool = True) -> list[Item]:
     """Runs the registered adapter's parse() against raw fixture/live
     content, then the shared pipeline - the same code path the collector
-    itself uses (docs/issues/08-source-adapter-framework-registry-split.md).
+    itself uses (../wiki/content/concept-source-adapter-framework.md).
 
     fetch_pdf=False forces off a scrape source's extract_pdf_text - that
     option makes the scrape adapter fetch each matched item's URL over the

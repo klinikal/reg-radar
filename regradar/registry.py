@@ -1,5 +1,5 @@
 """Loads config/regulators (the registry) and config/modules.yaml (the
-operator's selection over it) - architecture doc §4.4 / issue #48.
+operator's selection over it) - see wiki/content/component-registry.md.
 
 Split out of collector/main.py (issue #25 item 5): every caller here needs
 only the registry and modules-config logic, never the collector's own

@@ -1,5 +1,5 @@
-"""`command` provider for `regradar classify` (docs/issues/12-batch-llm
--classifier-runner.md): shells out to any CLI that reads a prompt on
+"""`command` provider for `regradar classify` (see
+../../wiki/content/cli-classify.md): shells out to any CLI that reads a prompt on
 stdin and writes text on stdout, so a subscription-backed tool (e.g. a
 `claude -p`-style invocation) works with no API key and no provider-
 specific code. No external dependency - stdlib `subprocess` only.

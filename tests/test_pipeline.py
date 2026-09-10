@@ -1,7 +1,7 @@
 """Unit tests for collector.pipeline - the shared post-fetch step (id
 generation, tag filtering, language resolution, snippet truncation, body
 extraction) that used to be duplicated across collector/fetcher.py's three
-parsers (docs/issues/08-source-adapter-framework-registry-split.md).
+parsers (../wiki/content/concept-source-adapter-framework.md).
 """
 from collector.adapters.base import RawDocument
 from collector.adapters.page_watch import PageWatchAdapter
@@ -192,8 +192,8 @@ def test_generic_raw_document_with_no_content_falls_back_to_snippet_note():
     assert items[0].mime is None
 
 
-# --- classify() / rules_engine wiring (docs/issues/04-rules-engine-write
-# -interface-llm-classifier-skill.md: the pipeline's classify() hook is the
+# --- classify() / rules_engine wiring (../wiki/content/component-rules.md:
+# the pipeline's classify() hook is the
 # only place rule scoring runs; collector.main writes the result) ---
 
 def test_classify_is_a_noop_without_a_rules_engine():

@@ -1,7 +1,7 @@
 """The canonical document format: frontmatter + Markdown body.
 
 Renders an item (plus its optional artefact, labels and label provenance)
-to the file described in docs/design/regradar-architecture.md section 3,
+to the file described in wiki/content/concept-canonical-document-format.md,
 and parses one such file back into a frontmatter dict and a body string.
 This module does no database or filesystem I/O - see regradar/render.py
 for the CLI command that loads items and writes files.
@@ -43,8 +43,8 @@ def _library_version(package: str) -> str:
 
 def slugify(title: str) -> str:
     """Lower-cased, ASCII-folded, non-alphanumerics collapsed to single
-    hyphens, truncated to 80 characters (docs/design/regradar-architecture.md
-    section 3.1). A title that folds away to nothing (e.g. Greek or
+    hyphens, truncated to 80 characters (see
+    wiki/content/concept-canonical-document-format.md). A title that folds away to nothing (e.g. Greek or
     Bulgarian script, which has no ASCII-compatibility decomposition) falls
     back to "untitled" - document_path() still disambiguates via the id8
     suffix, so this never collides.
@@ -301,7 +301,7 @@ def frontmatter_to_json_safe(fm: dict) -> dict:
     """Frontmatter with date/datetime values converted to ISO strings, for
     JSON Schema validation (jsonschema works on JSON-native types only).
     fetched_at/updated_at use the same Z-suffixed form render_item() writes
-    (docs/schema/document-v1.json's pattern expects exactly that).
+    (regradar/schema/document-v1.json's pattern expects exactly that).
     """
     out = dict(fm)
     for key in ("fetched_at", "updated_at"):

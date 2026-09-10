@@ -8,7 +8,7 @@ import pytest
 from regradar import document as doc
 
 FIXTURES = Path(__file__).parent / "fixtures" / "documents"
-SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
+SCHEMA = json.loads((Path(__file__).parent.parent / "regradar" / "schema" / "document-v1.json").read_text())
 
 
 def make_item(**overrides):
@@ -100,7 +100,7 @@ def test_html_to_markdown_renders_pipe_tables():
 
 
 def test_html_to_markdown_preserves_non_ascii():
-    # The decisive case against html2text (see docs/schema evaluation in
+    # The decisive case against html2text (see the schema evaluation in
     # the task report): it silently strips German umlauts to their bare
     # ASCII letters ("für" -> "fur"). markdownify does not.
     html = (FIXTURES / "bafin_press_release.html").read_text(encoding="utf-8")

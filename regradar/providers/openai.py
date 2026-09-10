@@ -1,5 +1,5 @@
-"""OpenAI provider for `regradar classify` (docs/issues/12-batch-llm
--classifier-runner.md). Lazily imports the `openai` package - see
+"""OpenAI provider for `regradar classify` (see
+../../wiki/content/cli-classify.md). Lazily imports the `openai` package - see
 regradar/providers/anthropic.py's module docstring for why.
 
 Uses the JSON-schema response format to force a structured response (issue
