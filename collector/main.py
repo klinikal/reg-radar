@@ -3,6 +3,8 @@ import glob
 import logging
 import os
 import sys
+from datetime import date, datetime, timezone
+
 import yaml
 from sqlalchemy import text as sa_text
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -11,8 +13,13 @@ from apscheduler.triggers.cron import CronTrigger
 from collector.fetcher import fetch_source
 from collector.storage import (
     check_db_integrity,
+    get_module_enable_state,
+    get_page_watch_baseline,
     init_db,
     insert_item,
+    latest_item_id,
+    mark_modules_disabled,
+    record_module_enabled,
     record_run_complete,
     record_run_start,
     record_source_blocked,
@@ -21,6 +28,7 @@ from collector.storage import (
     reset_source_blocked,
     reset_source_empty_runs,
     reset_source_errors,
+    set_page_watch_baseline,
     upsert_regulator,
 )
 from collector.adapters.http import BlockedFetchError
@@ -185,6 +193,25 @@ def _env_flag(name: str) -> bool:
 MODULE_ON_ENABLE_VALUES = ("new_only", "backfill_from", "backfill_all")
 
 
+def _parse_backfill_from(where: str, value) -> datetime:
+    """The `backfill_from:` date as a naive-UTC datetime, matching how every
+    other datetime is stored (see storage.db_now). YAML parses an unquoted
+    2026-01-01 to a date object on its own; a quoted string is accepted too
+    so a hand-edited file that quotes it is not refused over punctuation."""
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    if isinstance(value, str):
+        try:
+            return _parse_backfill_from(where, datetime.fromisoformat(value.strip()))
+        except ValueError:
+            pass
+    raise ModulesConfigError(
+        f"{where}: invalid backfill_from {value!r} - expected a date like 2026-01-01"
+    )
+
+
 class ModulesConfigError(Exception):
     """A structurally invalid config/modules.yaml. Always carries the file
     and the offending entry in its message - the operator has to be able to
@@ -290,10 +317,12 @@ def require_backfill_supported(regulator_id: str, label: str, source: dict) -> N
 
 
 def _validate_module_keys(where: str, entry: dict) -> None:
-    """`schedule` and `on_enable` are validated here but not acted on:
-    per-module cadence is #MOD2 and on_enable semantics are #MOD4. Carrying
-    them through the schema now means an operator's file doesn't have to be
-    rewritten when those land."""
+    """Structural validation of the three per-module keys - `schedule`
+    (#MOD2), `on_enable` and its `backfill_from:` date (#MOD4). Whether a
+    `backfill_from:` is actually *present* for an `on_enable: backfill_from`
+    cannot be decided here: either key may be inherited from `defaults` or a
+    wildcard, so that check belongs in _resolve_modules() where the whole
+    resolution has happened."""
     schedule = entry.get("schedule")
     if schedule is not None:
         if not isinstance(schedule, str):
@@ -307,6 +336,12 @@ def _validate_module_keys(where: str, entry: dict) -> None:
         raise ModulesConfigError(
             f"{where}: invalid on_enable {on_enable!r} - expected one of {', '.join(MODULE_ON_ENABLE_VALUES)}"
         )
+    # ASSUMPTION: the date for `on_enable: backfill_from` is a sibling key
+    # (`backfill_from: 2026-01-01`), not a value inside on_enable - #48
+    # already shipped on_enable as a plain enum string and its tests assert
+    # a bare `on_enable: backfill_from` parses.
+    if entry.get("backfill_from") is not None:
+        _parse_backfill_from(where, entry["backfill_from"])
 
 
 def _load_modules_file(path: str) -> dict:
@@ -417,13 +452,17 @@ def _resolve_modules(regulators: list[dict], doc: dict, jurisdictions_path: str,
             continue
 
         resolved = {"id": entry["id"]}
-        for key in ("schedule", "on_enable"):
+        for key in ("schedule", "on_enable", "backfill_from"):
             value = defaults.get(key)
             if matched_wildcard is not None and matched_wildcard.get(key) is not None:
                 value = matched_wildcard[key]
             if reg_id in exact and exact[reg_id].get(key) is not None:
                 value = exact[reg_id][key]
-            resolved[key] = value
+            # `backfill_from` only exists when someone set one: an absent
+            # key rather than a None keeps the resolved block the same
+            # shape it has always had for everything that reads it.
+            if key != "backfill_from" or value is not None:
+                resolved[key] = value
 
         all_sources = reg.get("sources", []) or []
         # Recorded against every entry that *matched*, not just the one that
@@ -461,6 +500,20 @@ def _resolve_modules(regulators: list[dict], doc: dict, jurisdictions_path: str,
                 if source.get("enabled", True):
                     require_backfill_supported(reg_id, source.get("label"), source)
 
+        # After the refusal above, deliberately: a source that cannot be
+        # backfilled at all is told so, rather than being asked for a date
+        # that would change nothing.
+        if resolved.get("on_enable") == "backfill_from":
+            if resolved.get("backfill_from") is None:
+                raise ModulesConfigError(
+                    f"{modules_path}: module '{entry['id']}' asks for on_enable: backfill_from but "
+                    f"no 'backfill_from:' date is set for it - add e.g. `backfill_from: 2026-01-01` "
+                    f"to the module or to defaults"
+                )
+            resolved["backfill_from"] = _parse_backfill_from(
+                f"{modules_path}: module '{entry['id']}'", resolved["backfill_from"]
+            )
+
         selected.append({**reg, "sources": sources, "module": resolved})
 
     for entry in doc["modules"]:
@@ -481,6 +534,95 @@ def _resolve_modules(regulators: list[dict], doc: dict, jurisdictions_path: str,
         modules_path, len(selected), sum(len(r["sources"]) for r in selected),
     )
     return selected
+
+
+DEFAULT_ON_ENABLE = "new_only"
+
+
+def _watermark_for(on_enable: str, module: dict) -> datetime | None:
+    """The lower bound this `on_enable` puts on what a module collects.
+
+    One mechanism covers all three values, which is why there is no branch
+    on on_enable anywhere else: `new_only` is "nothing older than now",
+    `backfill_from` is "nothing older than that date", `backfill_all` is
+    "no bound at all" (None).
+    """
+    if on_enable == "backfill_all":
+        return None
+    if on_enable == "backfill_from":
+        return module["backfill_from"]
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _log_backfill_route(reg: dict, on_enable: str) -> None:
+    """Names, per source, what will actually fetch the history the operator
+    just asked for.
+
+    ASSUMPTION: nothing in the daily collection path pages backwards - every
+    adapter reads the current page only, and every historic fetch in this
+    repo is a deliberate scripts/backfill_*.py run. The collector's own fetch only ever reads page 1 of a
+    feed - `backfill_all` on its own lifts the watermark, it does not walk
+    an archive - so staying quiet here would be the silent partial that
+    #50's refusal exists to prevent, one step further along."""
+    for source in reg.get("sources", []):
+        if not source.get("enabled", True):
+            continue
+        declared = source_backfill(source)
+        if declared["method"] == "script":
+            logger.info(
+                "%s/%s: on_enable: %s stops older items being filtered out, but the collector itself "
+                "only ever reads the current page - run `python -m %s` (--dry-run first) to fetch the "
+                "archive.",
+                reg["id"], source["label"], on_enable,
+                declared["script"].removesuffix(".py").replace("/", "."),
+            )
+        else:
+            logger.info(
+                "%s/%s: on_enable: %s stops older items being filtered out; there is no dedicated "
+                "backfill script for this source, so what arrives is what it currently offers. %s",
+                reg["id"], source["label"], on_enable, declared["note"] or "",
+            )
+
+
+# ASSUMPTION: enable state is per *regulator*, not per modules.yaml entry.
+# A wildcard like `eu/*` enables 30 regulators, and a regulator added to the
+# registry later must get its own transition rather than inheriting the
+# wildcard's original enable date.
+def apply_on_enable(engine, regulators: list[dict]) -> None:
+    """Consumes `on_enable` for every module that is enabled *and was not
+    collecting before*, and records the disable of every module that has
+    dropped out of the selection (issue #51).
+
+    Runs once per process, before any fetch, so a first run that fails
+    leaves a watermark that is honest rather than half-set: it is the
+    moment the module was switched on, not the newest item a partial fetch
+    happened to see. A module already collecting normally is skipped
+    entirely - `on_enable` is a transition rule, not a per-run one, and
+    editing it later must not silently re-cut an install's history.
+    """
+    for reg_id in mark_modules_disabled(engine, {r["id"] for r in regulators}):
+        logger.info(
+            "Module %s is no longer selected - it will not be collected. Everything already "
+            "collected for it stays in the database, including its page_watch baselines.",
+            reg_id,
+        )
+
+    for reg in regulators:
+        state = get_module_enable_state(engine, reg["id"])
+        if state and state["enabled"]:
+            continue  # already collecting - on_enable is not consulted again
+        module = reg.get("module") or {}
+        on_enable = module.get("on_enable") or DEFAULT_ON_ENABLE
+        watermark = _watermark_for(on_enable, module)
+        record_module_enabled(engine, reg["id"], module.get("id") or reg["id"], on_enable, watermark)
+        logger.info(
+            "Module %s enabled (%s): collecting %s.",
+            reg["id"], on_enable,
+            "everything the sources offer, with no date bound" if watermark is None
+            else f"items published after {watermark.isoformat(sep=' ', timespec='seconds')}",
+        )
+        if on_enable in ("backfill_all", "backfill_from"):
+            _log_backfill_route(reg, on_enable)
 
 
 MODULES_MIGRATION_YAML = """\
@@ -583,6 +725,78 @@ def _apply_rule_labels(engine, taxonomy, rules_engine, item_id: str, rule_labels
             logger.warning("Skipping invalid rule label for item %s: %s", item_id, e)
 
 
+def _ordering_key(item) -> datetime:
+    """What a watermark compares against: the item's published date where
+    the source gives one, its fetch time otherwise (an undated item is new
+    to us the moment we see it, and dropping it would be worse than
+    collecting it twice)."""
+    when = item.published_at or item.fetched_at
+    return when.astimezone(timezone.utc).replace(tzinfo=None) if when.tzinfo else when
+
+
+def _page_watch_changes(engine, regulator_id: str, label: str, items: list) -> list:
+    """The page_watch items that represent an actual change to the watched
+    fragment, updating the stored baseline as it goes.
+
+    A page_watch source has no history: its whole state is the hash of a
+    fragment, carried in the item id. So the first observation is a
+    baseline, not a change - reporting it would mean telling a user a
+    statute page changed on the day they started watching it. Equally, a
+    baseline that reset would report a change that never happened, so the
+    row is written once, never deleted on disable, and adopted from
+    existing collection history on an install that predates it.
+
+    Zero items (the fragment is missing, or the selector stopped matching -
+    PageWatchAdapter.parse returns [] for both) leaves the baseline exactly
+    as it was: an unreadable page is not evidence that the page changed,
+    and it is already surfaced as an empty run by the caller."""
+    changed = []
+    for item in items:
+        baseline = get_page_watch_baseline(engine, regulator_id, label)
+        if baseline is None:
+            baseline = latest_item_id(engine, regulator_id, label)
+            if baseline is not None:
+                # Pre-#51 history: the last item we recorded IS the last
+                # thing we saw, so adopt it rather than treating a page
+                # watched for months as brand new and swallowing a change.
+                set_page_watch_baseline(engine, regulator_id, label, baseline)
+        if baseline is None:
+            set_page_watch_baseline(engine, regulator_id, label, item.id)
+            logger.info(
+                "page_watch baseline established for %s/%s - recorded the current content of the "
+                "watched fragment. This is the first observation, not a change; nothing is reported.",
+                regulator_id, label,
+            )
+            continue
+        if baseline == item.id:
+            continue  # unchanged since the baseline
+        set_page_watch_baseline(engine, regulator_id, label, item.id)
+        logger.info(
+            "page_watch change detected for %s/%s - the watched fragment differs from the stored baseline.",
+            regulator_id, label,
+        )
+        changed.append(item)
+    return changed
+
+
+def _collectable(engine, regulator_id: str, source: dict, items: list) -> list:
+    """The fetched items this run should actually write - `items` itself is
+    left alone so fetch counts and the empty-run/selector-drift detectors
+    keep seeing what the source really returned.
+
+    Two filters, both from issue #51: the module's `on_enable` watermark
+    (absent for any caller with no module state, e.g. the backfill scripts,
+    which then behave exactly as they did before), and the page_watch
+    baseline comparison."""
+    state = get_module_enable_state(engine, regulator_id)
+    collect_from = (state or {}).get("collect_from")
+    if collect_from is not None:
+        items = [i for i in items if _ordering_key(i) > collect_from]
+    if source.get("type") == "page_watch":
+        items = _page_watch_changes(engine, regulator_id, source["label"], items)
+    return items
+
+
 def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None):
     run_id = record_run_start(engine)
     total_fetched = 0
@@ -651,7 +865,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                     try:
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg, rules_engine=rules_engine)
                         total_fetched += len(items)
-                        for item in items:
+                        for item in _collectable(engine, reg["id"], source, items):
                             if insert_item(engine, item):
                                 total_new += 1
                                 if taxonomy is not None:
@@ -838,6 +1052,11 @@ def main():
     regulators = load_regulators(
         config_path, modules_path=cfg["modules_path"], jurisdictions_path=cfg["jurisdictions_path"],
     )
+    # Before anything is fetched, and before the empty-selection exit below,
+    # so switching everything off is recorded as a disable rather than as
+    # silence (issue #51).
+    apply_on_enable(engine, regulators)
+
     if not regulators:
         # Not an error: either a fresh install that hasn't run `reg-radar
         # setup` yet, or a modules.yaml that selects nothing. load_regulators()

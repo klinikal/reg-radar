@@ -668,3 +668,162 @@ def set_sync_state(engine, key: str, value: str) -> None:
         else:
             session.add(SyncStateRow(key=key, value=value, updated_at=datetime.now(timezone.utc)))
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Module enable state and page_watch baselines (issue #51)
+# ---------------------------------------------------------------------------
+
+class ModuleStateRow(Base):
+    """When a module started collecting, and from when it collects.
+
+    Same table family and lifecycle as source_errors above: small, written
+    by the collector, read by nothing that must exist for a run to work.
+
+    `collect_from` is the watermark `on_enable` resolves to, recorded once
+    at the transition into enabled and never advanced afterwards - NULL
+    means "no lower bound" (backfill_all). It is deliberately not "the
+    newest item seen last run": a watermark that chases the feed skips
+    items whenever a run half-fails, which is the exact failure #51 names.
+
+    `enabled` tracks whether the module was in the last selection, so a
+    module that was switched off and back on is recognisable as a
+    transition rather than as an uninterrupted run of collections. Rows
+    already collected are never touched when a module is disabled.
+    """
+    __tablename__ = "module_state"
+
+    regulator_id = Column(String, primary_key=True)
+    module_id = Column(String)       # the modules.yaml entry that selected it ("eu/*", "uk-fca")
+    on_enable = Column(String)       # new_only | backfill_from | backfill_all
+    enabled = Column(Boolean, default=True)
+    collect_from = Column(DateTime, nullable=True)
+    first_enabled_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+
+class PageWatchBaselineRow(Base):
+    """The last observed state of a page_watch source's watched fragment.
+
+    Held here rather than inferred from `items` because the two answer
+    different questions: `items` is what we reported to the user, this is
+    what we last saw. Keeping it separate is what lets a first observation
+    establish a baseline while reporting nothing, and what makes "a disable
+    must not delete the baseline" a property of a row nothing deletes
+    rather than of a code path nobody re-reads.
+
+    The stored token is the item id, which for page_watch is a pure
+    function of (regulator, url, content hash) - see
+    collector.schema.make_page_watch_item_id. Equal id, unchanged page.
+    """
+    __tablename__ = "page_watch_baselines"
+
+    regulator_id = Column(String, primary_key=True)
+    source_label = Column(String, primary_key=True)
+    item_id = Column(String, nullable=False)
+    established_at = Column(DateTime)
+    updated_at = Column(DateTime)
+
+
+def get_module_enable_state(engine, regulator_id: str) -> dict | None:
+    # Read through the ORM, not text(): SQLAlchemy's DateTime type is what
+    # turns the stored string back into a datetime, and a raw SELECT would
+    # hand the caller a string to compare timestamps against (see db_now).
+    with Session(engine) as session:
+        row = session.get(ModuleStateRow, regulator_id)
+        if row is None:
+            return None
+        return {
+            "regulator_id": row.regulator_id,
+            "module_id": row.module_id,
+            "on_enable": row.on_enable,
+            "enabled": bool(row.enabled),
+            "collect_from": row.collect_from,
+            "first_enabled_at": row.first_enabled_at,
+        }
+
+
+def record_module_enabled(engine, regulator_id: str, module_id: str, on_enable: str,
+                          collect_from: datetime | None) -> None:
+    """Marks a module as collecting from now on, recording the watermark
+    its `on_enable` resolved to. Called at the transition into enabled and
+    only there - a module already collecting normally keeps the watermark
+    it was given, so editing `on_enable:` later does not silently re-cut
+    an install's history."""
+    with Session(engine) as session:
+        row = session.get(ModuleStateRow, regulator_id)
+        now = datetime.now(timezone.utc)
+        if row is None:
+            session.add(ModuleStateRow(
+                regulator_id=regulator_id, module_id=module_id, on_enable=on_enable,
+                enabled=True, collect_from=collect_from, first_enabled_at=now, updated_at=now,
+            ))
+        else:
+            row.module_id = module_id
+            row.on_enable = on_enable
+            row.enabled = True
+            row.collect_from = collect_from
+            row.first_enabled_at = row.first_enabled_at or now
+            row.updated_at = now
+        session.commit()
+
+
+def mark_modules_disabled(engine, active_regulator_ids) -> list[str]:
+    """Flags every known module that is no longer in the selection, and
+    returns the ids that changed state this call (so the caller can log a
+    disable once rather than every run). Deliberately only writes the flag:
+    items, artefacts, classifications and page_watch baselines for a
+    disabled module all stay exactly where they are."""
+    active = set(active_regulator_ids)
+    with Session(engine) as session:
+        rows = session.query(ModuleStateRow).filter(ModuleStateRow.enabled.is_(True)).all()
+        newly_disabled = [r.regulator_id for r in rows if r.regulator_id not in active]
+        for row in rows:
+            if row.regulator_id not in active:
+                row.enabled = False
+                row.updated_at = datetime.now(timezone.utc)
+        session.commit()
+    return newly_disabled
+
+
+def get_page_watch_baseline(engine, regulator_id: str, source_label: str) -> str | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT item_id FROM page_watch_baselines "
+                "WHERE regulator_id = :r AND source_label = :s"
+            ),
+            {"r": regulator_id, "s": source_label},
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_page_watch_baseline(engine, regulator_id: str, source_label: str, item_id: str) -> None:
+    with Session(engine) as session:
+        row = session.get(PageWatchBaselineRow, (regulator_id, source_label))
+        now = datetime.now(timezone.utc)
+        if row is None:
+            session.add(PageWatchBaselineRow(
+                regulator_id=regulator_id, source_label=source_label, item_id=item_id,
+                established_at=now, updated_at=now,
+            ))
+        else:
+            row.item_id = item_id
+            row.updated_at = now
+        session.commit()
+
+
+def latest_item_id(engine, regulator_id: str, source_label: str) -> str | None:
+    """The most recently fetched item id for a source, used only to adopt a
+    baseline for a page_watch source that already has collection history
+    from before baselines existed. Without it the upgrade run would treat
+    a long-watched page as brand new and swallow a genuine change."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id FROM items WHERE regulator_id = :r AND source_label = :s "
+                "ORDER BY fetched_at DESC LIMIT 1"
+            ),
+            {"r": regulator_id, "s": source_label},
+        ).fetchone()
+    return row[0] if row else None

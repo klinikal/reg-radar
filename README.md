@@ -89,7 +89,19 @@ Suggested cadences:
 
 The cadences never overlap each other: every run still takes the same single file lock, so a job that fires while another is still collecting is skipped with a `WARNING` naming its cron expression and the regulators it was carrying. That means a slow cadence can starve a fast one — the log line is there so you can see it happening. An unusable expression on a module logs and skips that group only; the scheduler still starts and the other cadences run. `--once` ignores cadence entirely and runs every enabled module in one pass.
 
-`on_enable:` is still validated but not yet acted on.
+**`on_enable:`** decides what the *first* run after switching a module on collects — and only that run. It is consulted at the transition into enabled and never again, so editing it later never re-cuts history you already have.
+
+| Value | Behaviour |
+|---|---|
+| `new_only` (default) | Records the moment you enabled the module and collects only what is published after it. Cheap, no history |
+| `backfill_from` | Same, with a date you give: `on_enable: backfill_from` plus `backfill_from: 2026-01-01` |
+| `backfill_all` | No date bound at all |
+
+The watermark is recorded *before* the first fetch and is the enable moment, never "the newest item the last run happened to see" — so a first run that fails leaves nothing half-set, and the retry still collects everything published since.
+
+Both backfill values are a **hard error** against a source `config/regulators/` declares un-backfillable, before a run is recorded or an item written (see [Declared backfill capability](#declared-backfill-capability-and-volume)). Where they are allowed, be clear on what they do: they stop the collector *filtering* older items out — the collector itself only ever reads the current page of a feed. Walking an archive is a `scripts/backfill_*.py` run, and the enable log names the script for each source.
+
+**Switching a module off is non-destructive.** Every row already collected stays in the database — items, artefacts, classifications — and so does each `page_watch` source's stored baseline. That baseline is why re-enabling is safe: a `page_watch` source's entire state is a hash of the fragment it watches, so a lost baseline would report a change to a page that never changed. Re-enabling compares against the surviving baseline and reports a change only if the page genuinely changed while the module was off. The first-ever enable of a `page_watch` source records the baseline and reports nothing, logging *"baseline established"* — distinct from *"change detected"*, which is what the same source logs when the fragment actually moves. Pruning rows for a disabled module is a separate decision that has not been taken.
 
 ### The trade-off: collection-time filtering is not free to reverse
 

@@ -64,7 +64,29 @@ modules:
   # - id: us-occ
   #   schedule: "0 */4 * * *"
 
-  # `on_enable:` is validated but not yet acted on - it lands with a later
-  # issue in this series.
+  # `on_enable:` decides what the FIRST run after switching a module on
+  # collects. It is consulted once, at that transition, and never again -
+  # editing it later does not re-cut history you already have.
+  #
+  #   new_only        record the moment you enabled it and collect only
+  #                   what is published after that. Cheap, no history, and
+  #                   the default.
+  #   backfill_from   same, but the watermark is a date you give:
+  #                   `on_enable: backfill_from` + `backfill_from: 2026-01-01`
+  #   backfill_all    no date bound at all.
+  #
+  # Both backfill values are refused outright, before anything is written,
+  # for a source config/regulators/ declares un-backfillable - see the
+  # README's "Declared backfill capability". Note what they do and do not
+  # do: they stop the collector filtering old items out, but the collector
+  # itself only ever reads the current page of a feed. Walking an archive is
+  # a `scripts/backfill_*.py` run, which the enable logs name for you.
+  #
   # - id: mt-mfsa
-  #   on_enable: new_only
+  #   on_enable: backfill_from
+  #   backfill_from: 2026-01-01
+  #
+  # Switching a module OFF is non-destructive: everything already collected
+  # stays in the database, including page_watch baselines, so re-enabling
+  # reports a change only if the watched page really changed while it was
+  # off.
