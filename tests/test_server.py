@@ -229,6 +229,43 @@ def test_search_items_tool_regulator_id_and_regulator_ids_combine(tmp_path, monk
     assert {r["regulator_id"] for r in result} == {"esma", "eiopa"}
 
 
+def test_get_recent_tool_regulator_ids_filters_multiple(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.get_recent_tool(regulator_ids=["esma", "eba"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eba"}
+
+
+def test_get_recent_tool_filters_by_jurisdiction(tmp_path, monkeypatch):
+    from collector.storage import insert_item, upsert_regulator
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    upsert_regulator(write_engine, {
+        "id": "fr-amf", "name": "AMF", "full_name": "Autorite des Marches Financiers",
+        "jurisdiction": "fr", "jurisdiction_type": "member_state",
+    })
+    upsert_regulator(write_engine, {"id": "us-sec", "name": "SEC", "full_name": "SEC", "jurisdiction": "us"})
+    insert_item(write_engine, _item("AMF notice", regulator_id="fr-amf"))
+    insert_item(write_engine, _item("SEC notice", regulator_id="us-sec"))
+    result = server.get_recent_tool(jurisdictions=["fr"])
+    assert {r["regulator_id"] for r in result} == {"fr-amf"}
+
+
+def test_get_recent_tool_filters_by_labels(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    classified = _item("MiCA notice")
+    unclassified = _item("Unrelated notice")
+    insert_item(write_engine, classified)
+    insert_item(write_engine, unclassified)
+    server.write_classification(write_engine, server.get_taxonomy(), classified.id, "instrument", "mica",
+                                 by="rule", confidence=0.9)
+    result = server.get_recent_tool(labels={"instrument": ["mica"]})
+    assert [r["id"] for r in result] == [classified.id]
+
+
 def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):
     from collector.storage import insert_item
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
