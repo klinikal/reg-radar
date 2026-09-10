@@ -77,7 +77,7 @@ def test_transport_security_allows_extra_hosts_from_env(monkeypatch):
 def test_search_items_tool_signature_uses_optional_types():
     server = _fresh_server_module()
     hints = typing.get_type_hints(server.search_items_tool)
-    for name in ("regulator_id", "language", "tags", "source_tags", "content_tags", "date_from", "date_to"):
+    for name in ("regulator_id", "regulator_ids", "language", "tags", "source_tags", "content_tags", "date_from", "date_to"):
         assert type(None) in typing.get_args(hints[name]), f"{name} is not Optional"
 
 
@@ -207,6 +207,26 @@ def test_search_items_tool_returns_list_not_json_string(tmp_path, monkeypatch):
     result = server.search_items_tool(query="MiCA")
     assert isinstance(result, list)
     assert result[0]["title"] == "MiCA warning issued"
+
+
+def test_search_items_tool_regulator_ids_filters_multiple(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.search_items_tool(query="", regulator_ids=["esma", "eba"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eba"}
+
+
+def test_search_items_tool_regulator_id_and_regulator_ids_combine(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    insert_item(write_engine, _item("MiCA warning issued", regulator_id="esma"))
+    insert_item(write_engine, _item("MiCA travel rule notice", regulator_id="eba"))
+    insert_item(write_engine, _item("unrelated press release", regulator_id="eiopa"))
+    result = server.search_items_tool(query="", regulator_id="eiopa", regulator_ids=["esma"])
+    assert {r["regulator_id"] for r in result} == {"esma", "eiopa"}
 
 
 def test_get_item_tool_max_content_chars_truncates(tmp_path, monkeypatch):

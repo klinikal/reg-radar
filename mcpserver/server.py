@@ -129,13 +129,19 @@ def _safe(label: str, fn, *args, **kwargs):
 
 
 @mcp.tool()
-def search_items_tool(query: str, regulator_id: str | None = None, language: str | None = None,
+def search_items_tool(query: str, regulator_id: str | None = None, regulator_ids: list[str] | None = None,
+                       language: str | None = None,
                        tags: list[str] | None = None, source_tags: list[str] | None = None,
                        content_tags: list[str] | None = None, jurisdictions: list[str] | None = None,
                        labels: dict[str, list[str]] | None = None, profile: str | None = None,
                        date_from: str | None = None,
                        date_to: str | None = None, limit: int = 20, offset: int = 0) -> list[dict]:
     """Full-text search across regulatory items by title and snippet, paginated.
+
+    `regulator_id` filters to a single regulator; `regulator_ids` filters to
+    any of a list of regulators (e.g. several EEA regulators at once). Both
+    must be valid ids from list_regulators_tool. Passing both combines them
+    into one set of ids.
 
     `tags` searches both the notice-type (source_tags) and topic (content_tags)
     buckets combined. Use `source_tags` to filter by notice kind only (e.g.
@@ -164,6 +170,7 @@ def search_items_tool(query: str, regulator_id: str | None = None, language: str
     filter above (AND).
     """
     results = _safe("search_items_tool", search_items, get_engine(), query=query, regulator_id=regulator_id,
+                     regulator_ids=regulator_ids,
                      language=language, tags=tags, source_tags=source_tags, content_tags=content_tags,
                      jurisdictions=jurisdictions, labels=labels, taxonomy=get_taxonomy() if jurisdictions else None,
                      profile=_resolve_profile(profile),

@@ -77,6 +77,30 @@ def test_search_items_finds_by_raw_content_not_just_snippet():
         os.unlink(db_path)
 
 
+def test_search_items_multi_regulator_ids_is_or():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = search_items(engine, "", regulator_ids=["esma", "eba"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eba"}
+    finally:
+        os.unlink(db_path)
+
+
+def test_search_items_regulator_id_and_regulator_ids_combine():
+    engine, db_path = setup_engine()
+    try:
+        insert_item(engine, make_item(regulator_id="esma", url="https://example.com/1"))
+        insert_item(engine, make_item(regulator_id="eba", url="https://example.com/2"))
+        insert_item(engine, make_item(regulator_id="eiopa", url="https://example.com/3"))
+        results = search_items(engine, "", regulator_id="eiopa", regulator_ids=["esma"])
+        assert {r["regulator_id"] for r in results} == {"esma", "eiopa"}
+    finally:
+        os.unlink(db_path)
+
+
 def test_search_items_fts_finds_by_title():
     engine, db_path = setup_engine()
     try:
