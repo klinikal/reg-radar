@@ -38,6 +38,17 @@ def parse_text_date(date_str: str, fuzzy: bool = False, date_attribute: str | No
 
     fuzzy is NOT a safe default: it extracts a date-shaped substring from
     surrounding prose and never fails loudly. Opt in per source.
+
+    KNOWN LIMITATION: a string with no timezone is read as UTC. Some feeds
+    publish local time - the FCA's news and warnings feeds render
+    "Thursday, September 3, 2026 - 10:35" in Europe/London - so those items
+    are stored an hour early during BST. Accepted, not fixed: it does not
+    affect ordering within a source and it cannot cause duplicate ids,
+    because the collector and scripts/repair_undated_rss_items.py derive the
+    date identically, which is the property item ids depend on. Fixing it
+    properly means letting a source declare its timezone in
+    config/regulators/ rather than special-casing one regulator in a shared
+    parser. See wiki/content/component-collector-adapters.md.
     """
     try:
         from dateutil.parser import parse as _parse

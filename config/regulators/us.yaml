@@ -55,6 +55,18 @@
         per_week: 74
         as_of: 2026-09-10
 
+# KNOWN GAP - SEC litigation releases are not covered by this entry, and are
+# not available anywhere else either: the Federal Register does not carry them
+# (2 hits for "Litigation Release" since 2026-01-01 against hundreds of real
+# ones), and the legacy /rss/litigation/*.xml feeds are retired and 404. A
+# scrape is the only route and was attempted, not shipped: www.sec.gov's HTML
+# path answers a 1,925-byte "Request Rate Threshold Exceeded" 403 from every
+# network tried, including under a full browser UA, while its RSS answers 200
+# in the same sequence. Selectors were never derived from a live page, and
+# guessed ones would parse to zero items on a large body, which source health
+# records as blocked forever. Needs egress SEC does not rate-limit; keep the
+# 1 req/sec throttle and capture a fixture like any other source.
+# See wiki/content/config-regulators.md.
 - id: us-sec
   name: SEC
   full_name: Securities and Exchange Commission
