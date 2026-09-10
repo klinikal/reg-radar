@@ -176,7 +176,7 @@ def expand_profile(profile: dict, taxonomy, activities: dict) -> ExpandedProfile
 
 
 # Cache parsed+expanded profiles per process - invalidated only by restart
-# (docs/issues/05-*.md design notes). A profile is a config file, same as
+# (see ../wiki/content/concept-profiles-activities.md). A profile is a config file, same as
 # taxonomy/activities, which mcpserver.server and webui.app already cache
 # as process-global singletons.
 _expanded_cache: dict = {}

@@ -1,0 +1,93 @@
+---
+title: Source Health
+type: script
+sources: [scripts/source_health.py]
+last-verified: 2026-09-10
+---
+
+## Purpose
+
+Shared source-health logic: fetches a source exactly as the production collector does,
+checks its parser output against a fixture/live-URL contract plus a staleness check, and
+files/updates/closes GitHub issues for failures. Used by both `scripts/capture_fixture.py`
+and the nightly `source-health-nightly` workflow so the fetch path, parse path, and
+assertions are defined exactly once.
+
+## How it works
+
+`fetch_raw()` looks up a source's registered adapter (`collector/adapters/registry.py`) and
+calls its `fetch_raw()` with a `FetchContext`, returning raw bytes rather than parsed
+`RawDocument`s. `parse_fixture()` runs the same adapter's `parse()` plus
+`process_raw_documents()`, the same code path the collector uses; a `fetch_pdf=False` option
+disables a scrape source's PDF text extraction so the offline fixture contract test never
+makes a network call, while the live nightly check leaves it at the default `True`.
+
+`assert_contract()` requires at least one parsed item to have a non-empty title, a non-empty
+url, and a resolved date state (`published_at` set or `date_inferred` True); otherwise it
+raises `AssertionError`.
+
+`check_staleness()` separately judges whether a source's newest genuinely-dated item
+(`date_inferred=False`) is too old, using per-source `warn_days`/`error_days` overrides read
+from `source["staleness"]` (falling back to `STALENESS_WARN_DAYS`/`STALENESS_ERROR_DAYS`, env
+defaults 90/365). It can only assess sources that supply real dates; a source whose items all
+carry inferred (fetch-time) dates, or a `page_watch` source, is skipped rather than flagged.
+This function answers "is this source still publishing", not "is this source still being
+collected", since the module has no database access in the nightly CI context.
+
+`check_source()` combines fetch, parse, contract assertion, and staleness into one call:
+returns `None` on success or a failure string, and appends any non-fatal staleness warning to
+a `warnings` list rather than treating it as a failure (so a quiet-but-alive regulator never
+gets an issue filed for it).
+
+`run_all_checks()` iterates every enabled source of every enabled regulator
+(`iter_enabled_sources()`), runs `check_source()` for each, and, when `file_issues=True`
+(the default), opens or updates a GitHub issue per failure (`open_or_update_issue()`, via the
+`gh` CLI) and closes any previously-open issue for a source that has recovered
+(`close_issue_if_open()`). Issues are found/deduplicated by title
+(`source-health: <regulator>/<source> failing`) and the `source-health` label.
+
+`main()` runs this as a standalone entrypoint: loads regulators and collector config, runs
+all checks, logs a summary plus every failure and warning, and returns exit code 1 if any
+source failed.
+
+## Inputs
+
+- `config/regulators/` (via `load_regulators()`, `REGULATORS_PATH` env var) for source
+  definitions and per-source `staleness` overrides.
+- Collector config (`collector.main.load_config()`): user agent, timeout, retries,
+  FlareSolverr URL.
+- Env vars `STALENESS_WARN_DAYS` (default 90), `STALENESS_ERROR_DAYS` (default 365).
+- `gh` CLI, authenticated, for issue read/create/comment/close.
+
+## Outputs and side effects
+
+Live HTTP/FlareSolverr requests to every enabled source. When run with `file_issues=True`:
+creates, comments on, or closes GitHub issues labelled `source-health`. Writes nothing to the
+reg-radar database; this module has no DB connection.
+
+## How to run or invoke
+
+    python -m scripts.source_health
+
+This is also imported as a library by `scripts/capture_fixture.py` and by the nightly
+`source-health-nightly` GitHub Actions workflow, not only run directly.
+
+## How to test
+
+Run `python -m scripts.source_health` and check the exit code (0 = all sources passed) plus
+the logged per-source failures and warnings. There is no dry-run flag; running it always
+performs live fetches, but it never writes to the database and only files GitHub issues as a
+side effect of `run_all_checks(file_issues=True)`.
+
+## Boundaries
+
+Must never write to the reg-radar database, it has no DB connection by design. Must never
+raise a staleness *warning* as a failure or open an issue for it, only a hard staleness
+*error* (over `error_days`) counts as a failure. Must never assess staleness on a source with
+no genuinely-dated items, or on a `page_watch` source, silence is required there rather than
+a false alarm; registry validation rejects a `staleness:` override on a `page_watch` source
+outright.
+
+## Related pages
+
+[Source Health Nightly](job-source-health-nightly.md), [Collector Adapters](component-collector-adapters.md)

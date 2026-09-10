@@ -297,8 +297,8 @@ def _profile_filter_conditions(expanded, prefix: str = "") -> tuple[list[str], d
     instrument label and include_unclassified is true" - the "no live
     label" branch is its own `NOT IN (SELECT item_id FROM item_labels
     WHERE axis=...)` condition, never a non-matching LIKE, so it can never
-    be conflated with a genuine mismatch (docs/issues/05-*.md design
-    notes). If neither branch applies (no instruments selected in the
+    be conflated with a genuine mismatch (see
+    ../wiki/content/concept-profiles-activities.md). If neither branch applies (no instruments selected in the
     profile and include_unclassified is false), nothing can match.
     """
     conditions = []
@@ -933,8 +933,8 @@ def get_unclassified(engine, axis: str, limit: int = 50, offset: int = 0, regula
     to work through the backlog. `body_md` is truncated to
     `max_content_chars` (default 6000) to protect a caller's context window.
 
-    `include_low_confidence=True` (docs/issues/04-rules-engine-write
-    -interface-llm-classifier-skill.md "Open questions") additionally
+    `include_low_confidence=True` (see
+    ../wiki/content/component-classification.md "Open questions") additionally
     returns items that DO have a live row on `axis` but whose confidence
     never reached the axis's effective-label threshold (taxonomy.yaml
     min_confidence) - those are "effectively unclassified" (no entry in

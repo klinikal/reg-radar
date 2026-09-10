@@ -1,8 +1,8 @@
 """Integration tests for collector.fetcher.fetch_source(): registry lookup
 + adapter fetch + shared pipeline, end to end. Adapter-internal parsing and
 HTTP-plumbing unit tests live under tests/test_adapters_*.py and
-tests/test_pipeline.py (docs/issues/08-source-adapter-framework-registry
--split.md moved this logic out of collector/fetcher.py).
+tests/test_pipeline.py (../wiki/content/concept-source-adapter-framework.md
+moved this logic out of collector/fetcher.py).
 """
 from unittest.mock import patch, MagicMock
 

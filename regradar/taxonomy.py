@@ -99,10 +99,9 @@ class Taxonomy:
     def to_dict(self) -> dict:
         """Renders the taxonomy as the plain dict shape both the
         `get_taxonomy_tool` MCP tool and the batch LLM classifier
-        (regradar/classify.py, architecture doc §4.6) hand to their
+        (regradar/classify.py, see ../wiki/content/cli-classify.md) hand to their
         respective classifiers - a single rendering so the two paths can't
-        drift on what they tell the model is valid (docs/issues/12-batch
-        -llm-classifier-runner.md design notes)."""
+        drift on what they tell the model is valid."""
         return {
             "version": self._version,
             "axes": [

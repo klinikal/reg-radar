@@ -15,7 +15,7 @@ from mcpserver.queries import _document_fields
 from regradar import document as doc
 from regradar.render import _load_item
 
-SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
+SCHEMA = json.loads((Path(__file__).parent.parent / "regradar" / "schema" / "document-v1.json").read_text())
 
 REGULATORS = [
     ("fca", "Financial Conduct Authority", "GB"),

@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 def load_alert_rules(path: str) -> list[dict]:
     """Reads the old alerts.yaml `keyword`/`tag` format - inlined here
-    (rather than importing collector.keyword_alerts, which docs/issues/04-
-    rules-engine-write-interface-llm-classifier-skill.md removes along with
+    (rather than importing collector.keyword_alerts, which
+    ../wiki/content/component-rules.md removes along with
     the feature it implemented) since this v1 migration is a completed,
     idempotent one-off that only matters for a pre-v2 database still
     carrying the legacy `tags` column, and needs the exact same matching

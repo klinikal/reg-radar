@@ -1,6 +1,6 @@
 """Tests scripts/eval_classifier.py against a small, hand-built DB - not the
-full gold.csv/production database (docs/issues/04-rules-engine-write
--interface-llm-classifier-skill.md: "for the test suite, build a small DB
+full gold.csv/production database (../wiki/content/component-classification.md:
+"for the test suite, build a small DB
 from a handful of those items")."""
 import csv
 from datetime import datetime, timezone

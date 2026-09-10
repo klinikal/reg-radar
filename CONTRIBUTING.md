@@ -71,8 +71,7 @@ Each `sources[].type` maps to an adapter under `collector/adapters/` -
 `browser.py` - registered by `type_id` in `collector/adapters/registry.py`.
 Adding a genuinely new fetch strategy (not just a new source using an
 existing one) means adding a new adapter file, not touching the others -
-see `docs/design/regradar-architecture.md` section 7 and
-`docs/issues/08-source-adapter-framework-registry-split.md` for the
+see `wiki/content/concept-source-adapter-framework.md` for the
 `SourceAdapter`/`RawDocument`/`FetchContext` contract.
 
 The `browser` adapter (Playwright, for JS-rendered listings) needs no

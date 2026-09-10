@@ -8,7 +8,7 @@ import pytest
 from regradar import document as doc
 
 FIXTURES = Path(__file__).parent / "fixtures" / "documents"
-SCHEMA = json.loads((Path(__file__).parent.parent / "docs" / "schema" / "document-v1.json").read_text())
+SCHEMA = json.loads((Path(__file__).parent.parent / "regradar" / "schema" / "document-v1.json").read_text())
 
 
 def make_item(**overrides):

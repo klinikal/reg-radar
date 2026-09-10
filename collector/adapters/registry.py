@@ -1,5 +1,5 @@
-"""`type_id`-keyed adapter registry (docs/issues/08-source-adapter-framework
--registry-split.md). Importing this module must not require optional heavy
+"""`type_id`-keyed adapter registry
+(../../wiki/content/concept-source-adapter-framework.md). Importing this module must not require optional heavy
 deps (e.g. playwright) - collector/adapters/browser.py guards its own import
 so the registry stays usable even without browser binaries installed.
 """

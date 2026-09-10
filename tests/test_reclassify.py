@@ -273,7 +273,7 @@ def test_by_rule_dry_run_writes_nothing(tmp_path):
 
 
 def test_by_rule_acceptance_mica_items_labelled_fca_consumer_duty_item_is_not(tmp_path):
-    """Acceptance criterion (docs/issues/04-...): running `reclassify --by
+    """Acceptance criterion (../wiki/content/component-classification.md): running `reclassify --by
     rule` writes instrument=mica rows (confidence > 0.5) for MiCA-related
     items, and none for an FCA item about a UK-only regime (Consumer Duty) -
     titles drawn from real regulator wording (see task report for the full

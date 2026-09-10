@@ -1,8 +1,9 @@
 name: publish-dataset
 
-# Publishes the full corpus (docs/issues/10-published-dataset-release.md)
-# as a GitHub release every night: a tarball of the section 3.1 document
-# tree plus export.jsonl, a manifest.json, and a moving `latest` tag
+# Publishes the full corpus (../../wiki/content/cli-dataset.md)
+# as a GitHub release every night: a tarball of the document tree
+# (see ../../wiki/content/concept-canonical-document-format.md) plus
+# export.jsonl, a manifest.json, and a moving `latest` tag
 # alongside an immutable `dataset-YYYY-MM-DD` tag.
 #
 # ASSUMPTION: this workflow needs the collector's live SQLite database

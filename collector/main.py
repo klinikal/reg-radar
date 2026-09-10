@@ -273,7 +273,7 @@ def _apply_rule_labels(engine, taxonomy, rules_engine, item_id: str, rule_labels
     engine (collector.pipeline.classify(), regradar.rules.RulesEngine) for a
     newly-inserted item as a `by: rule` classification, classifier_id set to
     the engine's classifier_id (sha256 of rules.yaml + taxonomy version -
-    docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md)."""
+    ../wiki/content/component-rules.md)."""
     for (axis, value), confidence in (rule_labels or {}).items():
         try:
             write_classification(

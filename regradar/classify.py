@@ -1,6 +1,5 @@
 """`regradar classify --provider anthropic|openai|ollama|command [--axis
-<a>] [--limit <n>] [--dry-run]` (docs/issues/12-batch-llm-classifier
--runner.md, architecture doc §4.6).
+<a>] [--limit <n>] [--dry-run]` (see ../wiki/content/cli-classify.md).
 
 The unattended counterpart to skills/regradar-classifier/SKILL.md: same
 backlog (`get_unclassified`), same taxonomy (`Taxonomy.to_dict()` - the

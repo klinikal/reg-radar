@@ -29,3 +29,7 @@ scratch/
 
 # Litestream continuous-backup destination (local replica of the live DB)
 backups/
+
+# Private planning material (design drafts, build plans, issue texts) —
+# not published with the code; see wiki/ for the maintained reference
+/docs/

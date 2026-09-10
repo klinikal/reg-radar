@@ -1,5 +1,5 @@
-"""Ollama provider for `regradar classify` (docs/issues/12-batch-llm
--classifier-runner.md): calls a local Ollama server's HTTP API. `httpx` is
+"""Ollama provider for `regradar classify` (see
+../../wiki/content/cli-classify.md): calls a local Ollama server's HTTP API. `httpx` is
 already a project dependency (see collector's HTTP adapters), so nothing
 here is optional/lazy the way the anthropic/openai providers are.
 

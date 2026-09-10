@@ -39,7 +39,8 @@ def load_subscribers(path: str) -> list[dict]:
     file is not an error (see module docstring). Each entry:
     {profile, url, secret_env, batch_size, max_retries, backoff_seconds, id} -
     the secret itself is never read from this file, only the name of the
-    env var that holds it (docs/issues/06-*.md's config shape).
+    env var that holds it (see ../wiki/content/concept-export-sync-contract.md
+    for the config shape).
 
     `id` is optional: a stable identifier for the subscriber that does not
     change if `url` is later rotated. Subscribers without one fall back to

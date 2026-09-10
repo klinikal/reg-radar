@@ -11,6 +11,8 @@ Run this end-to-end. Don't skip straight to the interview — an operator contex
 
 All commands below assume you're running from the repo root (the directory containing `docker-compose.yml`). If you're not sure where that is, find it before starting.
 
+For component-level detail beyond this skill, see [`wiki/README.md`](../../wiki/README.md).
+
 ---
 
 ## Phase 0 — Environment check

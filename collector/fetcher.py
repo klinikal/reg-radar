@@ -4,8 +4,8 @@ fetches it, and runs the result through the shared pipeline
 
 The fetch logic itself (rss/scrape/page_watch/sitemap/json_api/browser) and
 the HTTP plumbing they share (SSRF guards, FlareSolverr, PDF extraction)
-live under collector/adapters/ - see docs/issues/08-source-adapter
--framework-registry-split.md.
+live under collector/adapters/ - see
+../wiki/content/concept-source-adapter-framework.md.
 """
 import logging
 import os

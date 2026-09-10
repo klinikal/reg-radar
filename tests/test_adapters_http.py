@@ -1,7 +1,7 @@
 """Unit tests for collector.adapters.http - shared HTTP plumbing (SSRF
 guards, FlareSolverr throttle/backoff/block-page detection, bounded PDF
 fetch+extract). Moved out of collector/fetcher.py unchanged
-(docs/issues/08-source-adapter-framework-registry-split.md).
+(../wiki/content/concept-source-adapter-framework.md).
 """
 from unittest.mock import MagicMock, patch
 

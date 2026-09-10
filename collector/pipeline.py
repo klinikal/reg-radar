@@ -1,5 +1,5 @@
-"""Shared post-fetch pipeline (docs/issues/08-source-adapter-framework
--registry-split.md): turns adapter-agnostic `RawDocument`s into
+"""Shared post-fetch pipeline
+(../wiki/content/concept-source-adapter-framework.md): turns adapter-agnostic `RawDocument`s into
 `collector.schema.Item`s. Everything here used to be duplicated across
 `_parse_rss`/`_parse_scrape`/`_parse_page_watch` in collector/fetcher.py -
 id generation, source-tag filtering, language resolution, snippet
@@ -89,7 +89,7 @@ def _extract(raw: RawDocument) -> tuple[str, str]:
 
 def _body_and_extractor(raw: RawDocument, snippet: str) -> tuple[str, str]:
     """Returns (body_md, extractor) - the "extract" step of the shared
-    pipeline (docs/design/regradar-architecture.md section 7)."""
+    pipeline (../wiki/content/concept-source-adapter-framework.md)."""
     if raw.is_partial:
         # RSS/Atom: never a fetched full document, only the feed's own
         # summary - rss_body_markdown always appends the "not collected"

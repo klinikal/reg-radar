@@ -176,9 +176,8 @@ def materialize_labels(engine, taxonomy, item_id: str) -> dict:
     """Recomputes effective_labels() for one item from its full
     classification history and writes items.labels (JSON) /
     items.updated_at, plus rebuilds its rows in the item_labels side table
-    (the query-speed index recommended in architecture doc §4.4 - see
-    docs/issues/03-*.md's "Design notes" and the measurement in the task
-    report)."""
+    (the query-speed index recommended in
+    ../wiki/content/concept-taxonomy-classification.md)."""
     with engine.connect() as conn:
         labels = _materialize_labels_conn(conn, taxonomy, item_id)
         conn.commit()
@@ -355,8 +354,8 @@ def _known_item_ids(engine, item_ids: list) -> set:
 
 
 def classify_batch(engine, taxonomy, classifications: list) -> dict:
-    """Batch write interface (docs/issues/04-rules-engine-write-interface
-    -llm-classifier-skill.md): validates every entry against the current
+    """Batch write interface (see ../wiki/content/component-classification.md):
+    validates every entry against the current
     taxonomy before writing any of them, so one bad entry in a large batch
     (e.g. an agent working through 100 unclassified items) never loses the
     rest. Returns {"written": [item_id, ...], "errors": [{"index", "item_id",

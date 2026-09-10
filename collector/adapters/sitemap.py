@@ -1,6 +1,6 @@
 """Sitemap adapter: parses a sitemap.xml's <url><loc>/<lastmod> entries.
 
-Config block (docs/issues/08-source-adapter-framework-registry-split.md):
+Config block (../../wiki/content/concept-source-adapter-framework.md):
 
     sources:
       - type: sitemap

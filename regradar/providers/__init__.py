@@ -1,5 +1,5 @@
-"""Provider registry for `regradar classify` (docs/issues/12-batch-llm
--classifier-runner.md). Each provider module lazily imports its SDK (or,
+"""Provider registry for `regradar classify` (see
+../../wiki/content/cli-classify.md). Each provider module lazily imports its SDK (or,
 for `command`, has no external dependency at all) so the rest of the CLI
 works without every provider's extra installed - only picking that
 provider requires it.

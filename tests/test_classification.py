@@ -43,7 +43,7 @@ def row(axis, value, by, confidence, superseded_at=None, created_at=None):
     }
 
 
-# --- effective_labels() case table (docs/issues/03-*.md scope) -------------
+# --- effective_labels() case table (../wiki/content/concept-taxonomy-classification.md scope) -------------
 
 def test_human_override_wins_regardless_of_confidence():
     taxonomy = _make_taxonomy()
@@ -322,7 +322,7 @@ def test_import_classification_bypasses_validation_and_is_inert_for_unknown_valu
     assert count == 1
 
 
-# --- classify_batch (docs/issues/04-rules-engine-write-interface-llm-classifier-skill.md) ---
+# --- classify_batch (../wiki/content/component-classification.md) ---
 
 def test_classify_batch_writes_valid_entries_and_reports_invalid():
     from regradar.classification import classify_batch

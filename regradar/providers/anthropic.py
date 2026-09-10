@@ -1,5 +1,5 @@
-"""Anthropic provider for `regradar classify` (docs/issues/12-batch-llm
--classifier-runner.md). Lazily imports the `anthropic` package - only
+"""Anthropic provider for `regradar classify` (see
+../../wiki/content/cli-classify.md). Lazily imports the `anthropic` package - only
 constructing this provider requires it installed (`pip install
 'regradar[llm]'`), so `regradar classify --provider command` (or any other
 provider) works without it.

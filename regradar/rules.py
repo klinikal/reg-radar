@@ -96,7 +96,7 @@ def _compile_alias_rules(taxonomy) -> list[CompiledRule]:
 
 
 def _score_rule(rule: CompiledRule, title: str, body: str) -> float:
-    """Design notes (docs/issues/04-...): for each field, a pattern
+    """Design notes (see ../wiki/content/component-rules.md): for each field, a pattern
     contributes its weight once if it matches at all in that field (not
     multiplied by match count), times title_multiplier on the title field.
     Contributions sum across all the rule's patterns and fields, capped at

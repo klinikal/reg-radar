@@ -1,6 +1,5 @@
 """One-off migration: converts `config/alerts.yaml`'s flat `keyword`/`tag`
-pairs into `config/rules.yaml` entries (architecture doc §4.3, docs/issues/
-04-rules-engine-write-interface-llm-classifier-skill.md).
+pairs into `config/rules.yaml` entries (../wiki/content/component-rules.md).
 
 Each alert rule is mapped onto the *nearest* taxonomy (axis, value) pair, in
 this priority order:

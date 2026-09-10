@@ -24,8 +24,8 @@ from collector.schema import Item
 
 logger = logging.getLogger(__name__)
 
-# Original-artefact storage (docs/design/regradar-architecture.md section
-# 3.3). Read at call time (not import time) so tests can point a single
+# Original-artefact storage (../wiki/content/concept-canonical-document-format.md).
+# Read at call time (not import time) so tests can point a single
 # call at a temp directory without needing to reload this module.
 _DEFAULT_ARTEFACTS_DIR = "/app/data/originals"
 _DEFAULT_MAX_ARTEFACT_BYTES = 25 * 1024 * 1024  # matches MAX_PDF_DOWNLOAD_BYTES's existing default

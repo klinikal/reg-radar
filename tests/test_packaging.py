@@ -1,6 +1,6 @@
 """Regression test: the installed `reg-radar` console script must be able to
 import its dependencies (collector, mcpserver, webui) when run outside the
-repo. See docs/design/regradar-architecture.md §6a.
+repo.
 """
 from importlib.metadata import entry_points
 
