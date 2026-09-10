@@ -216,13 +216,17 @@ def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | 
     object holding the canonical document frontmatter fields (section 3.2
     of the architecture doc) for this item.
 
-    raw_content can be large (a full regulator notice/PDF text) - pass
-    max_content_chars to truncate it and protect your context window; omit
-    for the full text. Returns None if the id doesn't exist.
+    raw_content and body_md can both be large (a full regulator notice/PDF
+    text) - pass max_content_chars to truncate both and protect your
+    context window; omit for the full text. Returns None if the id doesn't
+    exist.
     """
     result = _safe("get_item_tool", get_item, get_engine(), item_id, taxonomy=get_taxonomy())
-    if result and max_content_chars is not None and result.get("raw_content"):
-        result["raw_content"] = result["raw_content"][:max_content_chars]
+    if result and max_content_chars is not None:
+        if result.get("raw_content"):
+            result["raw_content"] = result["raw_content"][:max_content_chars]
+        if result.get("body_md"):
+            result["body_md"] = result["body_md"][:max_content_chars]
     return result
 
 
