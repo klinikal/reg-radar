@@ -24,6 +24,7 @@ from collector.main import (
 from collector.schema import Item, make_item_id, make_page_watch_item_id
 from collector.storage import (
     get_module_enable_state,
+    insert_item,
     get_page_watch_baseline,
     init_db,
 )
@@ -381,3 +382,33 @@ def test_an_install_with_history_but_no_baseline_adopts_it(engine):
     with patch("collector.main.fetch_source", return_value=[_watched_page("genuinely different")]):
         run_collection(engine, [_watch_reg()], _cfg())
     assert _item_count(engine) == 2
+
+
+# --- upgrading an install that was already collecting ---------------------
+
+def test_an_install_already_collecting_gets_no_watermark(engine):
+    """#48 promises an upgraded install collects exactly what it collected
+    before. #51 added a store-time filter that did not exist when that
+    promise was written, so a straight new_only at migration would stamp a
+    watermark at "now" and silently drop anything published earlier that had
+    not been collected yet - a feed's backlog, or the window since the last
+    successful run. A regulator that already has items was already being
+    collected, so it gets no lower bound.
+    """
+    insert_item(engine, _rss_item(datetime(2026, 9, 1, tzinfo=timezone.utc)))
+
+    apply_on_enable(engine, [{"id": "xx-deep", "module": {"id": "xx/*", "on_enable": "new_only"}}])
+
+    state = get_module_enable_state(engine, "xx-deep")
+    assert state["enabled"]
+    assert state["collect_from"] is None, "an already-collecting module must not be date-bounded"
+
+
+def test_a_genuinely_new_module_still_gets_its_watermark(engine):
+    """The other half: a regulator with no history is a real first enable,
+    and new_only must still stop it pulling a whole archive."""
+    insert_item(engine, _rss_item(datetime(2026, 9, 1, tzinfo=timezone.utc)))
+
+    apply_on_enable(engine, [{"id": "xx-occ", "module": {"id": "xx/*", "on_enable": "new_only"}}])
+
+    assert get_module_enable_state(engine, "xx-occ")["collect_from"] is not None

@@ -64,6 +64,44 @@ def affected_items(conn, regulator_id, sources):
     ), params))
 
 
+def feed_dates(source_url, user_agent, timeout, retries):
+    """{item url: date} exactly as the RSS adapter would derive it.
+
+    An item still inside the feed's window will be re-collected, and the
+    adapter computes its id from the date IT derives. If the repair used a
+    different derivation the two disagree and the next run inserts a second
+    copy rather than deduping - which is precisely what happened the first
+    time this ran: the page states `2026-08-06T10:25:16Z` while the feed says
+    "Thursday, August 6, 2026 - 11:25", the same instant to a different
+    precision and timezone, so the ids differed and 32 items duplicated.
+
+    So for anything the feed still carries, the feed wins - not because it is
+    the better date (it is not; it lacks seconds and a timezone) but because
+    it is the one the collector will keep re-deriving. Items outside the
+    window are never re-fetched, so the page's better date is safe there.
+    """
+    import feedparser
+    try:
+        raw = fetch_html(source_url, user_agent, timeout, retries)
+    except Exception as e:
+        logger.warning("could not read feed %s: %s - falling back to page dates", source_url, e)
+        return {}
+    out = {}
+    for entry in feedparser.parse(raw).entries:
+        link = (entry.get("link") or "").strip()
+        if not link:
+            continue
+        if entry.get("published_parsed"):
+            continue  # adapter takes this path; nothing was ever undated here
+        for key in ("published", "updated", "created"):
+            if entry.get(key):
+                parsed = parse_text_date(str(entry[key]))
+                if parsed is not None:
+                    out[link] = parsed
+                break
+    return out
+
+
 def real_published_at(url, user_agent, timeout, retries):
     """The publication date the item's own page states, or None."""
     try:
@@ -80,9 +118,16 @@ def real_published_at(url, user_agent, timeout, retries):
     return parse_text_date(el.get("datetime"), date_attribute="datetime")
 
 
-def repair(engine, regulator_id, sources, apply_changes, user_agent, timeout, retries, limit=None):
+def repair(engine, regulator_id, sources, apply_changes, user_agent, timeout, retries, limit=None, source_urls=None):
     with engine.connect() as conn:
         rows = affected_items(conn, regulator_id, sources)
+
+    # Prefer the feed's own derivation for anything still in its window.
+    from_feed = {}
+    for src in source_urls or []:
+        from_feed.update(feed_dates(src, user_agent, timeout, retries))
+    if from_feed:
+        logger.info("%d item(s) still in a feed window will take the feed's date", len(from_feed))
     if limit:
         rows = rows[:limit]
     logger.info("%d item(s) with no publication date in %s/%s",
@@ -92,7 +137,7 @@ def repair(engine, regulator_id, sources, apply_changes, user_agent, timeout, re
     for i, (old_id, url, label, fetched_at) in enumerate(rows, 1):
         if i > 1:
             time.sleep(POLITE_DELAY_SECONDS)
-        published = real_published_at(url, user_agent, timeout, retries)
+        published = from_feed.get(url) or real_published_at(url, user_agent, timeout, retries)
         if published is None:
             logger.warning("  [%d/%d] no date found, left alone: %s", i, len(rows), url)
             unresolved += 1
@@ -145,11 +190,21 @@ def main() -> None:
     args = ap.parse_args()
 
     engine = create_engine(f"sqlite:///{args.db}")
+    sources = tuple(s.strip() for s in args.sources.split(",") if s.strip())
+    # The feed URLs for those source labels, read from the registry.
+    from collector.main import load_regulators
+    source_urls = [
+        src["url"]
+        for reg in load_regulators(os.getenv("REGULATORS_PATH", "/app/config/regulators"))
+        if reg["id"] == args.regulator
+        for src in (reg.get("sources") or [])
+        if src.get("label") in sources and src.get("url")
+    ]
     repaired, unresolved, _ = repair(
-        engine, args.regulator, tuple(s.strip() for s in args.sources.split(",") if s.strip()),
+        engine, args.regulator, sources,
         args.apply, os.getenv("USER_AGENT", DEFAULT_USER_AGENT),
         int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")), int(os.getenv("REQUEST_RETRIES", "3")),
-        args.limit,
+        args.limit, source_urls,
     )
     sys.exit(1 if unresolved and not repaired else 0)
 

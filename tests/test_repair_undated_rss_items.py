@@ -92,3 +92,22 @@ def test_repair_is_idempotent(engine):
     _run(engine, apply_changes=True)
     repaired, _, _ = _run(engine, apply_changes=True)
     assert repaired == 0
+
+
+def test_an_item_still_in_the_feed_takes_the_feed_date_not_the_page_date(engine):
+    """The duplication trap. The page and the feed describe the same instant
+    differently - `2026-08-06T10:25:16Z` versus "August 6, 2026 - 11:25" -
+    so ids derived from them differ. An item the feed still carries will be
+    re-collected, and the adapter will use the FEED's derivation, so the
+    repair has to as well or the next run inserts a second copy.
+    """
+    feed_date = datetime(2026, 7, 2, 11, 25, tzinfo=timezone.utc)   # what the adapter derives
+    page_date = datetime(2026, 7, 2, 10, 25, 16, tzinfo=timezone.utc)  # better, but not what dedups
+    with patch("scripts.repair_undated_rss_items.feed_dates", return_value={URL: feed_date}):
+        with patch("scripts.repair_undated_rss_items.real_published_at", return_value=page_date) as page:
+            with patch("scripts.repair_undated_rss_items.time.sleep"):
+                repair(engine, "uk-fca", ("news",), True, "ua", 5, 1, source_urls=["http://feed"])
+            page.assert_not_called()
+
+    with engine.connect() as c:
+        assert c.execute(sa_text("SELECT id FROM items")).scalar() == make_item_id("uk-fca", URL, feed_date)
