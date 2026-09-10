@@ -7,9 +7,8 @@ last-verified: 2026-09-10
 
 ## Purpose
 
-The five principles v2 is built against. Every other contract in the
-architecture doc (document format, taxonomy, profiles, export) exists to
-uphold these.
+The five principles v2 is built against. Every other contract in this wiki
+(document format, taxonomy, profiles, export) exists to uphold these.
 
 ## How it works
 
@@ -39,7 +38,7 @@ None, this is a design constraint, not a runnable component.
 ## Outputs and side effects
 
 None directly. These principles constrain the design of every other
-contract described elsewhere in the architecture doc.
+contract described elsewhere in this wiki.
 
 ## How to run or invoke
 
@@ -56,8 +55,7 @@ by a command.
 A change that violates one of these principles (for example, hardcoding a
 new jurisdiction in code instead of `config/`, or a classifier silently
 overwriting a human correction) should not be merged without updating this
-doc first, per the architecture doc's own rule that issues change the doc
-before deviating from it.
+page first.
 
 ## Related pages
 

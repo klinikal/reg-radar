@@ -31,7 +31,7 @@ Run the two pytest commands named in CONTRIBUTING.md's "Registry validation" and
 
 ## Boundaries
 
-Adding a genuinely new fetch strategy (not just a new source using an existing adapter type) means adding a new adapter file under `collector/adapters/`, not editing an existing one, see CONTRIBUTING.md's "Source adapter framework" section and the architecture doc it links.
+Adding a genuinely new fetch strategy (not just a new source using an existing adapter type) means adding a new adapter file under `collector/adapters/`, not editing an existing one, see CONTRIBUTING.md's "Source adapter framework" section and [Source Adapter Framework](concept-source-adapter-framework.md).
 
 ## Related pages
 
