@@ -47,6 +47,24 @@ Not invoked directly; called by `collector.fetcher.fetch_source` during a collec
 
 Must never let a challenge/block page reach a `parse()` call; block detection happens in `collector/adapters/http.py` before any parsing. Must never fetch a private/reserved-address URL (SSRF guard applies to every adapter, including redirects and, for `browser`, every request the rendered page makes). `json_api`'s path resolver must never raise on a malformed/missing field for one item; it skips that field instead.
 
+### Known limitation: naive feed dates are read as UTC
+
+`parse_text_date()` in `collector/adapters/base.py` treats a date string carrying no
+timezone as UTC. Some feeds publish local time instead. The FCA's news and warnings
+feeds render `Thursday, September 3, 2026 - 10:35` in Europe/London, so items taken
+from those feeds are stored an hour early during British Summer Time.
+
+This is accepted rather than fixed. It does not affect ordering within a source, and
+it does not cause duplicate items: the collector and
+`scripts/repair_undated_rss_items.py` derive the date the same way, which is the
+property that matters for item ids. Only items still inside a feed's window are
+affected; anything repaired from its own page carries the exact UTC instant the page
+states.
+
+Fixing it properly means letting a source declare its timezone in
+`config/regulators/`, rather than special-casing one regulator inside a shared
+parser. Do that if a second source turns up with the same shape.
+
 ## Related pages
 
 [Collector Pipeline](component-collector-pipeline.md)
