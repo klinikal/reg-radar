@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -72,7 +71,7 @@ def get_engine():
                 "The MCP server opens the DB read-only and does not create the schema itself.",
                 db_path,
             )
-            sys.exit(1)
+            raise RuntimeError(f"Database file not found at {db_path}")
         _engine = create_engine(
             f"sqlite:///file:{db_path}?mode=ro&uri=true",
             connect_args={"timeout": 30},
@@ -525,12 +524,15 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
 
 
 if __name__ == "__main__":
-    # Load taxonomy and activities before serving anything: both go through
-    # load_and_exit_on_error()/ProfileError, and doing that lazily inside a
-    # tool call meant a broken config raised SystemExit per request (which
-    # _safe() does not catch) instead of failing this process at boot.
-    # Module import stays side-effect free so the tests can import this
-    # module and point get_taxonomy() at their own config paths.
+    # Load taxonomy, activities, and the engine before serving anything:
+    # taxonomy/activities go through load_and_exit_on_error()/ProfileError,
+    # and get_engine() used to sys.exit(1) on a missing DB_PATH - doing
+    # either lazily inside a tool call meant a broken config/missing DB
+    # raised SystemExit per request (which _safe() does not catch) instead
+    # of failing this process at boot. Module import stays side-effect free
+    # so the tests can import this module and point get_taxonomy()/
+    # get_engine() at their own config/DB paths.
     get_taxonomy()
     get_activities()
+    get_engine()
     mcp.run(transport="streamable-http")
