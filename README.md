@@ -217,6 +217,21 @@ Every MCP query tool that filters items (`search_items_tool`, `get_recent_tool`,
 
 Profiles are parsed and expanded once per process and cached — editing a profile file requires a restart to take effect, same as `taxonomy.yaml`.
 
+### Adding or editing a profile
+
+| Field | Meaning | Empty means |
+|---|---|---|
+| `jurisdictions` | Jurisdiction ids to watch; `<id>/*` adds all descendants too | No jurisdiction restriction — all of them |
+| `activities` | Lines of business (`config/activities.yaml`) that pull in their mapped instruments | No activity-derived instruments |
+| `instruments` | Extra instrument ids to include, on top of any from `activities` | No extra instruments |
+| `exclude_instruments` | Instrument ids to hard-exclude, applied after everything else | Nothing excluded |
+| `document_types` | Restrict to these `document_type` taxonomy values | All document types |
+| `regulators` | Restrict to these regulator ids | All regulators in the matched jurisdictions |
+| `languages` | Restrict to these language codes | All languages |
+| `include_unclassified` | Whether items with no instrument label still match | N/A — defaults to `true` if omitted |
+
+There's no UI or CLI for authoring profiles, and there deliberately isn't one — a rich frontend is an explicit v2 non-goal (`docs/design/regradar-architecture.md` §1). Profiles stay plain, versionable YAML: drop a `.yaml` file in `config/profiles/` to ship it as a named template, or pass an absolute path anywhere the `profile` parameter is accepted to use one from wherever you like. Either way, restart the `webui`/`mcp` containers to pick up the change — profiles are cached per process. `config/profiles/*.yaml` are worked examples to copy from.
+
 ## MCP server
 
 The MCP server exposes seventeen tools over streamable HTTP, returning structured content (not JSON-encoded strings) so clients get real typed data:
