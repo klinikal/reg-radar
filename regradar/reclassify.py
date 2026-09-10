@@ -22,6 +22,32 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
+# Page size for keyset-paginated item scans (see _iter_items_by_id below).
+# Bounds peak memory regardless of table size; each page is fetched on its
+# own short-lived connection, closed before any writes for that page happen.
+ITEM_BATCH_SIZE = 500
+
+
+def _iter_items_by_id(engine, columns: str):
+    """Yields rows from `items` in bounded pages, ordered by `id` (keyset
+    pagination), instead of one `fetchall()` of the whole table. Each page
+    is read on its own connection that is closed before the caller does any
+    writes - so a write from a previous row is always visible to the next
+    page's read, and no cursor is held open across the classification
+    writes (supersede_axis()/write_classification()/materialize_labels()
+    each open their own connection against the same SQLite file)."""
+    last_id = ""
+    while True:
+        with engine.connect() as conn:
+            page = conn.execute(
+                text(f"SELECT {columns} FROM items WHERE id > :last_id ORDER BY id LIMIT :limit"),
+                {"last_id": last_id, "limit": ITEM_BATCH_SIZE},
+            ).fetchall()
+        if not page:
+            return
+        yield from page
+        last_id = page[-1][0]
+
 
 def source_defaults(regulators: list) -> dict:
     """Maps (regulator_id, source_label) -> that source's `labels` block
@@ -44,7 +70,6 @@ def _run_rule_reclassify(engine, taxonomy, args) -> int:
     NOT LIKE 'human:%' guard, architecture doc §4.4)."""
     rules_engine = RulesEngine.load(args.rules_path, taxonomy)
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT id, title, raw_content FROM items")).fetchall()
         live_rule_item_ids = {
             r[0] for r in conn.execute(
                 text(
@@ -57,7 +82,7 @@ def _run_rule_reclassify(engine, taxonomy, args) -> int:
 
     to_write = 0
     to_supersede_only = 0
-    for item_id, title, raw_content in rows:
+    for item_id, title, raw_content in _iter_items_by_id(engine, "id, title, raw_content"):
         scores = rules_engine.score(title or "", raw_content or "")
         axis_values = {value: confidence for (axis, value), confidence in scores.items() if axis == args.axis}
 
