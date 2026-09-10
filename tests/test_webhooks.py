@@ -271,6 +271,17 @@ def test_load_subscribers_rejects_duplicate_ids(tmp_path):
         load_subscribers(path)
 
 
+def test_load_subscribers_rejects_explicit_id_colliding_with_derived_id(tmp_path):
+    # An explicit id must not collide with another subscriber's fallback
+    # profile|url id - otherwise the two would silently share one cursor.
+    path = _write_config(tmp_path, [
+        {"profile": "eu-casp", "url": "https://x", "secret_env": "S"},
+        {"id": "eu-casp|https://x", "profile": "uk-equities-dealer", "url": "https://y", "secret_env": "S"},
+    ])
+    with pytest.raises(WebhookConfigError):
+        load_subscribers(path)
+
+
 def test_rotating_url_preserves_cursor_when_subscriber_has_explicit_id(tmp_path, monkeypatch):
     # Issue #25: a subscriber id derived from url resets its cursor when
     # url is rotated. An explicit id must survive the rotation.

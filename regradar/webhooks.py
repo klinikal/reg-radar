@@ -62,17 +62,12 @@ def load_subscribers(path: str) -> list[dict]:
     if not isinstance(data, list):
         raise WebhookConfigError(f"{path}: must be a list of subscriber entries")
     subscribers = []
-    seen_ids = set()
     for i, raw in enumerate(data):
         if not isinstance(raw, dict) or not raw.get("profile") or not raw.get("url") or not raw.get("secret_env"):
             raise WebhookConfigError(f"{path}: entry {i} must have profile, url and secret_env")
         explicit_id = raw.get("id")
-        if explicit_id is not None:
-            if not isinstance(explicit_id, str) or not explicit_id:
-                raise WebhookConfigError(f"{path}: entry {i} id must be a non-empty string")
-            if explicit_id in seen_ids:
-                raise WebhookConfigError(f"{path}: duplicate subscriber id {explicit_id!r}")
-            seen_ids.add(explicit_id)
+        if explicit_id is not None and (not isinstance(explicit_id, str) or not explicit_id):
+            raise WebhookConfigError(f"{path}: entry {i} id must be a non-empty string")
         subscribers.append({
             "id": explicit_id,
             "profile": raw["profile"],
@@ -82,6 +77,16 @@ def load_subscribers(path: str) -> list[dict]:
             "max_retries": int(raw.get("max_retries", DEFAULT_MAX_RETRIES)),
             "backoff_seconds": int(raw.get("backoff_seconds", DEFAULT_BACKOFF_SECONDS)),
         })
+
+    # Validate uniqueness of the *effective* id (explicit id, or the
+    # profile|url fallback) - an explicit id could otherwise collide with
+    # another subscriber's derived id, merging their delivery cursors.
+    seen_ids = set()
+    for sub in subscribers:
+        eid = subscriber_id(sub)
+        if eid in seen_ids:
+            raise WebhookConfigError(f"{path}: duplicate subscriber id {eid!r}")
+        seen_ids.add(eid)
     return subscribers
 
 
