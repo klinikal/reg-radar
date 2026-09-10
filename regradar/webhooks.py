@@ -37,9 +37,18 @@ class WebhookConfigError(ValueError):
 def load_subscribers(path: str) -> list[dict]:
     """Returns [] if `path` doesn't exist - webhooks are opt-in, a missing
     file is not an error (see module docstring). Each entry:
-    {profile, url, secret_env, batch_size, max_retries, backoff_seconds} -
+    {profile, url, secret_env, batch_size, max_retries, backoff_seconds, id} -
     the secret itself is never read from this file, only the name of the
     env var that holds it (docs/issues/06-*.md's config shape).
+
+    `id` is optional: a stable identifier for the subscriber that does not
+    change if `url` is later rotated. Subscribers without one fall back to
+    a `profile|url` derived id (see subscriber_id) - unchanged pre-existing
+    behaviour, but that fallback id changes if `url` changes, resetting the
+    subscriber's delivery cursor (issue #25). New subscribers should set an
+    explicit `id`; so should an existing subscriber before its `url` is
+    rotated, using its current `profile|url` value to preserve the cursor
+    already stored under that key.
     """
     if not os.path.exists(path):
         return []
@@ -53,10 +62,19 @@ def load_subscribers(path: str) -> list[dict]:
     if not isinstance(data, list):
         raise WebhookConfigError(f"{path}: must be a list of subscriber entries")
     subscribers = []
+    seen_ids = set()
     for i, raw in enumerate(data):
         if not isinstance(raw, dict) or not raw.get("profile") or not raw.get("url") or not raw.get("secret_env"):
             raise WebhookConfigError(f"{path}: entry {i} must have profile, url and secret_env")
+        explicit_id = raw.get("id")
+        if explicit_id is not None:
+            if not isinstance(explicit_id, str) or not explicit_id:
+                raise WebhookConfigError(f"{path}: entry {i} id must be a non-empty string")
+            if explicit_id in seen_ids:
+                raise WebhookConfigError(f"{path}: duplicate subscriber id {explicit_id!r}")
+            seen_ids.add(explicit_id)
         subscribers.append({
+            "id": explicit_id,
             "profile": raw["profile"],
             "url": raw["url"],
             "secret_env": raw["secret_env"],
@@ -68,9 +86,11 @@ def load_subscribers(path: str) -> list[dict]:
 
 
 def subscriber_id(sub: dict) -> str:
-    # profile+url uniquely identifies a subscriber - the config format
-    # (docs/issues/06-*.md) has no explicit id field.
-    return f"{sub['profile']}|{sub['url']}"
+    # An explicit `id` is stable across a `url` rotation - prefer it.
+    # Falling back to profile+url matches this function's pre-#25 behaviour
+    # for subscribers that haven't set one, but that derived id changes
+    # (and orphans the stored cursor) if `url` changes later.
+    return sub.get("id") or f"{sub['profile']}|{sub['url']}"
 
 
 def sign_payload(body: bytes, secret: str) -> str:

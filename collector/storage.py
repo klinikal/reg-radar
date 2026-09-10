@@ -533,12 +533,15 @@ def reset_source_empty_runs(engine, regulator_id: str, source_label: str) -> Non
 
 class WebhookSubscriptionRow(Base):
     """One row per configured webhook subscriber (config/webhooks.yaml),
-    keyed by regradar.webhooks' stable subscriber id (derived from
-    profile+url - the config has no explicit id field). `cursor` is that
-    subscriber's own head of the change stream (architecture doc section
-    6), advanced only after a successful delivery. A later digest feature
-    (issue #13) reuses this same table under its own subscriber id
-    convention, per the task ruling that both share this mechanism.
+    keyed by regradar.webhooks' subscriber id - a subscriber's explicit
+    `id` config field if set, else derived from profile+url (see
+    regradar.webhooks.subscriber_id; the derived form changes, orphaning
+    this row, if `url` is later rotated without an explicit `id`).
+    `cursor` is that subscriber's own head of the change stream (architecture
+    doc section 6), advanced only after a successful delivery. A later
+    digest feature (issue #13) reuses this same table under its own
+    subscriber id convention, per the task ruling that both share this
+    mechanism.
     """
     __tablename__ = "webhook_subscriptions"
 
