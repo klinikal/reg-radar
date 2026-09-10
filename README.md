@@ -105,7 +105,7 @@ If your `config/` mount is read-only the write fails with a `WARNING` naming the
 
 ## Coverage
 
-52 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA, six US federal entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC and CFPB) and Singapore (MAS and Singapore Statutes Online) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
+53 entries in the registry: 4 EU supranational bodies (ESMA, AMLA, EBA, EIOPA), national/EEA competent authorities (some jurisdictions have more than one — e.g. Belgium's FSMA and NBB, Italy's CONSOB/Banca d'Italia/OAM), plus the UK's FCA, six US federal entries (the Federal Register, SEC, CFTC, Federal Reserve, OCC and CFPB) and Singapore (MAS and Singapore Statutes Online) as deliberate non-EEA exceptions. Full list, per-source status, and notes on disabled entries: `config/regulators/` (one file per jurisdiction).
 
 Most active sources are RSS/Atom feeds or scrape targets; a smaller set is disabled (Cloudflare/SPA-protected, no working feed found, or architecturally unscrapeable) — documented in `config/regulators/` so gaps stay visible rather than silently missing.
 
@@ -122,6 +122,8 @@ The UK's FCA is included as a deliberate exception to the EEA scope above — se
 US federal coverage is a second exception, in `config/regulators/us.yaml`: the Federal Register (one API call covering rulemaking and notices for seven agencies, plus FINRA rule filings), and news, enforcement and speeches feeds for the SEC, CFTC, Federal Reserve, OCC and CFPB.
 
 Singapore is a third exception, in `config/regulators/sg.yaml`: MAS publishes no RSS anywhere, so all eight MAS sources — media releases, speeches, consultations, enforcement actions, notices, circulars, guidelines and legislation — come from its open Solr search API, plus two scoped `page_watch` sources on Singapore Statutes Online tracking amendments to the Payment Services Act 2019 and the Financial Services and Markets Act 2022.
+
+FATF is a fourth exception, in `config/regulators/intl.yaml`, under a standalone `intl` jurisdiction for international standard-setting bodies. It covers the black-and-grey lists (a `page_watch` — the watched fragment carries the actual country lists, so the diff is the substance) and the home-page news carousel. `intl` deliberately has no parent/child edges in `config/jurisdictions.yaml`: FATF Recommendations bind nobody directly, they are transposed into national and supranational law, so modelling FATF as an ancestor of any jurisdiction would assert an applicability that does not exist. Profiles opt in by naming `intl` explicitly. FATF is Cloudflare-protected and collects only with `FLARESOLVERR_URL` set.
 
 These are kept structurally separate so the EEA coverage numbers above stay accurate — and neither is collected unless you select it, since `config/modules.yaml` gates collection per regulator.
 

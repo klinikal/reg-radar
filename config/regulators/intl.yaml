@@ -1,0 +1,46 @@
+# International standard-setting bodies (jurisdiction id `intl`). Standalone
+# root in config/jurisdictions.yaml with NO parent/child edges: FATF
+# standards bind nobody directly, so profiles opt in explicitly.
+- id: intl-fatf
+  name: FATF
+  full_name: Financial Action Task Force
+  jurisdiction: intl
+  jurisdiction_type: international
+  website: https://www.fatf-gafi.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: true           # 403 with `cf-mitigated: challenge` - REQUIRES FlareSolverr
+  notes: "FATF is Cloudflare-protected: plain fetches return 403 with a cf-mitigated: challenge header, so FLARESOLVERR_URL must be set. black_and_grey_lists is a page_watch because the watched fragment carries the actual country lists - the diff IS the substance. watch_selector must stay `body > div.container.responsivegrid`: narrower selectors FAIL because page_watch uses select_one and div.aem-Grid--10 first-matches the intro blurb. The fragment includes static nav, so a FATF menu redesign produces one false 'change' - acceptable at ~3 real events a year. Do NOT use /en/publications.html: it is a category hub, not a feed; FATF's real publication listing is AEM faceted search, JS-only, and even its JS assets 403 to non-browser clients. `latest` has no usable date - .cmp-teaser__date is absent on the home carousel (it appears only on category hubs), so items land with date_inferred: true; the last few teasers are evergreen tiles (Recommendations, Methodology, private-sector page), one-off noise on first run, static thereafter."
+
+  sources:
+
+  - type: page_watch
+    url: "https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html"
+    label: black_and_grey_lists
+    preferred_language: en
+    tags: [page_watch]
+    watch_selector: "body > div.container.responsivegrid"
+    # FATF revises the two country lists at its plenary, which sits three
+    # times a year (Feb / Jun / Oct) - so ~130 days is a NORMAL gap and the
+    # 90-day default would warn on a perfectly healthy source. warn at 200
+    # days = one whole plenary cycle missed plus margin; error at 550 = four
+    # consecutive plenaries with no revision, which has no innocent reading.
+    staleness:
+      warn_days: 200
+      error_days: 550
+
+  - type: scrape
+    url: "https://www.fatf-gafi.org/en/home.html"
+    label: latest
+    preferred_language: en
+    labels: {}
+    tags: [news]
+    scrape:
+      item_selector: ".cmp-teaser"
+      title_selector: ".cmp-teaser__title"
+      link_selector: "a"
+      date_selector: null            # no date element on the home carousel
+      date_attribute: null
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false

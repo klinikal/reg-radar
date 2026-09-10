@@ -110,3 +110,14 @@
     Non-EEA. MAS is the single integrated regulator (central bank, banking,
     securities, payments and insurance); Singapore Statutes Online (AGC) is
     the statute publisher, listed separately.
+# Standalone root, NO parent/child edges. Profiles opt in explicitly with
+# `jurisdictions: [eu/*, intl]`.
+- id: intl
+  name: International standard-setting bodies
+  type: international
+  note: >-
+    Bodies with no jurisdiction of their own whose output is transposed into
+    national and supranational law rather than applying directly. Deliberately
+    has NO parent/child edges: FATF standards bind nobody by themselves, so
+    modelling them as an ancestor of any jurisdiction would assert an
+    applicability that does not exist. Profiles opt in explicitly.

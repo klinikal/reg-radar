@@ -1,6 +1,6 @@
 # Architecture doc §5.2, verbatim.
 name: uk-equities-dealer
-jurisdictions: [gb]
+jurisdictions: [gb, intl]
 activities: [equities_dealing]
 instruments: []
 exclude_instruments: [mica]
