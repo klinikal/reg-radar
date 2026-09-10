@@ -1,5 +1,5 @@
-"""Opaque sync cursor for the change-stream primitive (architecture doc
-section 6): `<updated_at ISO 8601 Z>|<item_id>`. This is the one encode/
+"""Opaque sync cursor for the change-stream primitive (see
+wiki/content/concept-export-sync-contract.md): `<updated_at ISO 8601 Z>|<item_id>`. This is the one encode/
 decode point - mcpserver.queries.get_changes, get_changes_tool,
 webui.app's /api/changes, regradar.exporter and regradar.webhooks all treat
 the return value of encode_cursor() as opaque and never build or parse one

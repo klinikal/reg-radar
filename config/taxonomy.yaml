@@ -1,4 +1,4 @@
-# Classification vocabularies (architecture doc §4.1). Code must not name
+# Classification vocabularies (see wiki/content/concept-taxonomy-classification.md). Code must not name
 # any axis except "jurisdiction" - everything else is read from here.
 #
 # Bump `version` on any change to values; it is recorded on every

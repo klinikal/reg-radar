@@ -44,9 +44,9 @@
 #       url: "https://example-authority.example/news/rss"
 #       label: all_news                 # unique within this regulator's sources - fixture path key
 #       preferred_language: en          # ISO 639-1; falls back to entry-level language, then detection
-#       labels:                         # source-default classification (architecture doc §4.3) - {} if none apply yet
+#       labels:                         # source-default classification (see wiki/content/component-rules.md) - {} if none apply yet
 #         document_type: warning
-#       tags: [warnings]                # structural, per-feed tags (architecture doc §3.2's source_tags)
+#       tags: [warnings]                # structural, per-feed tags (see wiki/content/concept-canonical-document-format.md's source_tags)
 #       # Optional, valid on ANY source type. The nightly source-health check
 #       # (scripts/source_health.py) asserts a source's newest item isn't too
 #       # old - warn at 90 days, error at 365 by default - because a feed can

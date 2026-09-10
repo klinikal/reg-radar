@@ -1,5 +1,5 @@
 """One-off migration: renames every source's `tags` (the old flat,
-blanket-applied structural list) to `labels` (architecture doc §4.3), and
+blanket-applied structural list) to `labels` (../wiki/content/component-rules.md), and
 lower-cases `jurisdiction` on both the regulators and their DB rows (`UK`
 becomes `gb` specifically - everything else is a straight lower-case).
 
@@ -12,7 +12,7 @@ per-jurisdiction split - point it at one file at a time (e.g.
 config/regulators/mt.yaml); it's a completed migration, already-migrated
 files are a no-op.
 
-Mapping decisions (architecture doc §4.7):
+Mapping decisions (../wiki/content/concept-taxonomy-classification.md):
 - `tags` containing "warnings"/"page_watch"/"press_releases"/"news" get a
   `document_type` source default, in that priority order when more than one
   is present on the same source (most specific wins). "publications" is too
@@ -157,7 +157,7 @@ def _print_table(table: list) -> None:
 
 def migrate_db_jurisdictions(db_path: str, dry_run: bool) -> int:
     """Lower-cases (and UK->gb maps) the `regulators` table's jurisdiction
-    column to match the migrated YAML - architecture doc §4.7: "The
+    column to match the migrated YAML - ../wiki/content/concept-taxonomy-classification.md: "The
     regulators table jurisdiction column is rewritten in the same
     migration." A no-op if the DB doesn't exist yet (fresh/test environment
     - the collector's own upsert_regulator() would apply the same mapping
@@ -197,7 +197,7 @@ def run(regulators_path: str, db_path: str, dry_run: bool) -> None:
 
     # The YAML rewrite is a completed, idempotent migration - skip it once
     # no `tags` keys remain. The DB jurisdiction rewrite is a separate,
-    # independent step (architecture doc §4.7) and must always run: the repo
+    # independent step (../wiki/content/concept-taxonomy-classification.md) and must always run: the repo
     # ships already-migrated YAML, so an operator upgrading from v1 would
     # otherwise never be able to trigger it via this script.
     if _has_any_tags(data):

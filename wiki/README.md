@@ -30,6 +30,7 @@ names exactly which files it was written from.
 - [Webhooks](content/component-webhooks.md) — `regradar/webhooks.py`, HMAC-signed delivery with retry backoff
 - [Delivery Channels](content/component-delivery.md) — `regradar/delivery/`, email/Telegram/webhook senders for digests
 - [Providers](content/component-providers.md) — `regradar/providers/`, the pluggable LLM classifier backends
+- [Registry](content/component-registry.md) — `regradar/registry.py`, loads and validates the regulators registry and `config/modules.yaml`
 
 ## CLI
 

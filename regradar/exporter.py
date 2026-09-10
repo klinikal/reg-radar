@@ -1,5 +1,5 @@
 """`regradar export --profile <p> --format markdown|jsonl --out <dir>
-[--since <cursor>] [--with-originals]` (architecture doc section 6).
+[--since <cursor>] [--with-originals]` (../wiki/content/concept-export-sync-contract.md).
 
 Wired into regradar/cli.py's subcommand registry (add_subparser()/run() -
 see that module's docstring for the convention). Reuses

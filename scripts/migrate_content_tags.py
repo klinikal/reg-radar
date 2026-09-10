@@ -1,7 +1,8 @@
 """One-off migration: imports every existing item's `content_tags` (the old
 JSON list, keyword-derived by collector/keyword_alerts.py from alerts.yaml)
 into the `classifications` table as `by: import`, confidence 0.5 rows
-(architecture doc §4.7) - so they survive the move to the new store, but
+(see ../wiki/content/concept-taxonomy-classification.md's migration-from-v1-tags
+section) - so they survive the move to the new store, but
 rank below anything better (see regradar/classification.py's tie-break
 order).
 

@@ -1,5 +1,5 @@
 """Webhook delivery: config/webhooks.yaml subscribers pulling from the
-same change stream get_changes() exposes (architecture doc section 6).
+same change stream get_changes() exposes (../wiki/content/concept-export-sync-contract.md).
 Each subscriber's own cursor and delivery outcomes live in SQLite
 (collector.storage's webhook_subscriptions/webhook_deliveries tables)
 rather than a file, so a later digest feature (issue #13) can reuse the

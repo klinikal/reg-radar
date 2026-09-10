@@ -51,7 +51,7 @@ def _tag_filter_conditions(tags, source_tags, content_tags, prefix: str = "") ->
         logger.warning(
             "Query used deprecated tags/source_tags/content_tags filter - these read the old "
             "flat columns; prefer jurisdictions/labels, which read the classification store "
-            "with provenance (architecture doc §4.4)."
+            "with provenance (../wiki/content/component-classification.md)."
         )
     conditions = []
     params = {}
@@ -234,7 +234,7 @@ def _search_conditions(query: str, exact: bool, regulator_ids, use_fts: bool = T
 
 def _jurisdiction_filter_conditions(jurisdictions, taxonomy, prefix: str = "") -> tuple[list[str], dict]:
     """Expands each requested jurisdiction through taxonomy.ancestors() (a
-    profile selecting "fr" also matches "eu" - architecture doc §4.2) and
+    profile selecting "fr" also matches "eu" - ../wiki/content/concept-taxonomy-classification.md) and
     builds a condition matching any item whose regulator's jurisdiction (or
     an ancestor of it) is in that expanded set.
 
@@ -603,8 +603,8 @@ def _document_fields(item: dict, reg: dict, taxonomy, classification_rows: list)
 
 
 def _assemble_document(item: dict, reg: dict, artefact: dict | None, taxonomy, classification_rows: list) -> dict:
-    """Builds one frontmatter-shaped document (architecture doc section
-    3.2), JSON-safe, from a raw items-table row plus its regulator/
+    """Builds one frontmatter-shaped document (../wiki/content/concept-canonical-document-format.md),
+    JSON-safe, from a raw items-table row plus its regulator/
     artefact/live classification rows - see _document_fields() for the
     assembly this is built on. Used by get_item() and _documents_for_items().
     """
@@ -1029,7 +1029,7 @@ _CHANGES_SELECT = """
 def _documents_for_items(conn, items: list[dict], include_body: bool = False, taxonomy=None) -> list[dict]:
     """Shared by get_changes() and get_latest_changes(): turns raw
     _CHANGES_SELECT item dicts (as returned by _row_to_dict) into
-    frontmatter-shaped documents (architecture doc section 3.2) via the
+    frontmatter-shaped documents (../wiki/content/concept-canonical-document-format.md) via the
     same _assemble_document() helper get_item() uses, so jurisdiction_
     ancestors/label_provenance are assembled identically on both paths
     instead of drifting. `taxonomy` is optional (None omits both, as
@@ -1078,7 +1078,7 @@ def _documents_for_items(conn, items: list[dict], include_body: bool = False, ta
 
 def get_changes(engine, since: str | None = None, profile=None, limit: int = 100,
                  include_body: bool = False, taxonomy=None) -> tuple[list[dict], str | None]:
-    """Everything that changed (architecture doc section 6): items with
+    """Everything that changed (../wiki/content/concept-export-sync-contract.md): items with
     (updated_at, id) after the opaque cursor `since` (from
     regradar.changes.encode_cursor), oldest first, id as tiebreak on equal
     timestamps. Unlike get_items_since(), which only sees fetched_at, this
@@ -1093,7 +1093,7 @@ def get_changes(engine, since: str | None = None, profile=None, limit: int = 100
     skipped forever.
 
     Returns (documents, next_cursor) - documents are frontmatter-shaped
-    (architecture doc section 3.2, the same shape get_item_tool's
+    (../wiki/content/concept-canonical-document-format.md, the same shape get_item_tool's
     `document` field has), next_cursor is the cursor of the last document
     returned, or None if nothing matched (an empty result, or `since` is
     already at the head of the stream).

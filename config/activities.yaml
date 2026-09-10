@@ -1,5 +1,5 @@
 # The interpretive layer between "what a document is" (taxonomy.yaml) and
-# "who should care" (a profile) - architecture doc §5.1. Each activity maps
+# "who should care" (a profile) - see wiki/content/concept-profiles-activities.md. Each activity maps
 # to the set of instruments (config/taxonomy.yaml's "instrument" axis) a
 # firm doing that activity needs to watch. Grows by PR, no code change.
 #

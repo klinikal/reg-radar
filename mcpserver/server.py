@@ -237,8 +237,8 @@ def get_item_tool(item_id: str, max_content_chars: int | None = None) -> dict | 
     """Returns a single item by its id (as returned by search_items_tool,
     get_recent_tool, get_warnings_tool, etc.), including its full
     raw_content and body_md (the same text as Markdown), plus a `document`
-    object holding the canonical document frontmatter fields (section 3.2
-    of the architecture doc) for this item.
+    object holding the canonical document frontmatter fields
+    (../wiki/content/concept-canonical-document-format.md) for this item.
 
     raw_content and body_md can both be large (a full regulator notice/PDF
     text) - pass max_content_chars to truncate both and protect your
@@ -420,7 +420,7 @@ _write_engine = None
 
 def get_write_engine():
     """A separate, read-write engine for the classification write interface
-    (architecture doc §4.5) - get_engine() above opens the database
+    (../wiki/content/component-classification.md) - get_engine() above opens the database
     read-only (mode=ro) deliberately, so writes need their own connection,
     same as collector.storage.init_db (which also ensures the schema exists
     - matching webui/app.py's get_engine())."""
@@ -433,8 +433,8 @@ def get_write_engine():
 
 @mcp.tool()
 def get_taxonomy_tool() -> dict:
-    """Returns the current taxonomy (config/taxonomy.yaml, architecture doc
-    §4.1): every axis with its cardinality, and every value with its id,
+    """Returns the current taxonomy (config/taxonomy.yaml,
+    ../wiki/content/concept-taxonomy-classification.md): every axis with its cardinality, and every value with its id,
     name, and aliases, plus the taxonomy version recorded on every
     classification row. Call this before classify_item_tool/
     classify_items_tool so an agent never needs filesystem access to the
@@ -467,7 +467,7 @@ def get_unclassified_tool(axis: str, limit: int = 50, offset: int = 0, regulator
 @mcp.tool()
 def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence: float = 1.0,
                         classifier_id: str | None = None) -> dict:
-    """Writes one classification (architecture doc §4.5) and returns the
+    """Writes one classification (../wiki/content/component-classification.md) and returns the
     item's new effective labels.
 
     `axis`/`value` must be valid per get_taxonomy_tool. `by` records
@@ -490,7 +490,7 @@ def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence:
 
 @mcp.tool()
 def classify_items_tool(classifications: list[dict]) -> dict:
-    """Writes up to 100 classifications in one call (architecture doc §4.5).
+    """Writes up to 100 classifications in one call (../wiki/content/component-classification.md).
     Every entry is validated against the current taxonomy before anything is
     written, so one bad entry never costs the rest of the batch - see
     classify_item_tool for the fields each entry takes (item_id/axis/value/
@@ -508,8 +508,8 @@ def classify_items_tool(classifications: list[dict]) -> dict:
 @mcp.tool()
 def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | None = None,
                       include_body: bool = False) -> dict:
-    """Returns everything that changed since an opaque cursor (architecture
-    doc section 6) - the sync primitive for a downstream tool tracking
+    """Returns everything that changed since an opaque cursor
+    (../wiki/content/concept-export-sync-contract.md) - the sync primitive for a downstream tool tracking
     state across polls, and the replacement for get_items_since_tool: it
     also catches a reclassification or human correction that bumps
     updated_at without a new fetch, not just newly collected items.
@@ -517,7 +517,7 @@ def get_changes_tool(since: str | None = None, limit: int = 100, profile: str | 
     Pass the previous call's `next_cursor` back in as `since` to resume;
     omit `since` to start from the beginning of the stream. Returns
     {"items": [...], "next_cursor": str | None} - items are
-    frontmatter-shaped (architecture doc section 3.2, the same shape
+    frontmatter-shaped (../wiki/content/concept-canonical-document-format.md, the same shape
     get_item_tool's `document` field has), oldest first. `next_cursor`
     round-trips as the next call's `since`, and is None only when nothing
     matched.
@@ -559,7 +559,7 @@ def export_tool(profile: str | None = None, format: list[str] | None = None, sub
                  since: str | None = None, with_originals: bool = False) -> dict:
     """Writes a markdown/JSONL export of items matching `profile` to disk
     and returns where it landed - the MCP equivalent of `reg-radar export`
-    (architecture doc section 6), wrapping the same regradar.exporter.
+    (../wiki/content/concept-export-sync-contract.md), wrapping the same regradar.exporter.
     export_profile() the CLI subcommand calls, with the same cursor
     bookkeeping (a `.reg-radar-cursor` file in the output directory): omit
     `since` to resume from wherever the last export into this directory

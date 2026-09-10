@@ -385,7 +385,7 @@ def test_classify_batch_over_max_size_raises():
 def test_classify_batch_rolls_back_all_writes_on_mid_batch_failure(monkeypatch):
     """A DB-level failure on the second entry's write must roll back the
     first entry's write too - classify_batch's transactional guarantee
-    (architecture doc §4.5) is "all valid entries written, or none are",
+    (../wiki/content/component-classification.md) is "all valid entries written, or none are",
     not "whatever happened to complete before the failure"."""
     import regradar.classification as classification_module
 

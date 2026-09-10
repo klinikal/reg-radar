@@ -1,4 +1,4 @@
-"""The rules engine (architecture doc §4.3): compiles `config/rules.yaml`
+"""The rules engine (../wiki/content/component-rules.md): compiles `config/rules.yaml`
 plus implicit alias rules from `taxonomy.yaml` into `CompiledRule`s once per
 run, and scores an item's title/body against them.
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _VALID_FIELDS = {"title", "body"}
 DEFAULT_MIN_CONFIDENCE = 0.5
-# Alias-derived implicit rules (architecture doc §4.3): a taxonomy value's
+# Alias-derived implicit rules (../wiki/content/component-rules.md): a taxonomy value's
 # `aliases` compile into a rule at this weight, word-boundary matched,
 # case-insensitive, over both title and body.
 ALIAS_RULE_WEIGHT = 0.7
@@ -81,7 +81,7 @@ def _compile_explicit_rules(path: str, raw_rules, taxonomy) -> list[CompiledRule
 
 def _compile_alias_rules(taxonomy) -> list[CompiledRule]:
     """One implicit CompiledRule per taxonomy value that has aliases,
-    word-boundary matched, case-insensitive (architecture doc §4.3)."""
+    word-boundary matched, case-insensitive (../wiki/content/component-rules.md)."""
     compiled = []
     for axis in taxonomy.axes():
         for axis_value in taxonomy.axis_values(axis):
@@ -151,8 +151,8 @@ class RulesEngine:
         """Returns {(axis, value): confidence} for every (axis, value) whose
         combined score reaches min_confidence. Scores sum per (axis, value)
         across every rule targeting that pair - an explicit rule plus its
-        alias-derived counterpart stack - capped at 1.0 (architecture doc
-        §4.3: "Scores sum per (axis, value), capped at 1.0")."""
+        alias-derived counterpart stack - capped at 1.0 (../wiki/content/component-rules.md:
+        "Scores sum per (axis, value), capped at 1.0")."""
         totals: dict = {}
         for rule in self.rules:
             s = _score_rule(rule, title, body)

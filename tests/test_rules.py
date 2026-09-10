@@ -161,8 +161,8 @@ def test_missing_rules_file_still_builds_alias_rules(tmp_path):
     assert engine.score("A note on MiCA compliance", "") == {("instrument", "mica"): 0.7}
 
 
-# --- alias-derived implicit rules (architecture doc §4.3: weight 0.7,
-# word-boundary matched) ---
+# --- alias-derived implicit rules (../wiki/content/component-rules.md:
+# weight 0.7, word-boundary matched) ---
 
 def test_alias_rule_matches_at_implicit_weight(tmp_path):
     path = _write_rules(tmp_path, "rules: []\n")
@@ -173,7 +173,7 @@ def test_alias_rule_matches_at_implicit_weight(tmp_path):
 
 def test_explicit_and_alias_rule_for_same_value_sum_and_cap_at_one(tmp_path):
     # An explicit rule scoring 0.9 for "mica" plus the 0.7 alias-derived rule
-    # both matching sum to 1.6, capped at 1.0 (architecture doc §4.3:
+    # both matching sum to 1.6, capped at 1.0 (../wiki/content/component-rules.md:
     # "Scores sum per (axis, value), capped at 1.0").
     path = _write_rules(tmp_path, (
         "rules:\n"
