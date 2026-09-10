@@ -219,10 +219,10 @@ def add_subparser(subparsers) -> None:
                          help="Provenance to supersede and rewrite: source_default re-applies "
                               "regulators.yaml sources[].labels; rule rescores every item against "
                               "config/rules.yaml (llm:* is agent-driven via the classifier skill, not "
-                              "this command). Always writes provenance as exactly 'source_default' or "
-                              "'rule' on the affected items, overwriting whatever provenance (including "
-                              "llm:* or a manual override) was there before — this command does not "
-                              "preserve prior classification history.")
+                              "this command). Only supersedes existing rows whose provenance already "
+                              "matches --by (e.g. --by rule only touches prior 'rule' rows, leaving "
+                              "source_default/llm:* rows live); human:* rows are never touched. "
+                              "Superseded rows are kept as history, not deleted.")
     parser.add_argument("--dry-run", action="store_true", help="Report what would change without writing")
     parser.add_argument("--db-path", default=os.getenv("DB_PATH", "/app/data/reg_radar.db"))
     parser.add_argument("--regulators-path", default=os.getenv("REGULATORS_PATH", "config/regulators"))
