@@ -49,9 +49,22 @@ modules:
     sources: [news, warnings]
     schedule: "0 6 * * *"
 
-  # `schedule:` and `on_enable:` are validated but not yet acted on - per-module
-  # cadence and on_enable semantics land with later issues in this series. The
-  # collector still runs one global schedule (SCHEDULE in .env).
-  # - id: mt-mfsa
+  # `schedule:` is a per-module cron cadence. The collector adds one job per
+  # *distinct* resolved expression, so the job count tracks the cadences in
+  # use, not the size of the registry. Anything without a `schedule:` anywhere
+  # falls back to SCHEDULE in .env. Suggested cadences:
+  #
+  #   0 */4 * * *   OCC - a 10-item feed loses documents at anything slower
+  #   0 6 * * *     most RSS and scrape sources (the default)
+  #   0 6 * * 1     FATF grey list and statute page_watch sources (~3x/year)
+  #
+  # All cadences share one collection lock, so they queue rather than overlap;
+  # a job that finds the lock held is skipped with a WARNING naming its cron
+  # expression. `--once` ignores cadence and runs everything in one pass.
+  # - id: us-occ
   #   schedule: "0 */4 * * *"
+
+  # `on_enable:` is validated but not yet acted on - it lands with a later
+  # issue in this series.
+  # - id: mt-mfsa
   #   on_enable: new_only

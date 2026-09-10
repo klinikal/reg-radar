@@ -654,19 +654,31 @@ def _release_lock(lock_file) -> None:
     lock_file.close()
 
 
-def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, taxonomy=None, rules_engine=None):
+def run_collection_locked(engine, regulators: list[dict], cfg: dict, lock_path: str, taxonomy=None,
+                          rules_engine=None, cadence: str | None = None):
     """run_collection(), but skips entirely (rather than overlapping) if
     another collection run already holds the lock - a long FlareSolverr-
     heavy run (MFSA's ~10+ enabled categories at an 8s minimum interval
     each) can genuinely still be running when the next scheduled trigger or
     a manual --once invocation fires, and two processes writing to the same
     SQLite file concurrently is a real corruption risk, not just wasted
-    work."""
+    work.
+
+    `cadence` is the cron expression of the job that fired, passed only so a
+    lock-skip names which cadence lost and which regulators it was carrying
+    (issue #49) - one global lock now serialises several cadences, so a skip
+    has to be attributable.
+    """
+    # ponytail: one global lock across all cadences; if a slow module starves a
+    # fast one (OCC's 4h cadence repeatedly skipped behind a long MFSA run),
+    # go per-module locks keyed on regulator id.
     lock_file = _acquire_lock(lock_path)
     if lock_file is None:
         logger.warning(
             "Another collection run is already in progress (lock held at %s) - skipping this run rather than "
-            "overlapping it.", lock_path,
+            "overlapping it. Cadence: %s. Regulators skipped: %s",
+            lock_path, cadence or cfg.get("schedule", "<unknown>"),
+            ", ".join(r.get("id", "<unknown>") for r in regulators) or "<none>",
         )
         return
     try:
@@ -732,15 +744,9 @@ def main():
             event.exception,
         )
 
-    schedule = cfg["schedule"]
-    logger.info("Starting scheduler with cron: %s", schedule)
     scheduler = BlockingScheduler()
     scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
-    scheduler.add_job(
-        run_collection_locked,
-        CronTrigger.from_crontab(schedule),
-        args=[engine, regulators, cfg, lock_path, taxonomy, rules_engine],
-    )
+    _schedule_collection(scheduler, engine, regulators, cfg, lock_path, taxonomy, rules_engine)
     try:
         _schedule_digests(scheduler, engine, cfg, taxonomy)
     except Exception:
@@ -750,6 +756,57 @@ def main():
     except KeyboardInterrupt:
         scheduler.shutdown()
 
+
+
+def _group_by_cadence(regulators: list[dict], default_schedule: str) -> dict[str, list[dict]]:
+    """Groups selected regulators by their resolved cron expression, keeping
+    registry order within a group. A regulator with no `module.schedule`
+    (either no modules.yaml at all, or nothing set it anywhere in #48's
+    defaults -> jurisdiction wildcard -> module id order) falls back to
+    SCHEDULE, so an install with no cadence opinions gets exactly one job
+    with exactly today's expression."""
+    groups: dict[str, list[dict]] = {}
+    for reg in regulators:
+        schedule = (reg.get("module") or {}).get("schedule") or default_schedule
+        groups.setdefault(schedule, []).append(reg)
+    return groups
+
+
+def _schedule_collection(scheduler: BlockingScheduler, engine, regulators: list[dict], cfg: dict,
+                         lock_path: str, taxonomy, rules_engine) -> None:
+    """Adds one collection job per *distinct* cron expression rather than one
+    per module, so the job count tracks the number of cadences in use, not
+    the size of the registry (issue #49). Each job collects only the
+    regulators bound to its expression; the groups are disjoint, so two
+    cadences never fetch or write the same source, and the single file lock
+    in run_collection_locked() serialises them if they ever overlap in time.
+
+    An unusable expression logs and skips that group only, following
+    _schedule_digests' precedent - one bad cadence must never stop the
+    scheduler. The SCHEDULE fallback is the exception: it is the whole
+    install's cadence, and a broken one has always been a hard failure."""
+    default_schedule = cfg["schedule"]
+    for schedule, group in _group_by_cadence(regulators, default_schedule).items():
+        try:
+            trigger = CronTrigger.from_crontab(schedule)
+        except (ValueError, TypeError) as e:
+            if schedule == default_schedule:
+                raise
+            logger.error(
+                "Invalid cron schedule %r (%s) for module(s) %s - skipping those; other cadences still run.",
+                schedule, e, ", ".join(r.get("id", "<unknown>") for r in group),
+            )
+            continue
+        scheduler.add_job(
+            run_collection_locked,
+            trigger,
+            args=[engine, group, cfg, lock_path, taxonomy, rules_engine, schedule],
+            id=f"collect:{schedule}",
+        )
+        logger.info(
+            "Scheduled collection with cron: %s (%d regulator(s): %s)",
+            schedule, len(group), ", ".join(r.get("id", "<unknown>") for r in group),
+        )
 
 def _dispatch_webhooks(engine, cfg: dict, taxonomy) -> None:
     """Delivers to every configured config/webhooks.yaml subscriber after a

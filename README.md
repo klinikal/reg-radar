@@ -77,7 +77,19 @@ Three loader states:
 
 An invalid `modules.yaml` — bad cron, unknown module id, unknown source label — is refused at startup with a message naming the file and the offending entry, never a traceback and never a half-configured run.
 
-`schedule:` and `on_enable:` are validated but not yet acted on: the collector still runs one global schedule (`SCHEDULE` in `.env`). Carrying them through the schema now means your file doesn't need rewriting when per-module cadence lands.
+**`schedule:`** is a per-module cron cadence, resolved through the same order as everything else. The collector adds one scheduled job per *distinct* resolved expression — not per module — so the job count tracks the cadences you actually use, not the size of the registry. A module with no `schedule:` anywhere falls back to `SCHEDULE` in `.env`, so an install with no cadence opinions behaves exactly as before.
+
+Suggested cadences:
+
+| Cadence | Sources | Why |
+|---|---|---|
+| Every 4h (`0 */4 * * *`) | OCC (10-item retention) | Loses documents otherwise |
+| Daily (`0 6 * * *`) | Most RSS and scrape sources | The default |
+| Weekly (`0 6 * * 1`) | FATF grey list, statute `page_watch` sources | Change ~3x/year |
+
+The cadences never overlap each other: every run still takes the same single file lock, so a job that fires while another is still collecting is skipped with a `WARNING` naming its cron expression and the regulators it was carrying. That means a slow cadence can starve a fast one — the log line is there so you can see it happening. An unusable expression on a module logs and skips that group only; the scheduler still starts and the other cadences run. `--once` ignores cadence entirely and runs every enabled module in one pass.
+
+`on_enable:` is still validated but not yet acted on.
 
 ### The trade-off: collection-time filtering is not free to reverse
 
