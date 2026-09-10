@@ -13,6 +13,7 @@ from collector.adapters.base import FetchContext
 from collector.adapters.registry import get as get_adapter
 from collector.pipeline import process_raw_documents
 from collector.schema import Item
+from collector.adapters.http import DEFAULT_USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def fetch_source(
     config: dict,
     rules_engine=None,
 ) -> list[Item]:
-    user_agent = config.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    user_agent = config.get("user_agent", DEFAULT_USER_AGENT)
     timeout = int(config.get("timeout", 30))
     retries = int(config.get("retries", 3))
     source_type = source.get("type", "rss")

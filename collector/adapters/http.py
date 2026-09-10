@@ -18,6 +18,13 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+# Browser-shaped but honest and attributable: no specific browser version, and
+# the project URL stays so site operators can identify the crawler. Several
+# hosts block or serve a decoy to a bare tool UA - MAS answers 200 with an
+# 854KB "Maintenance" page rather than its real JSON (#37). Defined once here
+# because it was previously copied into eight places and drifted.
+DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; reg-radar/2.0; +https://github.com/klinikal/reg-radar)"
+
 # FlareSolverr drives a real browser per request and the target site's own
 # rate limiting/bot detection is what actually matters here, not our own
 # throughput - a burst of requests (even ones that individually succeed) can
@@ -50,6 +57,28 @@ def throttle_flaresolverr(domain: str) -> None:
     if wait > 0:
         time.sleep(wait)
     _last_flaresolverr_request_at[domain] = time.monotonic()
+
+
+# sec.gov's observed behaviour is stricter than its documented Fair Access
+# policy: a burst of ~8 rapid requests earned a site-wide block lasting
+# minutes. One host with one verified requirement, so one host-specific
+# rule - deliberately not a general per-host rate-limit config.
+# ponytail: single global timestamp, fine because the collector fetches
+# sequentially in one process; make it a per-process lock if that changes.
+_SEC_MIN_INTERVAL_SECONDS = float(os.getenv("SEC_MIN_INTERVAL_SECONDS", "1"))
+_last_sec_request_at = float("-inf")
+
+
+def throttle_sec_gov(url: str) -> None:
+    """Space sec.gov requests (any subdomain) >=1s apart; no-op elsewhere."""
+    global _last_sec_request_at
+    host = (urlparse(url).hostname or "").lower()
+    if host != "sec.gov" and not host.endswith(".sec.gov"):
+        return
+    wait = _SEC_MIN_INTERVAL_SECONDS - (time.monotonic() - _last_sec_request_at)
+    if wait > 0:
+        time.sleep(wait)
+    _last_sec_request_at = time.monotonic()
 
 
 def _backoff_with_jitter(attempt: int) -> float:
@@ -221,6 +250,7 @@ def fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolve
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
+            throttle_sec_gov(url)
             with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [make_ssrf_check()]}) as client:
                 resp = client.get(url)
                 resp.raise_for_status()
@@ -250,6 +280,7 @@ def fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes
     headers = {"User-Agent": user_agent}
     for attempt in range(retries):
         try:
+            throttle_sec_gov(url)
             with httpx.Client(headers=headers, timeout=timeout, follow_redirects=True, event_hooks={"request": [make_ssrf_check()]}) as client:
                 # Stream and stop as soon as max_bytes is exceeded - a plain
                 # client.get() downloads the full response into memory before

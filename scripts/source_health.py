@@ -17,6 +17,7 @@ from collector.adapters.registry import get as get_adapter
 from collector.main import load_regulators as _load_regulators_split
 from collector.pipeline import process_raw_documents
 from collector.schema import Item
+from collector.adapters.http import DEFAULT_USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
         raise ValueError(f"unknown source type '{source_type}'")
 
     ctx = FetchContext(
-        user_agent=cfg.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
+        user_agent=cfg.get("user_agent", DEFAULT_USER_AGENT),
         timeout=int(cfg.get("timeout", 30)),
         retries=int(cfg.get("retries", 3)),
         flaresolverr_url=cfg.get("flaresolverr_url") if regulator.get("cloudflare_protected", False) else None,

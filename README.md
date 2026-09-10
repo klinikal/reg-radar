@@ -373,7 +373,7 @@ Copy `.env.example` to `.env` and adjust:
 | `DB_PATH` | `/app/data/reg_radar.db` | SQLite database path |
 | `SCHEDULE` | `0 6 * * *` | Cron schedule (UTC) |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `USER_AGENT` | `reg-radar/2.0 (+https://github.com/klinikal/reg-radar)` | HTTP User-Agent header |
+| `USER_AGENT` | `Mozilla/5.0 (compatible; reg-radar/2.0; +https://github.com/klinikal/reg-radar)` | HTTP User-Agent header |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
 | `REGULATORS_PATH` | `/app/config/regulators` | Regulator registry directory (a single file path also still works) |

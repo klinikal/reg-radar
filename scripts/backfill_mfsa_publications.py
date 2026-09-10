@@ -38,7 +38,7 @@ import re
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
-from collector.adapters.http import fetch_html
+from collector.adapters.http import fetch_html, DEFAULT_USER_AGENT
 from collector.adapters.scrape import ScrapeAdapter
 from collector.main import load_regulators
 from collector.pipeline import process_raw_documents
@@ -137,7 +137,7 @@ def _backfill_category(source: dict, flaresolverr_url: str, fetch_cfg: dict, eng
 
 
 def run(category: str | None, run_all: bool, dry_run: bool, max_pages: int | None) -> None:
-    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip()

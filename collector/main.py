@@ -24,6 +24,7 @@ from collector.storage import (
 from regradar.classification import write_classification
 from regradar.rules import RulesEngine
 from regradar.taxonomy import Taxonomy, TaxonomyError, load_and_exit_on_error, load_jurisdictions
+from collector.adapters.http import DEFAULT_USER_AGENT
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -36,7 +37,7 @@ def load_config():
     return {
         "db_path": os.getenv("DB_PATH", "/app/data/reg_radar.db"),
         "schedule": os.getenv("SCHEDULE", "0 6 * * *"),
-        "user_agent": os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
+        "user_agent": os.getenv("USER_AGENT", DEFAULT_USER_AGENT),
         "timeout": int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
         "retries": int(os.getenv("REQUEST_RETRIES", "3")),
         "flaresolverr_url": os.getenv("FLARESOLVERR_URL", "").strip() or None,

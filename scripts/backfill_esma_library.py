@@ -30,7 +30,7 @@ import time
 
 import httpx
 
-from collector.adapters.http import _backoff_with_jitter
+from collector.adapters.http import _backoff_with_jitter, DEFAULT_USER_AGENT
 from collector.fetcher import fetch_source
 from collector.storage import init_db, insert_item, record_run_complete, record_run_start
 
@@ -70,7 +70,7 @@ def _detect_last_page(user_agent: str, timeout: int) -> int:
 
 
 def run(start_page: int, end_page: int | None, delay: float, dry_run: bool) -> None:
-    user_agent = os.getenv("USER_AGENT", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)")
+    user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
     timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
     retries = int(os.getenv("REQUEST_RETRIES", "3"))
     db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")

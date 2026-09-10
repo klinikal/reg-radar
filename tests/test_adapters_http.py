@@ -334,3 +334,37 @@ def test_ssrf_event_hook_blocks_hostname_resolving_to_private_ip():
         mock_resolve.return_value = [(2, 1, 6, "", ("172.16.0.1", 0))]
         with pytest.raises(httpx.InvalidURL, match="private"):
             hook(fake_request)
+
+
+def test_sec_gov_requests_are_spaced_at_least_one_second_apart(monkeypatch):
+    """Observed sec.gov behaviour blocks bursts, so consecutive requests to
+    any sec.gov host must be spaced by the configured minimum."""
+    import collector.adapters.http as http_mod
+
+    clock = [1000.0]
+    slept = []
+    monkeypatch.setattr(http_mod.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(http_mod.time, "sleep", lambda s: (slept.append(s), clock.__setitem__(0, clock[0] + s)))
+    monkeypatch.setattr(http_mod, "_last_sec_request_at", float("-inf"))
+
+    http_mod.throttle_sec_gov("https://www.sec.gov/news/pressreleases")
+    assert slept == []            # first request is not delayed
+    http_mod.throttle_sec_gov("https://www.sec.gov/cgi-bin/browse-edgar")
+    assert slept == [1.0]         # immediate second request waits the full interval
+
+    clock[0] += 5.0
+    http_mod.throttle_sec_gov("https://sec.gov/robots.txt")
+    assert slept == [1.0]         # apex domain also throttled, but enough time had passed
+
+
+def test_throttle_is_a_noop_for_non_sec_hosts(monkeypatch):
+    import collector.adapters.http as http_mod
+
+    slept = []
+    monkeypatch.setattr(http_mod.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(http_mod, "_last_sec_request_at", float("-inf"))
+
+    for url in ("https://www.fca.org.uk/news", "https://notsec.gov.example.com/x", "https://www.mas.gov.sg/api"):
+        http_mod.throttle_sec_gov(url)
+        http_mod.throttle_sec_gov(url)
+    assert slept == []

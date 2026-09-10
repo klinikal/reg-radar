@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from collector.adapters.base import FetchContext, RawDocument, SourceAdapter
 from collector.adapters.http import (
+    DEFAULT_USER_AGENT,
     MAX_PDF_DOWNLOAD_BYTES,
     extract_pdf_text,
     fetch_bytes,
@@ -88,7 +89,7 @@ class ScrapeAdapter(SourceAdapter):
                 # landing page).
                 pdf_bytes = fetch_bytes(
                     href,
-                    config.get("user_agent", "reg-radar/2.0 (+https://github.com/klinikal/reg-radar)"),
+                    config.get("user_agent", DEFAULT_USER_AGENT),
                     int(config.get("timeout", 30)),
                     int(config.get("retries", 3)),
                     max_bytes=MAX_PDF_DOWNLOAD_BYTES,
