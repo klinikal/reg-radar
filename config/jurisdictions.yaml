@@ -104,6 +104,12 @@
   note: >-
     Federal level. CSBS/NMLS and NASAA are state-regulator associations, not
     competent authorities - their sources sit here.
+- id: us-ny
+  name: New York
+  parents: [us]
+- id: us-ca
+  name: California
+  parents: [us]
 - id: sg
   name: Singapore
   note: >-

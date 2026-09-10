@@ -1,0 +1,58 @@
+- id: us-ca-dfpi
+  name: CA DFPI
+  full_name: California Department of Financial Protection and Innovation
+  jurisdiction: us-ca
+  jurisdiction_type: state
+  website: https://dfpi.ca.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    The only US state besides New York with a genuinely machine-readable feed
+    and an active crypto enforcement docket. All three sources verified live
+    2026-09-10. GOTCHA: three obvious surfaces are dead and must not be used
+    as fallbacks - /feed/ returns 200 with no items, wp/v2/posts returns [],
+    and wp-sitemap.xml is an empty urlset. Every piece of content lives in
+    the three custom post types below. enforcement_action titles are bare
+    entity names ("Better Rise Capital"), so classification depends on the
+    excerpt/body, not the title. alert carries both crypto-scam warnings and
+    cyber advisories, hence labels {} rather than a document_type default.
+    per_page=20 is the newest-first window; DFPI publishes at a low enough
+    cadence that this is several months of backlog for press_release and
+    alert, and roughly six weeks for enforcement_action.
+  sources:
+    - type: json_api
+      url: "https://dfpi.ca.gov/wp-json/wp/v2/press_release?per_page=20&_fields=id,date,link,title,excerpt"
+      label: press_releases
+      preferred_language: en
+      labels:
+        document_type: press_release
+      tags: [press_releases]
+      json_api:
+        items_path: ""
+        title_field: title.rendered
+        url_field: link
+        published_field: date
+    - type: json_api
+      url: "https://dfpi.ca.gov/wp-json/wp/v2/enforcement_action?per_page=20&_fields=id,date,link,title,excerpt"
+      label: enforcement_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      json_api:
+        items_path: ""
+        title_field: title.rendered
+        url_field: link
+        published_field: date
+    - type: json_api
+      url: "https://dfpi.ca.gov/wp-json/wp/v2/alert?per_page=20&_fields=id,date,link,title,excerpt"
+      label: alerts
+      preferred_language: en
+      labels: {}
+      tags: [warnings]
+      json_api:
+        items_path: ""
+        title_field: title.rendered
+        url_field: link
+        published_field: date

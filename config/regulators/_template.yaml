@@ -22,6 +22,8 @@
 #     non_eea         national authority outside the EEA - the UK's FCA
 #     national        national competent authority, for countries outside the
 #                     EEA framing above - e.g. the US SEC
+#     state           sub-national authority of a federal state - New York's
+#                     DFS, California's DFPI
 #     sro             private self-regulatory organisation exercising delegated
 #                     authority, not a government agency - e.g. FINRA
 #     international   international standard-setting body with no jurisdiction of

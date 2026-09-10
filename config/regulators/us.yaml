@@ -381,3 +381,47 @@
       # worst case (e.g. an August report still newest in early October).
       # The 90-day default warn survives that; anything beyond it is a
       # genuinely missed month, which is what should be flagged.
+
+- id: us-nmls
+  name: NMLS
+  full_name: Nationwide Multistate Licensing System (CSBS)
+  jurisdiction: us
+  jurisdiction_type: national
+  website: https://mortgage.nationwidelicensingsystem.org
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    CSBS/NMLS is a state-regulator association, not a competent authority, so
+    it sits under `us` rather than any single state - the State Licensing feed
+    is a national aggregator of state licensing developments (TX-OCCC
+    registration types, Massachusetts money-transmitter notices, Kansas virtual
+    currency kiosk legislation), which is exactly what fifty per-state scrapers
+    would be for. Anonymous SharePoint REST list; 50 items at capture, newest
+    2026-08-24, oldest 2023-12-26. TWO adapter requirements, both verified live
+    2026-09-10: (1) the Accept header below is mandatory - without it SharePoint
+    serves Atom XML, and $format=json does NOT override it; (2) the list carries
+    NO url field of any kind, so url_field is null and every item falls back to
+    landing_url. That shared URL does not break dedup: storage.insert_item
+    dedups on item.id and make_item_id hashes regulator_id|url|published_at, so
+    distinct Created timestamps give distinct ids - asserted against the
+    captured fixture in tests/test_nmls_shared_url_ids.py, not assumed. The cost
+    is cosmetic: items link to the hub rather than the underlying notice. Body
+    HTML is in NewsItemDescription; the rendered page is a JS-only SharePoint
+    canvas, so scrape is useless here. Keep the NewsItemCategory filter -
+    unfiltered, roughly 70% of the list is NMLS system-maintenance noise.
+  sources:
+    - type: json_api
+      url: "https://mortgage.nationwidelicensingsystem.org/knowledge/news/_api/web/lists(guid'56c65850-d5ce-4ad3-8d14-66a6b1971afb')/items?$select=Title,NewsItemDescription,NewsItemCategory,Created&$filter=NewsItemCategory eq 'State Licensing'&$orderby=Created desc&$top=50"
+      label: state_licensing
+      preferred_language: en
+      labels: {}
+      tags: [publications]
+      headers:
+        Accept: "application/json;odata=nometadata"
+      json_api:
+        items_path: value
+        title_field: Title
+        url_field: null
+        landing_url: "https://mortgage.nationwidelicensingsystem.org/knowledge/news/SitePages/Home.aspx"
+        published_field: Created

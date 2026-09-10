@@ -425,8 +425,13 @@ def fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolve
 
 
 def fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes: int | None = None,
-                flaresolverr_url: str | None = None, raise_on_block: bool = True) -> bytes | None:
-    """raise_on_block=False downgrades a detected block to a plain None
+                flaresolverr_url: str | None = None, raise_on_block: bool = True,
+                extra_headers: dict | None = None) -> bytes | None:
+    """extra_headers is for APIs that need one to answer correctly at all -
+    NMLS's SharePoint list serves Atom XML rather than JSON without an
+    explicit Accept, and $format=json does not override it.
+
+    raise_on_block=False downgrades a detected block to a plain None
     return. Set it for a *secondary* fetch - the scrape adapter's per-item
     PDF download - where a block on one attachment must not discard the
     listing items that were already parsed successfully. The listing fetch
@@ -446,7 +451,7 @@ def fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes
             return None
         return content
 
-    headers = {"User-Agent": user_agent}
+    headers = {"User-Agent": user_agent, **(extra_headers or {})}
     for attempt in range(retries):
         try:
             throttle_sec_gov(url)

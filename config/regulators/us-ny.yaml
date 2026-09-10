@@ -1,0 +1,94 @@
+- id: us-ny-dfs
+  name: NYDFS
+  full_name: New York State Department of Financial Services
+  jurisdiction: us-ny
+  jurisdiction_type: state
+  website: https://www.dfs.ny.gov
+  mica_competent_authority: false
+  enabled: true
+  cloudflare_protected: false
+  notes: >-
+    The only US state regulator whose crypto-specific output firms elsewhere
+    actually read - BitLicense, virtual-currency listing guidance, consent
+    orders against Paxos, Block and Wise. All four sources verified live
+    2026-09-10 from UK egress under the default browser-shaped USER_AGENT
+    (#37); no FlareSolverr needed. GOTCHA: `?page=1` (and any paginated form)
+    returns a Cloudflare 403 - only the bare path works, which caps the
+    newsroom at 10 items per run with NO pagination route, so daily polling
+    is mandatory and a busy week can drop items. GOTCHA: enforcement_actions
+    rows are NOT date-sorted - 2026-08, 2026-07, 2025-06, 2025-08 appear in
+    that order in the live table - so any future "stop at the first old row"
+    incremental optimisation would truncate the list wrongly. The two tabular
+    sources return their full history in one server-rendered table (309
+    industry letters, 118 enforcement actions at capture), so no pagination
+    is needed for them. One industry_letters row carries a malformed date
+    ("1996-00-00"); it lands as date_inferred rather than failing the source.
+    jurisdiction_type `state` is a new value not in _template.yaml's
+    commented list - it is free text and unvalidated, but that comment is the
+    single documented list and should gain it.
+  sources:
+    - type: scrape
+      url: "https://www.dfs.ny.gov/Newsroom"
+      label: newsroom
+      preferred_language: en
+      labels: {}
+      tags: [press_releases]
+      scrape:
+        item_selector: "article.listing-view__card"
+        title_selector: ".listing-view__card-headline a"
+        link_selector: ".listing-view__card-headline a"
+        date_selector: "time.datetime"
+        date_attribute: "datetime"
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+      # labels is deliberately {}: the newsroom mixes press releases with
+      # industry letters and regulation announcements, so a document_type
+      # default here would be wrong for a real share of the items.
+    - type: scrape
+      url: "https://www.dfs.ny.gov/industry_guidance/industry_letters"
+      label: industry_letters
+      preferred_language: en
+      labels:
+        document_type: final_guidance
+      tags: [publications]
+      scrape:
+        item_selector: "table.table tbody tr"
+        title_selector: "td:nth-child(2)"
+        link_selector: "td:nth-child(2) a"
+        date_selector: "td:nth-child(1)"
+        date_attribute: null
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+    - type: scrape
+      url: "https://www.dfs.ny.gov/industry_guidance/enforcement_actions"
+      label: enforcement_actions
+      preferred_language: en
+      labels:
+        document_type: enforcement
+      tags: [enforcement]
+      scrape:
+        item_selector: "table.table tbody tr"
+        title_selector: "td:nth-child(2)"
+        link_selector: "td:nth-child(2) a"
+        date_selector: "td:nth-child(1)"
+        date_attribute: null
+        date_fuzzy: false
+        content_selector: null
+        extract_pdf_text: false
+    - type: page_watch
+      url: "https://www.dfs.ny.gov/apps_and_licensing/virtual_currency_businesses"
+      label: virtual_currency_businesses
+      preferred_language: en
+      tags: [page_watch]
+      # NOT `table`: page_watch hashes soup.select_one(), i.e. the FIRST
+      # match only, and this page carries four tables - VC guidance (16
+      # rows), voluntary surrenders (5), the licensed-entity list (39) and
+      # the greenlisted-coin list (8). `table` would watch the guidance
+      # table alone and miss every licensure change, which is the point of
+      # watching this page. `.article-content` is the one container holding
+      # all four (~25KB of text at capture).
+      watch_selector: ".article-content"
+      # /virtual-currency and /virtual_currency both 404 - the path above is
+      # the only one that resolves.

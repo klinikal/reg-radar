@@ -1,5 +1,6 @@
 """CSS-selector scrape adapter - wraps v1's `_parse_scrape` unchanged."""
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
@@ -121,6 +122,9 @@ class ScrapeAdapter(SourceAdapter):
         return docs
 
 
+_ISO_DATE = re.compile(r"\s*\d{4}-\d{1,2}-\d{1,2}")
+
+
 def _parse_date(date_str: str, fuzzy: bool, date_attribute: str | None) -> datetime | None:
     try:
         from dateutil.parser import parse as parse_date
@@ -135,7 +139,16 @@ def _parse_date(date_str: str, fuzzy: bool, date_attribute: str | None) -> datet
         # date-shaped substring from surrounding text and never fails
         # loudly. Opt in per-source via date_fuzzy: true only for sources
         # that genuinely need it (e.g. FCA's "Published: DD/MM/YYYY" text).
-        parsed = parse_date(date_str, fuzzy=fuzzy, dayfirst=not date_attribute)
+        #
+        # An ISO-shaped string read as TEXT is unambiguous, and dayfirst=True
+        # actively corrupts it: dateutil reads "2026-08-03" as 8 March and
+        # "2026-12-01" as 12 January, stored with date_inferred=False - i.e.
+        # asserted as fact. NYDFS's tables are the first source to render
+        # dates that way (no <time datetime>, bare text), but the fix is keyed
+        # off the string's shape rather than a per-source flag, so every
+        # ISO-text source is right by default.
+        iso_text = _ISO_DATE.match(date_str) is not None
+        parsed = parse_date(date_str, fuzzy=fuzzy, dayfirst=not date_attribute and not iso_text)
         return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except Exception:
         return None
