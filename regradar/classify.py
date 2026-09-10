@@ -246,16 +246,16 @@ def run(args) -> int:
             by = f"llm:{args.provider}/{provider.model}"
             if args.dry_run:
                 print(f"[DRY RUN] {item['id']} {axis} -> {values} (by={by})")
-                written += 1
+                written += len(values)
                 continue
 
             for value, confidence in values:
                 write_classification(engine, taxonomy, item["id"], axis, value, by=by,
                                       confidence=confidence, classifier_id=classifier_id)
-            written += 1
+            written += len(values)
 
     verb = "[DRY RUN] Would write" if args.dry_run else "Wrote"
-    logger.info("classify: %s %d item(s), skipped %d", verb, written, skipped)
+    logger.info("classify: %s %d classification(s), skipped %d", verb, written, skipped)
     return 0
 
 

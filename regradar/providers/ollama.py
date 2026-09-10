@@ -23,14 +23,16 @@ class OllamaProvider:
     def __init__(self, model: str, base_url: str | None = None, client=None):
         self.model = model
         self.last_usage = None
-        self._axis = None
         self._client = client or httpx.Client(
             base_url=base_url or os.environ.get("OLLAMA_BASE_URL", _DEFAULT_BASE_URL),
             timeout=_DEFAULT_TIMEOUT,
         )
 
     def configure(self, axis: str, values: list[str], cardinality: str) -> None:
-        self._axis = axis
+        # No-op: the prompt is already fully built by the runner before it
+        # reaches classify() here, unlike anthropic/openai which use these
+        # to build a structured-output tool schema.
+        pass
 
     def classify(self, prompt: str) -> str:
         response = self._client.post("/api/generate", json={"model": self.model, "prompt": prompt, "stream": False})

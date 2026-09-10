@@ -30,10 +30,12 @@ class CommandProvider:
         self.model = model or Path(shlex.split(command)[0]).name
         self.last_usage = None
         self.timeout = timeout
-        self._axis = None
 
     def configure(self, axis: str, values: list[str], cardinality: str) -> None:
-        self._axis = axis
+        # No-op: the prompt is already fully built by the runner before it
+        # reaches classify() here, unlike anthropic/openai which use these
+        # to build a structured-output tool schema.
+        pass
 
     def classify(self, prompt: str) -> str:
         try:
