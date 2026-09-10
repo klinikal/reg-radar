@@ -136,3 +136,177 @@
     tags: [press_releases]
     sitemap:
       url_pattern: "/media/announcements/"
+
+- id: ae-vara
+  name: VARA
+  full_name: Virtual Assets Regulatory Authority (Dubai)
+  jurisdiction: ae-dubai
+  jurisdiction_type: non_eea
+  website: https://www.vara.ae
+  mica_competent_authority: false
+  enabled: true
+  # Plain curl with the default browser UA gets 200 on every VARA host
+  # (www.vara.ae and rulebooks.vara.ae, verified live 2026-09-10).
+  cloudflare_protected: false
+  notes: >-
+    Emirate-level virtual-asset regulator, constituted under Dubai Law No. (4)
+    of 2022; jurisdiction ae-dubai, a flat sibling of ae-difc/ae-adgm under ae.
+    www.vara.ae is Gatsby SSR: /en/news/ carries the full 2022-08-25 -> 2026-06-12
+    history on one page (43 items, no pagination) and
+    /en/regulations/regulatory-notices/ 30 items likewise. SELECTORS ARE
+    FRAGILE AND KNOWN TO BE: Tailwind utility classes force the substring match
+    div[class*="border-b-bg-5"], and the date is a positional span that differs
+    between the two pages - news uses span:nth-of-type(1), notices
+    span:nth-of-type(3) because a category span precedes the date. A Tailwind
+    rebuild or one extra span breaks both silently; the fixtures are the only
+    defence, keep them current. extract_pdf_text MUST stay false on both: about
+    half the links go to media.umbraco.io/**.pdf and half to /en/news/<slug>/,
+    and setting it true mislabels the HTML half as application/pdf (see
+    collector/adapters/scrape.py L82-105). rulebooks.vara.ae is the same Drupal
+    revision-feed shape as the DFSA/ADGM Thomson Reuters hosts. The 12 literal
+    chapter ids in the rulebook_updates URL are hand-maintained - see the
+    comment on that source. Public register keeps page_watch because it has no
+    feed of any kind.
+  sources:
+  - type: scrape
+    url: "https://www.vara.ae/en/news/"
+    label: news
+    preferred_language: en
+    labels: {}
+    tags: [news]
+    scrape:
+      item_selector: 'div[class*="border-b-bg-5"]'
+      title_selector: "h3"
+      link_selector: "a[href]"
+      date_selector: "span:nth-of-type(1)"
+      date_attribute: null
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false
+    # VARA publishes in bursts: across the 43 items on the page the largest
+    # real gap between publication dates is 306 days (and 106, 89, 83 behind
+    # it), with the newest item 90 days old at capture on 2026-09-10. The
+    # 90-day default warn would fire on day one, on a page behaving exactly
+    # as it always has.
+    staleness:
+      warn_days: 350
+      error_days: 550
+  - type: scrape
+    url: "https://www.vara.ae/en/regulations/regulatory-notices/"
+    label: regulatory_notices
+    preferred_language: en
+    labels: {}
+    tags: [enforcement]
+    scrape:
+      item_selector: 'div[class*="border-b-bg-5"]'
+      title_selector: "h3"
+      link_selector: "a[href]"
+      # nth-of-type(3), NOT (1) as on /en/news/ - a category span precedes
+      # the date span on this page only.
+      date_selector: "span:nth-of-type(3)"
+      date_attribute: null
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false
+    # Largest real gap across the 30 notices is 328 days (then 141, 117, 115).
+    staleness:
+      warn_days: 380
+      error_days: 550
+  - type: scrape
+    # The twelve chapters[] ids are the complete, literal set of the
+    # multi-select's options on https://rulebooks.vara.ae/view-revision-updates,
+    # enumerated live 2026-09-10: 15 Regulations, 16 Compulsory Rulebooks,
+    # 17 VA Activity and Other Rulebooks, 335 Laws, 336 Cabinet Resolutions,
+    # 341 Administrative Order No. 01/2022, 342 Administrative Order
+    # No. 02/2022, 344 Administrative Orders and Resolutions, 388 Guidance on
+    # the Marketing Regulations 2024, 437 Federal AML/CFT Laws, 502 Timeline,
+    # 516 Guidance on the Virtual Asset Issuance Rulebook.
+    # RISK, ACCEPTED: this list is hand-maintained. If VARA adds a 13th
+    # chapter, its revisions are silently missed - no error, no empty run,
+    # because the other twelve keep returning rows.
+    # Measured 2026-09-10: with all twelve ids the result set is IDENTICAL
+    # (same 40 URLs) to the same URL with chapters[] omitted entirely, so the
+    # PRD's "returns 0 rows without chapters[]" no longer reproduces; dropping
+    # the filter is the fix if the list ever drifts.
+    url: "https://rulebooks.vara.ae/view-revision-updates?chapters_all=1&chapters%5B%5D=15&chapters%5B%5D=16&chapters%5B%5D=17&chapters%5B%5D=335&chapters%5B%5D=336&chapters%5B%5D=341&chapters%5B%5D=342&chapters%5B%5D=344&chapters%5B%5D=388&chapters%5B%5D=437&chapters%5B%5D=502&chapters%5B%5D=516&items_per_page=40&sort_by=revision_timestamp_2"
+    label: rulebook_updates
+    preferred_language: en
+    labels: {}
+    tags: [publications]
+    scrape:
+      item_selector: ".book-detail"
+      title_selector: "a"
+      link_selector: "a"
+      date_selector: "time"
+      date_attribute: "datetime"
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false
+    # Same bursty shape as the DFSA/ADGM rulebook hosts: 40 revisions spanning
+    # 2025-09-08 -> 2026-05-19, largest gap 130 days, newest 114 days old at
+    # capture. Unlike adgm.com's sitemap lastmod, this timestamp is the site's
+    # own displayed revision date (the <time> renders as "19 May 2026" in the
+    # row), not a hidden last-edit stamp - checked against the rendered text of
+    # every row. Note the host emits +05:30, not +04:00 Gulf time, so a
+    # late-evening revision can land on the previous day in UTC.
+    staleness:
+      warn_days: 200
+      error_days: 400
+  - type: page_watch
+    url: "https://www.vara.ae/en/licenses-and-register/public-register/"
+    label: public_register
+    preferred_language: en
+    tags: [page_watch]
+    # select_one takes the first <table>; confirmed live 2026-09-10 that this
+    # is the register itself - 56 rows, 7 columns (VASP Name, Licence Type,
+    # Reference, Licensed Activities, Licence Issued, Status, CMA Registration
+    # Number) - not a layout artefact.
+    watch_selector: "table"
+
+- id: ae-cbuae
+  name: CBUAE
+  full_name: Central Bank of the United Arab Emirates
+  jurisdiction: ae
+  jurisdiction_type: non_eea
+  website: https://www.centralbank.ae
+  mica_competent_authority: false
+  enabled: true
+  # rulebook.centralbank.ae is NOT protected - plain curl returns 200 with the
+  # full listing (verified live 2026-09-10). www.centralbank.ae IS behind a
+  # Cloudflare managed challenge site-wide, but no source here touches it, and
+  # turning this on would route a working host through FlareSolverr for nothing.
+  cloudflare_protected: false
+  notes: >-
+    Only the rulebook host is configured. www.centralbank.ae (news, insights,
+    publications) sits behind a Cloudflare MANAGED challenge site-wide,
+    including /robots.txt; full Chrome header/client-hint spoofing does not get
+    through, so no selector for it has been written - deliberately, rather than
+    shipping guesses. The rulebook host carries the crypto-relevant material
+    anyway: the Payment Token Services Regulation, the UAE Virtual Assets
+    Travel Rule, the SVF Regulation and the Retail Payment Systems Regulations.
+    Same Drupal .book-detail shape as the DFSA/ADGM/VARA rulebook hosts with
+    ONE exception - there is no <time> element here, so date_selector is
+    omitted entirely (see the source comment). Bare URL returns the 20 most
+    recent changes; the host also accepts ?f_days=on&changed=-N%20day.
+  sources:
+  - type: scrape
+    url: "https://rulebook.centralbank.ae/en/view-revision-updates"
+    label: rulebook_updates
+    preferred_language: en
+    labels: {}
+    tags: [publications]
+    scrape:
+      item_selector: ".book-detail"
+      title_selector: "a"
+      link_selector: "a"
+      # date_selector DELIBERATELY OMITTED. This host renders no <time>
+      # element (0 in the live page, verified 2026-09-10) - the only date is a
+      # bare parenthesised string at the end of the row, and it is an
+      # EFFECTIVE date, frequently in the future: the newest row at capture
+      # read "(15 July 2027)". Recording that as a publication date would be
+      # confidently wrong; every item is left date_inferred instead, which the
+      # staleness check correctly ignores.
+      date_attribute: null
+      date_fuzzy: false
+      content_selector: null
+      extract_pdf_text: false

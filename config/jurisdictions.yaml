@@ -124,6 +124,16 @@
     financial-services law and are modelled as separate children, not as part of
     ae's own scope: a profile selecting `ae` gets onshore only; `ae/*` opts into
     the free zones as well.
+- id: ae-dubai
+  name: Dubai (Emirate)
+  parents: [ae]
+  note: >-
+    Emirate-level regime outside the DIFC. VARA is constituted under Dubai Law
+    No. (4) of 2022 and operates under delegated federal competence (Cabinet
+    Decision No. 112/2022), so ae is a genuine parent, not a label. A flat
+    sibling of ae-difc and ae-adgm, deliberately NOT their parent: the free
+    zones are carved out of emirate law too, so an ae-dubai -> ae-difc edge
+    would wrongly push VARA content at DFSA-regulated firms.
 - id: ae-difc
   name: Dubai International Financial Centre
   parents: [ae]
