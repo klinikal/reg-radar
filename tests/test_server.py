@@ -31,11 +31,25 @@ def _server_with_db(tmp_path, monkeypatch):
     return server, write_engine
 
 
-def test_get_engine_exits_if_db_missing(tmp_path, monkeypatch):
+def test_get_engine_raises_runtime_error_if_db_missing(tmp_path, monkeypatch):
+    # get_engine() used to sys.exit(1) here - but it's called from inside
+    # every tool handler, and _safe() does not catch SystemExit, so a
+    # missing DB could kill the process mid-request instead of failing at
+    # boot (see __main__'s get_engine() preload). It must raise a normal
+    # exception instead.
     monkeypatch.setenv("DB_PATH", str(tmp_path / "missing.db"))
     server = _fresh_server_module()
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError):
         server.get_engine()
+
+
+def test_tool_call_with_missing_db_raises_runtime_error_not_system_exit(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "missing.db"))
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    server = _fresh_server_module()
+    with pytest.raises(RuntimeError):
+        server.list_regulators_tool()
 
 
 def test_get_engine_opens_existing_db_read_only_and_rejects_writes(tmp_path, monkeypatch):
