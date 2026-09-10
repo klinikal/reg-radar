@@ -1,7 +1,7 @@
 // Auto-submit the filter form as the user searches/filters, instead of
 // requiring a manual "Search" click. Text input is debounced; discrete
 // controls (checkboxes, dates) submit immediately on change.
-const REG_PANEL_FLAG = "caspRadarRegPanelOpen";
+const PANEL_OPEN_FLAG = "caspRadarPanelOpen";
 const SEARCH_FOCUS_FLAG = "caspRadarSearchFocus";
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (qInput) {
     // The debounced submit does a full page navigation, which drops focus -
     // without restoring it, every auto-search forces a re-click into the
-    // box to keep typing. One-shot flag (same pattern as REG_PANEL_FLAG):
+    // box to keep typing. One-shot flag (same pattern as PANEL_OPEN_FLAG):
     // set right before submitting, consumed on the next page load only.
     if (sessionStorage.getItem(SEARCH_FOCUS_FLAG)) {
       sessionStorage.removeItem(SEARCH_FOCUS_FLAG);
@@ -52,29 +52,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Searchable multi-select dropdown for regulators.
-  const regSelect = document.querySelector(".reg-select");
-  if (regSelect) {
+  // Multi-select dropdowns for regulators and jurisdictions.
+  document.querySelectorAll(".reg-select").forEach((regSelect) => {
     const toggle = regSelect.querySelector(".reg-select-toggle");
     const panel = regSelect.querySelector(".reg-select-panel");
     const filterInput = regSelect.querySelector(".reg-filter");
     const options = regSelect.querySelectorAll(".reg-select-list label.reg");
     const selectAllBtn = regSelect.querySelector(".reg-select-all");
+    const checkbox = regSelect.querySelector('.reg-select-list input[type="checkbox"]');
+    const panelFlag = `${PANEL_OPEN_FLAG}:${checkbox?.name || "dropdown"}`;
 
-    // Reopen the panel after a regulator checkbox submits the page - but only
+    // Reopen the panel after one of its checkboxes submits the page - but only
     // then, not on every subsequent navigation that happens to still carry
     // regulator_id in the URL (e.g. clicking a month link). One-shot flag,
     // cleared immediately after use, rather than inferring "should be open"
     // from whether any regulator is currently selected.
-    if (sessionStorage.getItem(REG_PANEL_FLAG)) {
+    if (sessionStorage.getItem(panelFlag)) {
       panel.hidden = false;
-      sessionStorage.removeItem(REG_PANEL_FLAG);
+      sessionStorage.removeItem(panelFlag);
     }
 
     toggle.addEventListener("click", (e) => {
       e.stopPropagation();
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) filterInput.focus();
+      if (!panel.hidden && filterInput) filterInput.focus();
     });
 
     document.addEventListener("click", (e) => {
@@ -88,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
     regSelect.querySelectorAll('.reg-select-list input[type="checkbox"]').forEach((el) => {
       el.addEventListener("change", () => {
         clearTimeout(debounceTimer);
-        sessionStorage.setItem(REG_PANEL_FLAG, "1");
+        sessionStorage.setItem(panelFlag, "1");
         form.requestSubmit();
       });
     });
@@ -115,10 +116,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
         if (changed) {
-          sessionStorage.setItem(REG_PANEL_FLAG, "1");
+          sessionStorage.setItem(panelFlag, "1");
           form.requestSubmit();
         }
       });
     }
-  }
+  });
 });
