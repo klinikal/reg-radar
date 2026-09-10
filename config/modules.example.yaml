@@ -1,10 +1,21 @@
 # Module selection - which regulators this install actually collects.
 #
-# Copy to config/modules.yaml (gitignored, never touched by `git pull`) and
-# edit. config/regulators/ stays a complete community-maintained catalogue;
-# this file is your selection from it.
+# config/regulators/ stays a complete community-maintained catalogue; your
+# config/modules.yaml (gitignored, never touched by `git pull`) is your
+# selection from it. The easiest way to write one is:
+#
+#   reg-radar setup                      # pick jurisdictions and regulators
+#   reg-radar modules list               # what this install collects
+#   reg-radar modules enable eu/*        # adjust it later
+#
+# Those show what a selection will collect, and how much, before writing.
+# To hand-edit instead, copy this file and read on:
 #
 #   cp config/modules.example.yaml config/modules.yaml
+#
+# Note that `reg-radar modules enable/disable` rewrites the file through a
+# YAML dump, so hand-written comments in it are not preserved; the previous
+# version is kept as modules.yaml.bak.
 #
 # A module IS a regulator: `uk-fca`, `esma`, `mt-mfsa` - any `id` in
 # config/regulators/*.yaml. A jurisdiction wildcard (`eu/*`, `gb/*`) is a
