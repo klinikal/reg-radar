@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import yaml
+from sqlalchemy import text as sa_text
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -22,7 +23,7 @@ from collector.storage import (
 )
 from regradar.classification import write_classification
 from regradar.rules import RulesEngine
-from regradar.taxonomy import load_and_exit_on_error
+from regradar.taxonomy import Taxonomy, TaxonomyError, load_and_exit_on_error, load_jurisdictions
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -46,6 +47,7 @@ def load_config():
         "digests_path": os.getenv("DIGESTS_PATH", "/app/config/digests.yaml"),
         "activities_path": os.getenv("ACTIVITIES_PATH", "/app/config/activities.yaml"),
         "profiles_dir": os.getenv("PROFILES_DIR", "/app/config/profiles"),
+        "modules_path": os.getenv("MODULES_PATH", "/app/config/modules.yaml"),
     }
 
 
@@ -66,7 +68,8 @@ def _load_regulators_file(path: str) -> list[dict]:
     return data
 
 
-def load_regulators(config_path: str) -> list[dict]:
+def load_regulators(config_path: str, modules_path: str | None = None,
+                    jurisdictions_path: str = "/app/config/jurisdictions.yaml") -> list[dict]:
     """A directory loads and concatenates every `*.yaml` in it (the
     per-jurisdiction split, e.g. config/regulators/mt.yaml); a single file
     path still works for migration compatibility. Fails loudly (matching
@@ -74,6 +77,15 @@ def load_regulators(config_path: str) -> list[dict]:
     id across files or a duplicate source label within a regulator - unknown
     jurisdictions are caught downstream by regradar.taxonomy against
     config/jurisdictions.yaml.
+
+    `modules_path` opts into user-owned module selection (issue #48). It is
+    None for every caller that wants the whole registry regardless of what
+    the operator collects - the backfill scripts, source_health, reclassify -
+    and only the collector daemon passes it. With it set, three states:
+
+    | modules.yaml present | collect exactly what it selects              |
+    | absent, REGRADAR_COLLECT_ALL=true | whole registry (pre-#48 behaviour) |
+    | absent, no env var   | collect nothing, one line pointing at setup  |
     """
     if os.path.isdir(config_path):
         # A leading underscore (config/regulators/_template.yaml) marks a
@@ -121,7 +133,297 @@ def load_regulators(config_path: str) -> list[dict]:
                 seen_labels.add(label)
 
             regulators.append(reg)
-    return regulators
+
+    if modules_path is None:
+        return regulators
+
+    if os.path.exists(modules_path):
+        try:
+            doc = _load_modules_file(modules_path)
+            return _resolve_modules(regulators, doc, jurisdictions_path, modules_path)
+        except ModulesConfigError as e:
+            # Same contract as every other bad config file in this module:
+            # a readable message naming the offending entry and a clean
+            # exit, never a traceback and never a half-configured run.
+            logger.error("Invalid module configuration: %s", e)
+            sys.exit(1)
+
+    if _env_flag("REGRADAR_COLLECT_ALL"):
+        logger.info(
+            "No %s and REGRADAR_COLLECT_ALL is set - collecting every regulator in the registry",
+            modules_path,
+        )
+        return regulators
+
+    logger.info(
+        "No module selection at %s, so nothing will be collected. Run `reg-radar setup` to choose "
+        "which regulators to collect, or set REGRADAR_COLLECT_ALL=true to collect the whole registry. "
+        "See the README's Modules section.",
+        modules_path,
+    )
+    return []
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+MODULE_ON_ENABLE_VALUES = ("new_only", "backfill_from", "backfill_all")
+
+
+class ModulesConfigError(Exception):
+    """A structurally invalid config/modules.yaml. Always carries the file
+    and the offending entry in its message - the operator has to be able to
+    find it without reading this code."""
+
+
+def _validate_module_keys(where: str, entry: dict) -> None:
+    """`schedule` and `on_enable` are validated here but not acted on:
+    per-module cadence is #MOD2 and on_enable semantics are #MOD4. Carrying
+    them through the schema now means an operator's file doesn't have to be
+    rewritten when those land."""
+    schedule = entry.get("schedule")
+    if schedule is not None:
+        if not isinstance(schedule, str):
+            raise ModulesConfigError(f"{where}: 'schedule' must be a cron string, got {type(schedule).__name__}")
+        try:
+            CronTrigger.from_crontab(schedule)
+        except (ValueError, TypeError) as e:
+            raise ModulesConfigError(f"{where}: invalid cron schedule {schedule!r} ({e})") from e
+    on_enable = entry.get("on_enable")
+    if on_enable is not None and on_enable not in MODULE_ON_ENABLE_VALUES:
+        raise ModulesConfigError(
+            f"{where}: invalid on_enable {on_enable!r} - expected one of {', '.join(MODULE_ON_ENABLE_VALUES)}"
+        )
+
+
+def _load_modules_file(path: str) -> dict:
+    """Parses and structurally validates config/modules.yaml. Does not know
+    anything about the registry - id/label existence is checked in
+    _resolve_modules(), which has the regulators to check against."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ModulesConfigError(f"{path}: invalid YAML: {e}") from e
+    if not isinstance(data, dict):
+        raise ModulesConfigError(f"{path}: must be a mapping with 'version' and 'modules' keys")
+    if data.get("version") != 1:
+        raise ModulesConfigError(f"{path}: unsupported version {data.get('version')!r} - expected 1")
+
+    defaults = data.get("defaults") or {}
+    if not isinstance(defaults, dict):
+        raise ModulesConfigError(f"{path}: 'defaults' must be a mapping")
+    _validate_module_keys(f"{path}: defaults", defaults)
+
+    modules = data.get("modules")
+    if modules is None:
+        modules = []
+    if not isinstance(modules, list):
+        raise ModulesConfigError(f"{path}: 'modules' must be a list")
+
+    seen: set[str] = set()
+    for i, entry in enumerate(modules):
+        where = f"{path}: modules[{i}]"
+        if not isinstance(entry, dict):
+            raise ModulesConfigError(f"{where}: must be a mapping, got {type(entry).__name__}")
+        module_id = entry.get("id")
+        if not isinstance(module_id, str) or not module_id.strip():
+            raise ModulesConfigError(f"{where}: missing 'id'")
+        if module_id in seen:
+            raise ModulesConfigError(f"{where}: duplicate module id {module_id!r}")
+        seen.add(module_id)
+        sources = entry.get("sources")
+        if sources is not None and not (isinstance(sources, list) and all(isinstance(s, str) for s in sources)):
+            raise ModulesConfigError(f"{where} ({module_id}): 'sources' must be a list of source labels")
+        _validate_module_keys(f"{where} ({module_id})", entry)
+
+    return {"version": 1, "defaults": defaults, "modules": modules}
+
+
+def _resolve_modules(regulators: list[dict], doc: dict, jurisdictions_path: str,
+                     modules_path: str) -> list[dict]:
+    """Applies the resolution order - defaults -> jurisdiction wildcard ->
+    explicit module id -> `sources:` - narrower always winning, and returns
+    shallow copies of the selected regulators with their `sources` trimmed
+    to the selection and a resolved `module` block attached.
+
+    The registry wins on `false`: a regulator or source the registry marks
+    `enabled: false` is never collected, however explicitly the operator
+    selected it. Registry `enabled: false` is a maintainer statement that
+    the source is broken or blocked, not a user statement about wanting it.
+    Actually skipping it stays in run_collection() as before; this only
+    surfaces the override, and only when the operator asked for that thing
+    by name - a wildcard sweeping up the 50-odd deliberately disabled MFSA
+    circular categories is not an overridden request and stays at DEBUG.
+    """
+    try:
+        # Only the jurisdiction graph is needed (descendants/ancestors), and
+        # this runs before the real taxonomy is built in main() - the axes
+        # would be dead weight here.
+        taxonomy = Taxonomy(0, {}, load_jurisdictions(jurisdictions_path))
+    except TaxonomyError as e:
+        raise ModulesConfigError(f"cannot expand jurisdiction wildcards: {e}") from e
+
+    by_id = {reg["id"]: reg for reg in regulators}
+    known_jurisdictions = taxonomy.jurisdiction_ids()
+
+    exact: dict[str, dict] = {}
+    wildcard: dict[str, dict] = {}
+    for entry in doc["modules"]:
+        module_id = entry["id"].strip()
+        if module_id.endswith("/*"):
+            base = module_id[:-2].lower()
+            if base not in known_jurisdictions:
+                raise ModulesConfigError(
+                    f"{modules_path}: module {module_id!r} names unknown jurisdiction {base!r} "
+                    f"(known ids are in {jurisdictions_path})"
+                )
+            wildcard[base] = entry
+        elif module_id not in by_id:
+            raise ModulesConfigError(
+                f"{modules_path}: unknown module id {module_id!r} - no regulator with that id in the registry"
+            )
+        else:
+            exact[module_id] = entry
+
+    defaults = doc["defaults"]
+    selected: list[dict] = []
+    labels_seen: dict[str, set[str]] = {}
+
+    for reg in regulators:
+        reg_id = reg["id"]
+        jurisdiction = (reg.get("jurisdiction") or "").lower()
+        # ancestors() is nearest-first, so the first wildcard that matches is
+        # the narrowest one: `fr/*` beats `eu/*` for the AMF.
+        matched_wildcard = next(
+            (wildcard[base] for base in (jurisdiction, *taxonomy.ancestors(jurisdiction)) if base in wildcard),
+            None,
+        )
+        entry = exact.get(reg_id) or matched_wildcard
+        if entry is None:
+            continue
+
+        resolved = {"id": entry["id"]}
+        for key in ("schedule", "on_enable"):
+            value = defaults.get(key)
+            if matched_wildcard is not None and matched_wildcard.get(key) is not None:
+                value = matched_wildcard[key]
+            if reg_id in exact and exact[reg_id].get(key) is not None:
+                value = exact[reg_id][key]
+            resolved[key] = value
+
+        all_sources = reg.get("sources", []) or []
+        # Recorded against every entry that *matched*, not just the one that
+        # won, so a wildcard's `sources:` list isn't reported as unknown just
+        # because a narrower entry overrode it for the regulator that has
+        # that label.
+        for matched in (entry, matched_wildcard):
+            if matched is not None:
+                labels_seen.setdefault(matched["id"], set()).update(s.get("label") for s in all_sources)
+        wanted = entry.get("sources")
+        sources = all_sources if wanted is None else [s for s in all_sources if s.get("label") in wanted]
+
+        if not reg.get("enabled", True):
+            log = logger.warning if reg_id in exact else logger.debug
+            log(
+                "Module '%s' selects regulator %s, but the registry marks it enabled: false "
+                "(known broken or blocked) - it will not be collected.",
+                entry["id"], reg_id,
+            )
+        if wanted is not None:
+            for source in sources:
+                if not source.get("enabled", True):
+                    logger.warning(
+                        "Module '%s' explicitly selects source %s/%s, but the registry marks it "
+                        "enabled: false (known broken or blocked) - it will not be collected.",
+                        entry["id"], reg_id, source.get("label"),
+                    )
+
+        selected.append({**reg, "sources": sources, "module": resolved})
+
+    for entry in doc["modules"]:
+        wanted = entry.get("sources")
+        if not wanted or entry["id"] not in labels_seen:
+            continue
+        unknown = [label for label in wanted if label not in labels_seen[entry["id"]]]
+        if unknown:
+            raise ModulesConfigError(
+                f"{modules_path}: module '{entry['id']}' lists unknown source label(s) "
+                f"{', '.join(repr(u) for u in unknown)} - available: "
+                f"{', '.join(sorted(l for l in labels_seen[entry['id']] if l))}"
+            )
+
+    logger.info(
+        "Module selection from %s: %d regulator(s), %d source(s) matched "
+        "(before registry `enabled: false` filtering)",
+        modules_path, len(selected), sum(len(r["sources"]) for r in selected),
+    )
+    return selected
+
+
+MODULES_MIGRATION_YAML = """\
+# Written automatically when this install was upgraded to the modular
+# collection model (issue #48). It reproduces the pre-upgrade behaviour
+# exactly: every EU/EEA regulator, plus the UK.
+#
+# This file is yours - reg-radar never rewrites it once it exists, and it is
+# gitignored so `git pull` never touches it. See config/modules.example.yaml
+# and the README's "Modules" section for the full schema.
+version: 1
+
+defaults:
+  schedule: "0 6 * * *"
+  on_enable: new_only
+
+modules:
+  - id: eu/*
+  - id: gb/*
+"""
+
+
+def _migrate_modules_file(engine, modules_path: str) -> None:
+    """Writes the eu/* + gb/* modules.yaml on an existing install's first run
+    after upgrading, so nobody silently stops collecting. Deliberately
+    visible (a real file the operator can read and edit) rather than a
+    deprecation-warning grace period - it teaches the new model on first
+    contact.
+
+    "Existing install" is "the database already holds items". A fresh install
+    has none, and gets the new default instead: collect nothing until
+    `reg-radar setup` runs. If the file can't be written (read-only config
+    mount), warn and leave it - the caller then falls through to whichever
+    state applies, and the operator has a message naming the problem."""
+    if os.path.exists(modules_path):
+        return
+    if _env_flag("REGRADAR_COLLECT_ALL"):
+        return  # an explicit operator choice already covers this install
+    try:
+        with engine.connect() as conn:
+            has_items = conn.execute(sa_text("SELECT 1 FROM items LIMIT 1")).first() is not None
+    except Exception as e:
+        logger.warning("Could not check for existing items while migrating to modules: %s", e)
+        return
+    if not has_items:
+        return
+    try:
+        os.makedirs(os.path.dirname(modules_path) or ".", exist_ok=True)
+        with open(modules_path, "w") as f:
+            f.write(MODULES_MIGRATION_YAML)
+    except OSError as e:
+        logger.warning(
+            "This install has collected items but has no %s, and it could not be written (%s). "
+            "Collection now requires a module selection - create that file (see "
+            "config/modules.example.yaml) or set REGRADAR_COLLECT_ALL=true.",
+            modules_path, e,
+        )
+        return
+    logger.info(
+        "Upgraded to modular collection: wrote %s selecting eu/* and gb/*, which reproduces exactly "
+        "what this install collected before. Edit it to add or drop regulators; see the README's "
+        "Modules section.",
+        modules_path,
+    )
 
 
 def _apply_source_label_defaults(engine, taxonomy, item_id: str, source_labels: dict) -> None:
@@ -354,8 +656,18 @@ def main():
     logger.info("Initialising database at %s", cfg["db_path"])
     engine = init_db(cfg["db_path"])
 
+    _migrate_modules_file(engine, cfg["modules_path"])
+
     logger.info("Loading regulators from %s", config_path)
-    regulators = load_regulators(config_path)
+    regulators = load_regulators(
+        config_path, modules_path=cfg["modules_path"], jurisdictions_path=cfg["jurisdictions_path"],
+    )
+    if not regulators:
+        # Not an error: either a fresh install that hasn't run `reg-radar
+        # setup` yet, or a modules.yaml that selects nothing. load_regulators()
+        # has already logged the one line explaining which. Exit 0 - a new
+        # install must not look like a crash.
+        return
 
     logger.info("Loading taxonomy from %s and %s", cfg["taxonomy_path"], cfg["jurisdictions_path"])
     taxonomy = load_and_exit_on_error(

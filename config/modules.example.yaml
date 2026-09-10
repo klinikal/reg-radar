@@ -1,0 +1,57 @@
+# Module selection - which regulators this install actually collects.
+#
+# Copy to config/modules.yaml (gitignored, never touched by `git pull`) and
+# edit. config/regulators/ stays a complete community-maintained catalogue;
+# this file is your selection from it.
+#
+#   cp config/modules.example.yaml config/modules.yaml
+#
+# A module IS a regulator: `uk-fca`, `esma`, `mt-mfsa` - any `id` in
+# config/regulators/*.yaml. A jurisdiction wildcard (`eu/*`, `gb/*`) is a
+# convenience selector that expands to every regulator in that jurisdiction
+# and its descendants in config/jurisdictions.yaml - `eu/*` therefore covers
+# ESMA and every member state's authority.
+#
+# Resolution order, narrower always winning:
+#   1. defaults
+#   2. jurisdiction wildcard (eu/*)
+#   3. explicit module id (uk-fca)
+#   4. sources: within a module
+#
+# The registry wins on `false`: anything config/regulators/ marks
+# `enabled: false` is never collected however explicitly you select it here.
+# That flag is a maintainer statement that a source is broken or blocked,
+# not a statement about whether you want it. When it overrides you by name,
+# the collector logs a WARNING saying so.
+#
+# Collection-time filtering is NOT free to reverse. A profile change
+# re-filters rows you already have, instantly. A module that was off for six
+# months leaves a six-month hole, and many sources cannot be backfilled -
+# some feeds only ever expose the last handful of items. Turn something off
+# because you will never want it, not because you are unsure.
+#
+# With no config/modules.yaml at all, the collector collects nothing and says
+# so. Set REGRADAR_COLLECT_ALL=true to collect the whole registry instead.
+
+version: 1
+
+defaults:
+  schedule: "0 6 * * *"          # inherited by any module without its own
+  on_enable: new_only            # new_only | backfill_from | backfill_all
+
+modules:
+  # Every EU/EEA regulator, including the supranational ones (ESMA, EBA, ...).
+  - id: eu/*
+    schedule: "0 6 * * *"
+
+  # One regulator, narrowed to two of its sources. Omit `sources:` for all.
+  - id: uk-fca
+    sources: [news, warnings]
+    schedule: "0 6 * * *"
+
+  # `schedule:` and `on_enable:` are validated but not yet acted on - per-module
+  # cadence and on_enable semantics land with later issues in this series. The
+  # collector still runs one global schedule (SCHEDULE in .env).
+  # - id: mt-mfsa
+  #   schedule: "0 */4 * * *"
+  #   on_enable: new_only

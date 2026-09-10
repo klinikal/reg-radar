@@ -24,16 +24,72 @@ Beyond that, `docker compose up` pulls the `python:3.11-slim` base image and a `
    ```
    This starts four services: `collector` (fetches on a schedule — see [Configuration](#configuration)), `mcp` (the query server, exposed at `http://localhost:8000/mcp`), `webui` (a browsable list/search view at `http://localhost:8080` — see [Web UI](#web-ui)), and `flaresolverr` (a Cloudflare-bypass helper for a handful of protected sources).
 
-2. **Get some data in.** On a fresh install the database is empty until the first run. To collect immediately:
+2. **Choose what to collect.** `config/regulators/` is a complete catalogue; a fresh install collects nothing until you select from it.
+   ```bash
+   cp config/modules.example.yaml config/modules.yaml
+   ```
+   Edit it to keep the jurisdictions and regulators you care about — see [Modules](#modules) for the schema. Without this file (and without `REGRADAR_COLLECT_ALL=true`) the collector starts, says so in one line, and exits cleanly.
+
+3. **Get some data in.** On a fresh install the database is empty until the first run. To collect immediately:
    ```bash
    docker compose exec collector python -m collector.main --once
    ```
 
-3. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
+4. **Browse it** at `http://localhost:8080` to confirm data's actually there, or **connect your agent** to the MCP server — see [Connecting an agent](#connecting-an-agent) below for setup across different clients.
 
-4. **Give your agent the onboarding skill.** Point it at [`skills/reg-radar-onboarding/SKILL.md`](skills/reg-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/reg-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
+5. **Give your agent the onboarding skill.** Point it at [`skills/reg-radar-onboarding/SKILL.md`](skills/reg-radar-onboarding/SKILL.md) and ask it to onboard you. It'll interview you about your entity — what you're licensed for, where, what you do and don't do — and generate a private `skills/reg-radar-operator/refs/context.md` (git-ignored, never leaves your machine) so the agent knows what's actually relevant to you instead of treating every regulator in the registry as equally important.
 
-5. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/reg-radar-operator/SKILL.md`](skills/reg-radar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
+6. **You're set.** From here, just ask your agent regulatory questions — "any recent CASP warnings from Germany?", "what's ESMA published this week?" — and point it at [`skills/reg-radar-operator/SKILL.md`](skills/reg-radar-operator/SKILL.md) if it needs a refresher on how to navigate the data. See [Skills](#skills) for more on how these work.
+
+## Modules
+
+A **module is a regulator** — any `id` in `config/regulators/*.yaml`. `config/modules.yaml` (yours, gitignored, never touched by `git pull`) says which of them this install actually collects. `config/modules.example.yaml` is the committed template.
+
+```yaml
+version: 1
+
+defaults:
+  schedule: "0 6 * * *"          # inherited by any module without its own
+  on_enable: new_only            # new_only | backfill_from | backfill_all
+
+modules:
+  - id: eu/*                     # jurisdiction wildcard - every EU/EEA regulator
+    schedule: "0 6 * * *"
+
+  - id: uk-fca
+    sources: [news, warnings]    # omit `sources:` for all of them
+    schedule: "0 6 * * *"
+```
+
+A **jurisdiction wildcard** (`eu/*`, `gb/*`) is a convenience selector, not a separate concept: it expands to that jurisdiction and every descendant of it in `config/jurisdictions.yaml`, so `eu/*` covers ESMA *and* every member state's authority.
+
+**Resolution order**, narrower always winning: `defaults` → jurisdiction wildcard (`eu/*`) → explicit module id (`uk-fca`) → `sources:` within a module. Between two wildcards, the nearer one wins — `fr/*` beats `eu/*` for the AMF. An explicit module id that omits `sources:` means *all* of them; it does not inherit a wildcard's list.
+
+**The registry wins on `false`.** Anything `config/regulators/` marks `enabled: false` is never collected, however explicitly you select it here — that flag is a maintainer statement that a source is known broken or blocked, not a statement about whether you want it. When it overrides something you asked for by name, the collector logs a `WARNING` naming the module and source, so it is never silent.
+
+Three loader states:
+
+| State | Behaviour |
+|---|---|
+| `config/modules.yaml` present | Collect exactly what it selects |
+| Absent, `REGRADAR_COLLECT_ALL=true` | Collect the whole registry |
+| Absent, no env var | Collect nothing; one line pointing at `reg-radar setup`, clean exit 0 |
+
+An invalid `modules.yaml` — bad cron, unknown module id, unknown source label — is refused at startup with a message naming the file and the offending entry, never a traceback and never a half-configured run.
+
+`schedule:` and `on_enable:` are validated but not yet acted on: the collector still runs one global schedule (`SCHEDULE` in `.env`). Carrying them through the schema now means your file doesn't need rewriting when per-module cadence lands.
+
+### The trade-off: collection-time filtering is not free to reverse
+
+Modules gate the **fetch**, at country/regulator granularity. [Profiles](#profiles) gate the **view**, at topic granularity. The question that decides which layer a filter belongs to is *would this operator ever plausibly want this data?* Never → a module. Maybe later → a profile.
+
+That split matters because the two are not equally reversible. A profile change re-filters rows you already have, instantly. A module that was off for six months leaves a six-month hole, and filling it later only works if the source supports backfill — many do not, and some feeds only ever expose the last handful of items. Turn a module off because you will never want it, not because you are unsure.
+
+### Upgrading an existing install
+
+Nothing to do. On its first run after upgrading, an install that already has collected items writes `config/modules.yaml` for you, containing `eu/*` and `gb/*` — which resolves to exactly the regulator/source set it collected before. You'll see one `INFO` line saying the file was written and where. It is yours from that point: reg-radar never rewrites it once it exists.
+
+If your `config/` mount is read-only the write fails with a `WARNING` naming the problem; create the file by hand, or set `REGRADAR_COLLECT_ALL=true`.
 
 ## Coverage
 
@@ -321,6 +377,8 @@ Copy `.env.example` to `.env` and adjust:
 | `REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `REQUEST_RETRIES` | `3` | Retry attempts per source |
 | `REGULATORS_PATH` | `/app/config/regulators` | Regulator registry directory (a single file path also still works) |
+| `MODULES_PATH` | `/app/config/modules.yaml` | Module selection — what this install collects; see [Modules](#modules) |
+| `REGRADAR_COLLECT_ALL` | *(unset)* | Set to `true` to collect the whole registry when there is no `modules.yaml` |
 | `TAXONOMY_PATH` | `/app/config/taxonomy.yaml` | Classification axis/value vocabulary — see [Classification](#classification) |
 | `JURISDICTIONS_PATH` | `/app/config/jurisdictions.yaml` | Jurisdiction hierarchy |
 | `ACTIVITIES_PATH` | `/app/config/activities.yaml` | Activity-to-instrument mapping — see [Profiles](#profiles) |
