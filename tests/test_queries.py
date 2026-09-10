@@ -1102,8 +1102,7 @@ def test_get_health_reports_db_integrity_unknown_when_never_checked():
 
 
 def test_list_regulators_flags_stalled_source_at_threshold(monkeypatch):
-    import mcpserver.queries as queries
-    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    monkeypatch.setenv("STALL_THRESHOLD_RUNS", "3")
     engine, db_path = setup_engine()
     try:
         upsert_regulator(engine, {
@@ -1121,8 +1120,7 @@ def test_list_regulators_flags_stalled_source_at_threshold(monkeypatch):
 
 
 def test_list_regulators_not_stalled_below_threshold(monkeypatch):
-    import mcpserver.queries as queries
-    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 3)
+    monkeypatch.setenv("STALL_THRESHOLD_RUNS", "3")
     engine, db_path = setup_engine()
     try:
         upsert_regulator(engine, {
@@ -1155,8 +1153,7 @@ def test_list_regulators_healthy_regulator_not_stalled():
 
 
 def test_get_health_lists_stalled_sources_at_threshold(monkeypatch):
-    import mcpserver.queries as queries
-    monkeypatch.setattr(queries, "STALL_THRESHOLD_RUNS", 2)
+    monkeypatch.setenv("STALL_THRESHOLD_RUNS", "2")
     engine, db_path = setup_engine()
     try:
         record_source_empty_run(engine, "esma", "all_news")

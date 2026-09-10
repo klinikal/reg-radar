@@ -557,6 +557,9 @@ Each digest is grouped by jurisdiction then regulator, one entry per item (title
 | `SMTP_FROM` | *(unset)* | `From` address — required for any `email` channel |
 | `SMTP_STARTTLS` | `true` | Set to `false` to skip STARTTLS |
 | `TELEGRAM_BOT_TOKEN` | *(unset)* | Bot token — required for any `telegram` channel; never put it in `digests.yaml` |
+
+See [Classification rules](#classification-rules) above for the rules engine that replaced the old keyword-alerts feature; classified labels feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery and [Digests](#digests) for scheduled email, Telegram and webhook digests.
+
 ## Published dataset
 
 A new install starts with an empty database and would otherwise have to run every historic backfill (see [Historic backfills](#historic-backfills)) — slow, FlareSolverr-throttled, and measured in hours — before it has anything worth querying. Instead, a nightly [GitHub Actions workflow](.github/workflows/publish-dataset.yml) publishes the full corpus as a downloadable release: load one tarball and you have the whole history immediately.
@@ -631,8 +634,6 @@ The volume rename above moves the database file. These are the one-off steps tha
 4. `reg-radar reclassify --axis document_type --by rule`
 5. `scripts/migrate_content_tags.py`
 6. `scripts/reprocess_bodies.py --from-raw-content`
-
-See [Classification rules](#classification-rules) above for the rules engine that replaced the old keyword-alerts feature; classified labels feed into every filter above, including `config/webhooks.yaml` subscribers — see [Export and sync](#export-and-sync) for webhook delivery and [Digests](#digests) for scheduled email, Telegram and webhook digests.
 
 ## Contributing
 

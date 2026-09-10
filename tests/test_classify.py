@@ -260,6 +260,17 @@ def test_anthropic_provider_requires_api_key_without_injected_client(monkeypatch
         AnthropicProvider(model="claude-test")
 
 
+def test_anthropic_provider_missing_sdk_raises_provider_error_not_import_error(monkeypatch):
+    # `import anthropic` inside AnthropicProvider.__init__ must surface as a
+    # ProviderError (a startup config problem), not propagate the raw
+    # ImportError - regardless of whether the SDK happens to be installed in
+    # the environment running the test. Setting sys.modules[name] = None is
+    # the standard trick to force `import anthropic` to raise ImportError.
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    with pytest.raises(ProviderError, match="pip install"):
+        AnthropicProvider(model="claude-test")
+
+
 # --- providers: openai (injected client) ------------------------------------
 
 class _FakeOpenAIUsage:

@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 
 # Consecutive zero-item runs (despite a successful fetch) before a source is
 # considered stalled rather than just having a quiet day - see
-# collector.storage.record_source_empty_run. Env-configurable to match the
-# FLARESOLVERR_* convention.
-STALL_THRESHOLD_RUNS = int(os.getenv("STALL_THRESHOLD_RUNS", "7"))
+# collector.storage.record_source_empty_run. Env-configurable; read per call
+# (not cached at import) so a changed env var takes effect without a restart.
+def _stall_threshold_runs() -> int:
+    return int(os.getenv("STALL_THRESHOLD_RUNS", "7"))
 
 
 def _row_to_dict(row, keys):
@@ -552,7 +553,7 @@ def list_regulators(engine) -> list[dict]:
         # threshold (STALL_THRESHOLD_RUNS consecutive successful-but-empty
         # runs) - distinct from consecutive_failures, which only tracks
         # outright fetch errors.
-        r["stalled"] = r.pop("consecutive_empty_runs") >= STALL_THRESHOLD_RUNS
+        r["stalled"] = r.pop("consecutive_empty_runs") >= _stall_threshold_runs()
         # No threshold: one blocked fetch is already a failed workaround, not
         # a quiet day, and an operator needs to see it on the first run
         # rather than a week later (issue #39).
@@ -898,7 +899,7 @@ def get_health(engine) -> dict:
     """
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
-        stalled_rows = conn.execute(text(stalled_sql), {"threshold": STALL_THRESHOLD_RUNS}).fetchall()
+        stalled_rows = conn.execute(text(stalled_sql), {"threshold": _stall_threshold_runs()}).fetchall()
         dataset_import = _dataset_import_state(conn)
     stalled_sources = [
         {"regulator_id": r[0], "source_label": r[1], "consecutive_empty_runs": r[2]}
