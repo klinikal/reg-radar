@@ -231,8 +231,29 @@ def issue_title(regulator_id: str, source_label: str) -> str:
     return f"source-health: {regulator_id}/{source_label} failing"
 
 
-def _gh(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["gh", *args], capture_output=True, text=True, check=True)
+def _gh(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["gh", *args], capture_output=True, text=True, check=check)
+
+
+def ensure_issue_label() -> None:
+    """Create ISSUE_LABEL if the repo does not have it.
+
+    Without this the whole nightly run died on the first failing source:
+    `gh issue create --label source-health` exits 1 when the label does not
+    exist, the CalledProcessError was unhandled, and the sweep aborted before
+    checking the rest of the registry. It had been doing that every night,
+    which meant the alarm for every regulator was not merely noisy but
+    entirely mute - and mute in a way that looked like a red workflow rather
+    than a missing label.
+    """
+    result = _gh("label", "create", ISSUE_LABEL, "--description",
+                 "Opened automatically by the nightly source-health check",
+                 "--color", "d4c5f9", check=False)
+    if result.returncode == 0:
+        logger.info("created the %r label", ISSUE_LABEL)
+    elif "already exists" not in (result.stderr or ""):
+        logger.warning("could not ensure the %r label exists: %s",
+                       ISSUE_LABEL, (result.stderr or "").strip()[:200])
 
 
 def find_open_issue(regulator_id: str, source_label: str) -> str | None:
@@ -249,26 +270,45 @@ def find_open_issue(regulator_id: str, source_label: str) -> str | None:
     return None
 
 
-def open_or_update_issue(regulator_id: str, source_label: str, error: str, diff: str = "") -> None:
+def open_or_update_issue(regulator_id: str, source_label: str, error: str, diff: str = "") -> bool:
+    """Returns True if the failure was reported. A reporting failure is
+    logged and swallowed: one unreachable GitHub call must not stop the
+    sweep from checking the remaining sources, which is exactly what used to
+    happen. It is never silent - the caller counts these and main() reports
+    them separately from source failures, because "the source is broken" and
+    "we could not tell you the source is broken" are different problems."""
     title = issue_title(regulator_id, source_label)
     body = f"Source `{regulator_id}/{source_label}` failed its nightly health check.\n\nError: {error}\n"
     if diff:
         body += f"\nDiff against last-known-good fixture:\n```\n{diff}\n```\n"
-    number = find_open_issue(regulator_id, source_label)
-    if number:
-        _gh("issue", "comment", number, "--body", body)
-    else:
-        _gh("issue", "create", "--title", title, "--label", ISSUE_LABEL, "--body", body)
+    try:
+        number = find_open_issue(regulator_id, source_label)
+        if number:
+            _gh("issue", "comment", number, "--body", body)
+        else:
+            _gh("issue", "create", "--title", title, "--label", ISSUE_LABEL, "--body", body)
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error("could not report %s/%s: gh exited %s: %s",
+                     regulator_id, source_label, e.returncode, (e.stderr or "").strip()[:200])
+        return False
 
 
-def close_issue_if_open(regulator_id: str, source_label: str) -> None:
-    number = find_open_issue(regulator_id, source_label)
-    if number:
-        _gh("issue", "close", number, "--comment", "Source recovered on the latest nightly check - closing automatically.")
+def close_issue_if_open(regulator_id: str, source_label: str) -> bool:
+    try:
+        number = find_open_issue(regulator_id, source_label)
+        if number:
+            _gh("issue", "close", number, "--comment", "Source recovered on the latest nightly check - closing automatically.")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error("could not close the issue for %s/%s: gh exited %s: %s",
+                     regulator_id, source_label, e.returncode, (e.stderr or "").strip()[:200])
+        return False
 
 
 def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
-                    warnings: dict | None = None) -> dict[str, str | None]:
+                    warnings: dict | None = None,
+                    report_failures: list | None = None) -> dict[str, str | None]:
     """Runs check_source() for every enabled source and, when file_issues is
     True, opens/updates an issue per failure and closes any that recovered.
     Returns {"regulator_id/source_label": error_or_None}.
@@ -276,6 +316,8 @@ def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
     Pass a dict as `warnings` to also collect non-failing staleness
     warnings, keyed the same way."""
     results: dict[str, str | None] = {}
+    if file_issues:
+        ensure_issue_label()
     for regulator, source in iter_enabled_sources(regulators):
         key = f"{regulator['id']}/{source['label']}"
         source_warnings: list[str] = []
@@ -285,10 +327,10 @@ def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
             warnings[key] = source_warnings
         if not file_issues:
             continue
-        if error:
-            open_or_update_issue(regulator["id"], source["label"], error)
-        else:
-            close_issue_if_open(regulator["id"], source["label"])
+        reported = (open_or_update_issue(regulator["id"], source["label"], error) if error
+                    else close_issue_if_open(regulator["id"], source["label"]))
+        if not reported and report_failures is not None:
+            report_failures.append(key)
     return results
 
 
@@ -299,19 +341,28 @@ def main(argv=None) -> int:
     regulators = load_regulators()
     cfg = load_config()
     warnings: dict[str, list[str]] = {}
-    results = run_all_checks(regulators, cfg, warnings=warnings)
+    report_failures: list[str] = []
+    results = run_all_checks(regulators, cfg, warnings=warnings, report_failures=report_failures)
 
     failures = {k: v for k, v in results.items() if v}
     logger.info(
-        "source health: %d checked, %d failed, %d warned",
-        len(results), len(failures), len(warnings),
+        "source health: %d checked, %d failed, %d warned, %d unreported",
+        len(results), len(failures), len(warnings), len(report_failures),
     )
     for key, error in failures.items():
         logger.error("  FAILED %s: %s", key, error)
     for key, source_warnings in warnings.items():
         for warning in source_warnings:
             logger.warning("  WARN %s: %s", key, warning)
-    return 1 if failures else 0
+    if report_failures:
+        # Distinct from a failing source: the check ran, but nobody was told.
+        # Worth its own line, because a silent reporting path is how this
+        # whole job sat broken for as long as it did.
+        logger.error(
+            "  %d source(s) could not be reported to GitHub: %s",
+            len(report_failures), ", ".join(report_failures),
+        )
+    return 1 if failures or report_failures else 0
 
 
 if __name__ == "__main__":
