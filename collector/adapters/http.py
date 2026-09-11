@@ -6,7 +6,9 @@ moved out of collector/fetcher.py unchanged
 `rss.py`/`scrape.py`/`page_watch.py` (and
 new adapters) share one implementation instead of duplicating it.
 """
+import html
 import ipaddress
+import re
 import logging
 import os
 import random
@@ -306,6 +308,37 @@ def has_expected_content(html: str, expected_selector: str | None) -> bool:
         return True  # a selector error here shouldn't itself block valid content
 
 
+_XML_VIEW_PRE = re.compile(r"<pre[^>]*>(.*?)</pre>", re.S)
+
+
+def unwrap_browser_xml_view(text: str) -> str:
+    """Undo a headless browser rendering an XML feed as a document.
+
+    FlareSolverr returns the rendered DOM, not the raw response. Chrome has
+    no XML renderer, so it shows the source inside its own viewer: the real
+    document comes back HTML-escaped inside a `<pre>`, wrapped in
+    `<html><head>...`. feedparser then sees HTML and finds no entries.
+
+    Both XML sources behind FlareSolverr were affected and they failed
+    differently, which is why it went unnoticed: mt-mfsa/all_news parsed to
+    zero items, while lt-lb/publications_en happened to still yield entries
+    because feedparser is lenient enough to dig them out of the rendered
+    DOM - quietly parsing a browser's rendering of a feed rather than the
+    feed. Returns the text unchanged when it is not this wrapper.
+    """
+    head = text[:200].lstrip().lower()
+    if not head.startswith(("<html", "<!doctype html")):
+        return text
+    match = _XML_VIEW_PRE.search(text)
+    if match is None:
+        return text
+    inner = html.unescape(match.group(1)).strip()
+    if not inner.startswith(("<?xml", "<rss", "<feed", "<urlset", "<sitemapindex")):
+        return text
+    logger.debug("Unwrapped a browser XML view for a FlareSolverr response")
+    return inner
+
+
 def fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int, expected_selector: str | None = None) -> str | None:
     validate_url_not_private(url)
     domain = urlparse(url).hostname or url
@@ -446,7 +479,9 @@ def fetch_bytes(url: str, user_agent: str, timeout: int, retries: int, max_bytes
         text = fetch_via_flaresolverr(url, flaresolverr_url, timeout)
         if text is None:
             return None
-        content = text.encode()
+        # This path carries XML (rss/atom/sitemap), and FlareSolverr hands
+        # back what the browser rendered rather than what the server sent.
+        content = unwrap_browser_xml_view(text).encode()
         if max_bytes is not None and len(content) > max_bytes:
             logger.warning("Discarding FlareSolverr response from %s - %d bytes exceeds %d byte cap", url, len(content), max_bytes)
             return None

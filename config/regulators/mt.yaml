@@ -36,6 +36,15 @@
   - type: scrape
     url: "https://www.mfsa.mt/publications/circulars/anti-money-laundering/"
     label: circulars_anti_money_laundering
+    # Genuinely episodic, not broken: verified 2026-09-11 that the selector
+    # still matches 10 items and the newest really is 2025-03-10. The dates
+    # on page one give real gaps of 511, 397, 181 and 135 days, so the
+    # 90/365 default fires on normal MFSA behaviour. warn at 600 sits just
+    # above the largest observed gap; error at 1100 is roughly three years,
+    # which for an AML circular feed has no innocent reading.
+    staleness:
+      warn_days: 600
+      error_days: 1100
     preferred_language: en
     labels: {}
     backfill: *mfsa_backfill

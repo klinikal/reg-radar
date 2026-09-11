@@ -29,6 +29,15 @@
   - type: rss
     url: https://www.mnb.hu/enrss/6
     label: latest_releases
+    # DISABLED. /enrss/6 "Latest releases" serves a single item from
+    # 2020-06-15 and has produced exactly 1 item in this install's history.
+    # MNB's English RSS estate is largely abandoned (verified 2026-09-11):
+    # /enrss/1 and /enrss/2 stopped in 2015 - one of them is literally
+    # "teszt cimke", a test tag - /enrss/7 in 2016, and /enrss/5 and /enrss/8
+    # carry thousands of entries whose dates are all epoch 0. Nothing here is
+    # a usable replacement. MNB stays covered by its three working feeds:
+    # supervision_news (/14), market_supervision (/23) and press_room (/16).
+    enabled: false
     preferred_language: en
     labels: {}
 

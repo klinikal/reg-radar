@@ -19,6 +19,15 @@
   - type: rss
     url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=4
     label: sector_information
+    # DISABLED. The feed is real and correctly titled ("CNMV - Informacion al
+    # sector.") and returns a valid 667-byte RSS envelope with ZERO <item>
+    # elements. It has produced 0 items in the entire history of this install.
+    # Verified 2026-09-11: iID=1 (press releases, 81 items) and iID=3
+    # (speeches, 18 items) are healthy, so this is not a transport problem
+    # with the CNMV RSS endpoint, it is an empty feed. An always-empty source
+    # fails the contract check every night forever, which is noise rather
+    # than signal. Re-enable if CNMV starts publishing to it.
+    enabled: false
     preferred_language: en
     labels: {}
   - type: scrape

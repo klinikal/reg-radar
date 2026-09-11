@@ -13,6 +13,17 @@
   - type: rss
     url: https://www.lb.lt/en/publications/rss
     label: publications_en
+    # KNOWN DEGRADATION: this source loses its publication dates. lb.lt answers
+    # a direct fetch with a Cloudflare challenge (cf-mitigated), so it must go
+    # through FlareSolverr - which returns what the browser RENDERED, and
+    # Chromium renders XML through its own viewer. Unlike MFSA's feed, which
+    # comes back as escaped XML inside a <pre> and is unwrapped in
+    # collector/adapters/http.py, this one comes back as the styled viewer DOM
+    # with the dates already mangled ("pubDate>am, Europe/Vilnius b 2026...").
+    # That is not recoverable, so items collect with title and link intact and
+    # date_inferred: true. Verified 2026-09-11. The freshness check cannot see
+    # this, because it ignores inferred dates by design. Fixing it needs raw
+    # response bytes from FlareSolverr, which it does not expose.
     preferred_language: en
     labels: {}
 
