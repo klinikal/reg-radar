@@ -79,6 +79,20 @@ the logged per-source failures and warnings. There is no dry-run flag; running i
 performs live fetches, but it never writes to the database and only files GitHub issues as a
 side effect of `run_all_checks(file_issues=True)`.
 
+## When a source keeps failing
+
+A source that fails once is usually the site having a bad night. A source that fails
+repeatedly, or that turns out to have no working route at all, gets paused rather than
+left to file the same issue nightly: set `enabled: false` on the source, write the reason
+and the evidence in a comment directly above it, keep its captured fixture so re-enabling
+is a one-line change, and add a row to
+[Inactive and Degraded Sources](config-inactive-sources.md).
+
+Pausing is for sources that cannot work, not for sources that are merely quiet. A real
+but low-cadence source takes a `staleness:` override instead, sized against its own
+observed gaps. The test is whether an operator would ever plausibly see an item from it
+again.
+
 ## Boundaries
 
 Must never write to the reg-radar database, it has no DB connection by design. Must never
