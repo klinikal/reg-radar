@@ -53,6 +53,7 @@ names exactly which files it was written from.
 - [Dataset Exclusions Config](content/config-dataset-exclusions.md) — `config/dataset_exclusions.yaml`
 - [Profiles Config](content/config-profiles.md) — `config/profiles/`
 - [Regulators Registry](content/config-regulators.md) — `config/regulators/`, one file per jurisdiction (38 files)
+- [Inactive and Degraded Sources](content/config-inactive-sources.md) — every regulator or source that is configured but not collecting, and every source that collects but loses something
 - [Modules Example Config](content/config-modules-example.md) — `config/modules.example.yaml`
 - [Environment Variables](content/config-env-vars.md) — `.env.example`
 
