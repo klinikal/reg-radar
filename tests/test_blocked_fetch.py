@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
-from collector.adapters.http import BlockedFetchError, detect_block, fetch_bytes, fetch_html
+from collector.adapters.http import BlockedFetchError, detect_block, fetch_bytes, fetch_html, fetch_via_flaresolverr
 from collector.adapters.scrape import ScrapeAdapter
 from collector.fetcher import LARGE_BODY_ZERO_ITEMS_BYTES, fetch_source
 from collector.main import run_collection
@@ -114,6 +114,52 @@ def test_detect_block_sucuri_geo02_names_the_code():
 def test_detect_block_server_cloudflare_on_non_200():
     signature = detect_block(403, {"server": "cloudflare"}, "<html>nope</html>")
     assert signature is not None and "cloudflare" in signature
+
+
+def test_detect_block_cloudflare_origin_error_is_not_a_block():
+    # 522 = origin unreachable - the regulator's own server is down, not a
+    # WAF block (#87). Misclassifying it hides a real outage behind a
+    # "blocked" state that no UA/FlareSolverr workaround can fix.
+    assert detect_block(522, {"server": "cloudflare"}, "<html>522</html>") is None
+
+
+def test_detect_block_cloudflare_origin_error_neighbour_is_not_a_block():
+    assert detect_block(525, {"server": "cloudflare"}, "<html>525</html>") is None
+
+
+def test_detect_block_server_cloudflare_403_is_still_a_block():
+    # Outside the 520-527 origin-error range, the WAF signature still holds.
+    assert detect_block(403, {"server": "cloudflare"}, "<html>nope</html>") is not None
+
+
+def test_flaresolverr_origin_error_is_not_recorded_as_a_block():
+    # The sibling caller detect_block's fix alone did not reach: a 522 seen
+    # by FlareSolverr's browser used to become last_block_reason and raise
+    # BlockedFetchError after three attempts, so the four
+    # cloudflare_protected regulators kept the exact misclassification #87
+    # is about. It must exhaust its retries and return None instead.
+    solution = {"status": 522, "headers": {"server": "cloudflare"}, "response": "<html>522</html>"}
+    with patch("collector.adapters.http.httpx.post") as mock_post, \
+         patch("collector.adapters.http.time.sleep"), \
+         patch("collector.adapters.http.throttle_flaresolverr"):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(return_value={"status": "ok", "solution": solution}),
+        )
+        assert fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30) is None
+
+
+def test_flaresolverr_403_is_still_recorded_as_a_block():
+    solution = {"status": 403, "headers": {"server": "cloudflare"}, "response": "<html>nope</html>"}
+    with patch("collector.adapters.http.httpx.post") as mock_post, \
+         patch("collector.adapters.http.time.sleep"), \
+         patch("collector.adapters.http.throttle_flaresolverr"):
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(return_value={"status": "ok", "solution": solution}),
+        )
+        with pytest.raises(BlockedFetchError):
+            fetch_via_flaresolverr("https://example.com", "http://flaresolverr:8191", 30)
 
 
 def test_detect_block_server_cloudflare_on_200_is_not_a_block():

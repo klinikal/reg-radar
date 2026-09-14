@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import subprocess
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from collector.adapters.registry import get as get_adapter
 from collector.main import load_regulators as _load_regulators_split
 from collector.pipeline import process_raw_documents
 from collector.schema import Item
-from collector.adapters.http import DEFAULT_USER_AGENT
+from collector.adapters.http import DEFAULT_USER_AGENT, BlockedFetchError
 
 logger = logging.getLogger(__name__)
 
@@ -78,20 +79,50 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
     HTTP fetch (collector/adapters/<type>.py), but returns the raw bytes
     instead of parsed RawDocuments - fixture capture and the nightly live
     check both need the response itself, not just what the parser makes of
-    it."""
+    it.
+
+    One deliberate divergence from the collector: a blocked fetch is retried
+    through FlareSolverr even when the regulator isn't marked
+    cloudflare_protected, because this runs from a datacentre IP the
+    collector doesn't (#85/#86). So a source can pass here via a path the
+    collector would not take - that is the point, and it is logged."""
     source_type = source.get("type", "rss")
     adapter = get_adapter(source_type)
     if adapter is None:
         raise ValueError(f"unknown source type '{source_type}'")
 
+    used_flaresolverr = regulator.get("cloudflare_protected", False)
     ctx = FetchContext(
         user_agent=cfg.get("user_agent", DEFAULT_USER_AGENT),
         timeout=int(cfg.get("timeout", 30)),
         retries=int(cfg.get("retries", 3)),
-        flaresolverr_url=cfg.get("flaresolverr_url") if regulator.get("cloudflare_protected", False) else None,
+        flaresolverr_url=cfg.get("flaresolverr_url") if used_flaresolverr else None,
         regulator_id=regulator["id"],
     )
-    content = adapter.fetch_raw(source, ctx)
+    try:
+        content = adapter.fetch_raw(source, ctx)
+    except BlockedFetchError as blocked:
+        # A source not marked cloudflare_protected can still get
+        # Cloudflare-challenged from this runner's IP (issue #85/#86) -
+        # retry once through FlareSolverr before giving up, rather than
+        # reporting a block that a UA/config fix can't touch.
+        if used_flaresolverr or not cfg.get("flaresolverr_url"):
+            raise
+        ctx = replace(ctx, flaresolverr_url=cfg["flaresolverr_url"])
+        try:
+            content = adapter.fetch_raw(source, ctx)
+        except Exception as retry_error:
+            # The block signature is the one thing the operator needs, and a
+            # broken FlareSolverr raises its own generic message - report
+            # what the source actually did, keeping the retry as the cause.
+            raise blocked from retry_error
+        # A source that passes only through a browser is materially
+        # different from one that passes plainly, and the distinction is
+        # invisible in a green run unless it's said out loud.
+        logger.warning(
+            "%s/%s was blocked on a plain fetch (%s) and only succeeded through FlareSolverr",
+            regulator["id"], source.get("label", "<unknown>"), blocked,
+        )
     return content.encode("utf-8") if isinstance(content, str) else content
 
 
