@@ -133,7 +133,14 @@ def detect_block(status_code, headers, body=None) -> str | None:
         # naming in the signature so an operator doesn't burn time on it.
         return f"x-sucuri-block: {sucuri}"
 
-    if status_code != 200 and "cloudflare" in lowered.get("server", "").lower():
+    if (
+        status_code != 200
+        and "cloudflare" in lowered.get("server", "").lower()
+        and not (isinstance(status_code, int) and 520 <= status_code <= 527)
+    ):
+        # 520-527 are Cloudflare *origin* errors (522 = origin unreachable,
+        # #87) - the regulator's own server is down, not a WAF block, so
+        # these fall through to the normal error/retry path instead.
         return f"server: cloudflare on HTTP {status_code} (likely WAF block, not a genuine error status)"
 
     if status_code == 200:

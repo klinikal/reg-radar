@@ -116,6 +116,22 @@ def test_detect_block_server_cloudflare_on_non_200():
     assert signature is not None and "cloudflare" in signature
 
 
+def test_detect_block_cloudflare_origin_error_is_not_a_block():
+    # 522 = origin unreachable - the regulator's own server is down, not a
+    # WAF block (#87). Misclassifying it hides a real outage behind a
+    # "blocked" state that no UA/FlareSolverr workaround can fix.
+    assert detect_block(522, {"server": "cloudflare"}, "<html>522</html>") is None
+
+
+def test_detect_block_cloudflare_origin_error_neighbour_is_not_a_block():
+    assert detect_block(525, {"server": "cloudflare"}, "<html>525</html>") is None
+
+
+def test_detect_block_server_cloudflare_403_is_still_a_block():
+    # Outside the 520-527 origin-error range, the WAF signature still holds.
+    assert detect_block(403, {"server": "cloudflare"}, "<html>nope</html>") is not None
+
+
 def test_detect_block_server_cloudflare_on_200_is_not_a_block():
     # Plenty of regulators sit behind Cloudflare and serve real content
     # through it. Only a non-200 makes the server header suspicious.

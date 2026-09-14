@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from collector.adapters.http import BlockedFetchError
 from collector.schema import Item
 from scripts.source_health import (
     load_regulators,
@@ -11,6 +12,7 @@ from scripts.source_health import (
     capture,
     check_source,
     close_issue_if_open,
+    fetch_raw,
     find_open_issue,
     fixture_extension,
     fixture_path,
@@ -107,6 +109,41 @@ def test_iter_enabled_sources_defaults_enabled_true():
     regulators = [{"id": "r1", "sources": [{"label": "s1", "type": "rss"}]}]
     results = list(iter_enabled_sources(regulators))
     assert len(results) == 1
+
+
+def test_fetch_raw_retries_through_flaresolverr_when_blocked():
+    # A non-cloudflare_protected source (uk-fca's scrape sources, #85/#86)
+    # gets Cloudflare-challenged from the runner IP - fetch_raw should
+    # retry once through FlareSolverr rather than reporting the block.
+    regulator = {"id": "uk-fca", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss", "url": "https://example.com/rss"}
+    cfg = {"flaresolverr_url": "http://flaresolverr:8191"}
+    mock_adapter = MagicMock()
+    mock_adapter.fetch_raw.side_effect = [BlockedFetchError("cf-mitigated: challenge"), b"<rss>ok</rss>"]
+
+    with patch("scripts.source_health.get_adapter", return_value=mock_adapter):
+        content = fetch_raw(regulator, source, cfg)
+
+    assert content == b"<rss>ok</rss>"
+    assert mock_adapter.fetch_raw.call_count == 2
+    first_ctx = mock_adapter.fetch_raw.call_args_list[0].args[1]
+    retry_ctx = mock_adapter.fetch_raw.call_args_list[1].args[1]
+    assert first_ctx.flaresolverr_url is None
+    assert retry_ctx.flaresolverr_url == "http://flaresolverr:8191"
+
+
+def test_fetch_raw_does_not_retry_when_flaresolverr_url_unset():
+    regulator = {"id": "uk-fca", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss", "url": "https://example.com/rss"}
+    cfg = {}
+    mock_adapter = MagicMock()
+    mock_adapter.fetch_raw.side_effect = BlockedFetchError("cf-mitigated: challenge")
+
+    with patch("scripts.source_health.get_adapter", return_value=mock_adapter):
+        with pytest.raises(BlockedFetchError):
+            fetch_raw(regulator, source, cfg)
+
+    assert mock_adapter.fetch_raw.call_count == 1
 
 
 def test_check_source_returns_none_on_success():
