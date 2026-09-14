@@ -117,6 +117,15 @@ def _lowered_headers(headers) -> dict[str, str]:
     return {str(k).lower(): str(v) for k, v in items if isinstance(v, str)}
 
 
+def is_origin_error(status_code) -> bool:
+    """Cloudflare's 520-527 are *origin* errors - 522 is "the site's own
+    server didn't answer" (#87), not a WAF decision. Never a block, however
+    Cloudflare-shaped the response looks: a block is a state no retry can
+    fix, and an origin outage is exactly the thing a retry is for. Both
+    fetch paths ask this, so the two cannot drift apart."""
+    return isinstance(status_code, int) and 520 <= status_code <= 527
+
+
 def detect_block(status_code, headers, body=None) -> str | None:
     """Returns a human-readable block signature, or None if the response
     looks like a genuine one. `headers` is anything dict-like (httpx
@@ -136,11 +145,8 @@ def detect_block(status_code, headers, body=None) -> str | None:
     if (
         status_code != 200
         and "cloudflare" in lowered.get("server", "").lower()
-        and not (isinstance(status_code, int) and 520 <= status_code <= 527)
+        and not is_origin_error(status_code)
     ):
-        # 520-527 are Cloudflare *origin* errors (522 = origin unreachable,
-        # #87) - the regulator's own server is down, not a WAF block, so
-        # these fall through to the normal error/retry path instead.
         return f"server: cloudflare on HTTP {status_code} (likely WAF block, not a genuine error status)"
 
     if status_code == 200:
@@ -396,7 +402,7 @@ def fetch_via_flaresolverr(url: str, flaresolverr_url: str, timeout: int, expect
                     _note_response_size(len(html.encode("utf-8", errors="replace")))
                     return html
 
-                if not failure_reason.startswith("page loaded but"):
+                if not failure_reason.startswith("page loaded but") and not is_origin_error(upstream_status):
                     last_block_reason = failure_reason
 
                 backoff = _backoff_with_jitter(attempt)

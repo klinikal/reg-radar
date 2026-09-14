@@ -79,7 +79,13 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
     HTTP fetch (collector/adapters/<type>.py), but returns the raw bytes
     instead of parsed RawDocuments - fixture capture and the nightly live
     check both need the response itself, not just what the parser makes of
-    it."""
+    it.
+
+    One deliberate divergence from the collector: a blocked fetch is retried
+    through FlareSolverr even when the regulator isn't marked
+    cloudflare_protected, because this runs from a datacentre IP the
+    collector doesn't (#85/#86). So a source can pass here via a path the
+    collector would not take - that is the point, and it is logged."""
     source_type = source.get("type", "rss")
     adapter = get_adapter(source_type)
     if adapter is None:
@@ -95,7 +101,7 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
     )
     try:
         content = adapter.fetch_raw(source, ctx)
-    except BlockedFetchError:
+    except BlockedFetchError as blocked:
         # A source not marked cloudflare_protected can still get
         # Cloudflare-challenged from this runner's IP (issue #85/#86) -
         # retry once through FlareSolverr before giving up, rather than
@@ -103,7 +109,20 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
         if used_flaresolverr or not cfg.get("flaresolverr_url"):
             raise
         ctx = replace(ctx, flaresolverr_url=cfg["flaresolverr_url"])
-        content = adapter.fetch_raw(source, ctx)
+        try:
+            content = adapter.fetch_raw(source, ctx)
+        except Exception as retry_error:
+            # The block signature is the one thing the operator needs, and a
+            # broken FlareSolverr raises its own generic message - report
+            # what the source actually did, keeping the retry as the cause.
+            raise blocked from retry_error
+        # A source that passes only through a browser is materially
+        # different from one that passes plainly, and the distinction is
+        # invisible in a green run unless it's said out loud.
+        logger.warning(
+            "%s/%s was blocked on a plain fetch (%s) and only succeeded through FlareSolverr",
+            regulator["id"], source.get("label", "<unknown>"), blocked,
+        )
     return content.encode("utf-8") if isinstance(content, str) else content
 
 

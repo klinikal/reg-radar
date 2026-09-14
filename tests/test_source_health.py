@@ -146,6 +146,26 @@ def test_fetch_raw_does_not_retry_when_flaresolverr_url_unset():
     assert mock_adapter.fetch_raw.call_count == 1
 
 
+def test_fetch_raw_reraises_the_original_block_when_flaresolverr_also_fails():
+    # The safety argument for the whole retry: a genuine, permanent block
+    # must still be reported, and reported with the signature the source
+    # actually returned - not FlareSolverr's generic failure message.
+    regulator = {"id": "uk-fca", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss", "url": "https://example.com/rss"}
+    cfg = {"flaresolverr_url": "http://flaresolverr:8191"}
+    mock_adapter = MagicMock()
+    mock_adapter.fetch_raw.side_effect = [
+        BlockedFetchError("cf-mitigated: challenge"),
+        RuntimeError("Failed to fetch https://example.com/rss"),
+    ]
+
+    with patch("scripts.source_health.get_adapter", return_value=mock_adapter):
+        with pytest.raises(BlockedFetchError, match="cf-mitigated: challenge"):
+            fetch_raw(regulator, source, cfg)
+
+    assert mock_adapter.fetch_raw.call_count == 2
+
+
 def test_check_source_returns_none_on_success():
     regulator = {"id": "esma", "cloudflare_protected": False}
     source = {"label": "all_news", "type": "rss", "url": "https://example.com/rss"}
