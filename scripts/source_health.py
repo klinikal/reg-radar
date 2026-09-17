@@ -94,8 +94,11 @@ def fetch_raw(regulator: dict, source: dict, cfg: dict) -> bytes:
     used_flaresolverr = regulator.get("cloudflare_protected", False)
     ctx = FetchContext(
         user_agent=cfg.get("user_agent", DEFAULT_USER_AGENT),
-        timeout=int(cfg.get("timeout", 30)),
-        retries=int(cfg.get("retries", 3)),
+        # Per-source timeout/retries override, same as collector.fetcher -
+        # a source known to be reliably slow gets a longer fuse here too,
+        # not just in production collection.
+        timeout=int(source.get("timeout", cfg.get("timeout", 30))),
+        retries=int(source.get("retries", cfg.get("retries", 3))),
         flaresolverr_url=cfg.get("flaresolverr_url") if used_flaresolverr else None,
         regulator_id=regulator["id"],
     )
@@ -393,7 +396,14 @@ def main(argv=None) -> int:
             "  %d source(s) could not be reported to GitHub: %s",
             len(report_failures), ", ".join(report_failures),
         )
-    return 1 if failures or report_failures else 0
+    # A failing source is already handled: it gets its own GitHub issue
+    # (opened, commented on if it recurs, auto-closed on recovery), which is
+    # its own notification. Failing the workflow *too* means a red run and
+    # an email for every flaky regulator site on top of that - noise, not
+    # signal, for a source that self-recovers most nights (CNMV: issues
+    # #83/#84/#89/#90). Only fail the job - and page - when the automated
+    # tracking itself broke and a human is the only backstop left.
+    return 1 if report_failures else 0
 
 
 if __name__ == "__main__":

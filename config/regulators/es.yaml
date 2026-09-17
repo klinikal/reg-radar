@@ -14,6 +14,12 @@
     url: https://www.cnmv.es/portal/RSS/RSS.asmx/GetDatos?iID=1
     label: press_releases
     preferred_language: en
+    # CNMV's RSS endpoint has repeatedly read-timed-out at the default 30s
+    # (source-health issues #83/#89, both self-recovered by the next nightly
+    # run) - it's a slow origin, not a broken one. Bumped rather than
+    # touching the global timeout, since every other source is fine at 30s.
+    # Revert to the default (delete this line) if it stops being flaky.
+    timeout: 60
     labels:
       document_type: press_release
   - type: rss
@@ -34,6 +40,9 @@
     url: "https://www.cnmv.es/Portal/aldia/notasprensa?tipoNP=5&lang=en"
     label: warnings_unregistered
     preferred_language: en
+    # Same CNMV slow-origin flakiness as press_releases above (issues
+    # #84/#90) - bumped for the same reason, revert if it stops recurring.
+    timeout: 60
     labels:
       document_type: warning
     scrape:
