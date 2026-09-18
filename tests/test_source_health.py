@@ -18,6 +18,7 @@ from scripts.source_health import (
     fixture_path,
     issue_title,
     iter_enabled_sources,
+    main,
     open_or_update_issue,
     parse_fixture,
     run_all_checks,
@@ -301,3 +302,38 @@ def test_run_all_checks_skips_issue_filing_when_disabled():
         run_all_checks(regulators, {}, file_issues=False)
     mock_open.assert_not_called()
     mock_close.assert_not_called()
+
+
+def test_main_exits_zero_when_failures_were_successfully_reported():
+    # A source that fails but gets its GitHub issue filed/updated is a
+    # tracked, expected outcome (flaky sites self-recover) - not something
+    # that should also fail the CI job and page the operator.
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks",
+               return_value={"es-cnmv/press_releases": "timed out"}):
+        assert main([]) == 0
+
+
+def test_main_exits_nonzero_when_a_failure_could_not_be_reported():
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks") as mock_run:
+        def fake_run(regs, cfg, warnings=None, report_failures=None):
+            report_failures.append("es-cnmv/press_releases")
+            return {"es-cnmv/press_releases": "timed out"}
+        mock_run.side_effect = fake_run
+        assert main([]) == 1
+
+
+def test_fetch_raw_uses_per_source_timeout_and_retries_override():
+    regulator = {"id": "es-cnmv", "cloudflare_protected": False}
+    source = {"label": "press_releases", "type": "rss", "url": "https://example.com/rss", "timeout": 60, "retries": 5}
+    with patch("scripts.source_health.get_adapter") as mock_get_adapter:
+        mock_adapter = MagicMock()
+        mock_adapter.fetch_raw.return_value = "content"
+        mock_get_adapter.return_value = mock_adapter
+        fetch_raw(regulator, source, {"timeout": 30, "retries": 3})
+    ctx = mock_adapter.fetch_raw.call_args[0][1]
+    assert ctx.timeout == 60
+    assert ctx.retries == 5

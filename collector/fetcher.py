@@ -43,8 +43,12 @@ def fetch_source(
     rules_engine=None,
 ) -> list[Item]:
     user_agent = config.get("user_agent", DEFAULT_USER_AGENT)
-    timeout = int(config.get("timeout", 30))
-    retries = int(config.get("retries", 3))
+    # A per-source override (config/regulators/*.yaml) beats the global
+    # default - for a source that's reliably slower than everything else
+    # (large response, sluggish origin), raising the global timeout to
+    # accommodate it would just make every other source wait longer to fail.
+    timeout = int(source.get("timeout", config.get("timeout", 30)))
+    retries = int(source.get("retries", config.get("retries", 3)))
     source_type = source.get("type", "rss")
 
     adapter = get_adapter(source_type)

@@ -47,15 +47,23 @@ gets an issue filed for it).
 (`source-health: <regulator>/<source> failing`) and the `source-health` label.
 
 `main()` runs this as a standalone entrypoint: loads regulators and collector config, runs
-all checks, logs a summary plus every failure and warning, and returns exit code 1 if any
-source failed.
+all checks, logs a summary plus every failure and warning, and returns exit code 1 only if a
+failure could not be reported to GitHub (`report_failures`). A source failure that *was*
+successfully filed/updated as a GitHub issue does not fail the job - the issue is the
+notification for that. This is deliberate: most source failures are transient site flakiness
+that self-recovers within a night or two (CNMV's RSS/scrape endpoints have done this
+repeatedly - issues #83/#84/#89/#90 - and each closed itself the next run), so failing the
+whole workflow on every one of those just adds a red CI run and an email on top of the issue
+that's already tracking it. The job (and its failure notification) is reserved for the case
+where the automated tracking itself is broken and a human is the only backstop left.
 
 ## Inputs
 
 - `config/regulators/` (via `load_regulators()`, `REGULATORS_PATH` env var) for source
-  definitions and per-source `staleness` overrides.
+  definitions and per-source `staleness`, `timeout`, `retries` overrides.
 - Collector config (`collector.main.load_config()`): user agent, timeout, retries,
-  FlareSolverr URL.
+  FlareSolverr URL - a source's own `timeout`/`retries` (see `_template.yaml`) wins over
+  these defaults when set.
 - Env vars `STALENESS_WARN_DAYS` (default 90), `STALENESS_ERROR_DAYS` (default 365).
 - `gh` CLI, authenticated, for issue read/create/comment/close.
 
@@ -74,10 +82,12 @@ This is also imported as a library by `scripts/capture_fixture.py` and by the ni
 
 ## How to test
 
-Run `python -m scripts.source_health` and check the exit code (0 = all sources passed) plus
-the logged per-source failures and warnings. There is no dry-run flag; running it always
-performs live fetches, but it never writes to the database and only files GitHub issues as a
-side effect of `run_all_checks(file_issues=True)`.
+Run `python -m scripts.source_health` and check the exit code (0 = every failure was
+successfully filed/updated as a GitHub issue, 1 = reporting itself failed for at least one
+source) plus the logged per-source failures and warnings - a nonzero count of failures with a
+zero exit code is the normal, expected outcome for a flaky-but-tracked source. There is no
+dry-run flag; running it always performs live fetches, but it never writes to the database
+and only files GitHub issues as a side effect of `run_all_checks(file_issues=True)`.
 
 ## When a source keeps failing
 

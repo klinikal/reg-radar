@@ -58,6 +58,16 @@
 #         warn_days: 200
 #         error_days: 550
 #
+#       # Optional, valid on ANY source type. Overrides the global
+#       # REQUEST_TIMEOUT_SECONDS/REQUEST_RETRIES (collector.fetcher and
+#       # scripts/source_health.py both honour it). Use for a source that's
+#       # reliably slower than everything else - a large response or a
+#       # sluggish origin - rather than raising the global default and
+#       # making every other source wait longer to fail. Revert (delete
+#       # these lines) once the source stops being flaky.
+#       timeout: 60                       # seconds, default 30
+#       retries: 3                        # default 3
+#
 #       # Optional, valid on ANY source type (issue #50). Backfill capability
 #       # is a property of the SOURCE, not a user choice: a feed that retains
 #       # ten items has no history to fetch at any price. Declare it so the
