@@ -6,9 +6,9 @@
   website: https://www.asfromania.ro/en/
   mica_competent_authority: true
   enabled: true
-  cloudflare_protected: false
+  cloudflare_protected: true           # F5 BIG-IP "Request Rejected" on plain HTTP since 2026-09 (#102) - REQUIRES FlareSolverr
   warnings_url: https://www.asfromania.ro/en/a/19/investor-alerts---information
-  notes: "English RSS path is accessible; Romanian feed is WAF-blocked."
+  notes: "Both feeds are behind an F5 WAF; the English RSS works via FlareSolverr (#102)."
   sources:
   - type: rss
     url: https://www.asfromania.ro/en/rss/rss.xml
