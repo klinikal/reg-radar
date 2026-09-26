@@ -686,10 +686,10 @@ def test_run_collection_detail_fetch_budget_exceeded_items_still_inserted(tmp_pa
     )
     monkeypatch.setattr("collector.main._DETAIL_FETCH_DELAY_SECONDS", 0)
 
-    # clock_fn() is called once to set the deadline, then once per new item
-    # before its detail fetch would start: 0 -> deadline=10; 1 (< 10, item 1
-    # fetches); 20 (>= 10, item 2's fetch is skipped).
-    clock_values = iter([0.0, 1.0, 20.0])
+    # clock_fn() brackets each detail fetch: item 1 runs from 0 to 20, so 20s
+    # of the 10s budget is spent and item 2's fetch is skipped. Time outside
+    # detail fetches is never sampled, so it can't use up the budget.
+    clock_values = iter([0.0, 20.0])
 
     run_collection(
         engine, [_rss_reg(".main-content")], _base_cfg(),

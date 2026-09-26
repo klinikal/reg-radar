@@ -431,8 +431,10 @@ _DETAIL_FETCH_DELAY_SECONDS = 2.0
 # fetch (RSS summary kept, as on any other detail-fetch failure) and are
 # counted under "budget_exceeded" in detail_fetch_failures. Worst case for
 # one run's detail-fetch phase is DEFAULT_DETAIL_FETCH_BUDGET_SECONDS plus
-# one fetch already in flight when the deadline is checked (the check runs
-# once per item, before starting its fetch, never mid-fetch).
+# one fetch already in flight when the budget is checked (the check runs
+# once per item, before starting its fetch, never mid-fetch). Only time
+# spent inside detail fetches counts, so feed fetching earlier in a long run
+# never uses it up.
 DEFAULT_DETAIL_FETCH_BUDGET_SECONDS = 300
 
 
@@ -446,7 +448,9 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
     total_new = 0
     total_errors = 0
     detail_fetches_done = 0
-    detail_fetch_deadline = clock_fn() + detail_fetch_budget_seconds
+    # Counts time spent inside detail fetches only, not the whole run: a long
+    # run (44 regulators, MFSA's 8s pacing) must not starve later feeds.
+    detail_fetch_spent = 0.0
     error_detail = []
     blocked_detail = []
     # Issue #109 follow-up: {regulator_id: {failure_status: count}}, built up
@@ -521,16 +525,18 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                                 and reg.get("detail_selector")
                                 and not item_exists(engine, item.id)
                             ):
-                                if clock_fn() >= detail_fetch_deadline:
+                                if detail_fetch_spent >= detail_fetch_budget_seconds:
                                     # Budget spent - keep the RSS summary
                                     # (same outcome as any other detail-fetch
                                     # failure) rather than spending more of
                                     # the collector lock chasing it.
                                     failure_status = "budget_exceeded"
                                 else:
+                                    started = clock_fn()
                                     detail_fetches_done, failure_status = _fill_detail_body(
                                         item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
                                     )
+                                    detail_fetch_spent += clock_fn() - started
                                 if failure_status is not None:
                                     reg_counts = detail_fetch_failure_counts.setdefault(reg["id"], {})
                                     reg_counts[failure_status] = reg_counts.get(failure_status, 0) + 1
