@@ -3,6 +3,7 @@ import glob
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime, timezone
 
 import yaml
@@ -10,6 +11,7 @@ from sqlalchemy import text as sa_text
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from collector.detail import fetch_detail_body
 from collector.fetcher import fetch_source
 from collector.storage import (
     regulator_has_items,
@@ -18,6 +20,7 @@ from collector.storage import (
     get_page_watch_baseline,
     init_db,
     insert_item,
+    item_exists,
     latest_item_id,
     mark_modules_disabled,
     record_module_enabled,
@@ -356,13 +359,105 @@ def _collectable(engine, regulator_id: str, source: dict, items: list) -> list:
     return items
 
 
-def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None):
+def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: dict, detail_fetches_done: int) -> tuple[int, str | None]:
+    """Issue #109: for a brand-new RSS item from a regulator with
+    `detail_selector` configured, fetch item.url's own detail page and
+    replace the feed-summary body (rss_body_markdown) with the full article,
+    through the same fetch/select/convert path as scripts/reprocess_bodies.py
+    --refetch (collector/detail.py). Mutates `item` in place on success.
+
+    On any failure (blocked, 404, selector miss, other fetch error) the item
+    keeps today's RSS-summary body untouched - a detail fetch is a best-
+    effort enrichment, never a reason to drop or fail an item that the feed
+    itself already delivered successfully. Deliberately does not call
+    record_source_error/record_source_blocked or touch this run's
+    error/total counters: those drive source-health tracking
+    (consecutive_failures/consecutive_blocked_runs) and this optional,
+    per-item enrichment failing is not evidence the *source* is unhealthy.
+
+    Still logged at warning level, and the failure's status (see
+    fetch_detail_body: "blocked"/"not_found"/"fetch_failed"/"selector_miss",
+    or "error" for an unexpected exception here) is returned so the caller
+    can aggregate it into the run's `detail_fetch_failures` summary
+    (run-log/get_health_tool visible, but never status-affecting) - a
+    warning alone is invisible to anyone who isn't tailing collector logs,
+    and a persistent "blocked" here is exactly the signal for setting
+    cloudflare_protected on this regulator.
+
+    Returns (updated detail_fetches_done counter, failure_status_or_None).
+    The counter's delay is skipped before the first detail fetch in a run.
+    """
+    if detail_fetches_done > 0:
+        time.sleep(_DETAIL_FETCH_DELAY_SECONDS)
+
+    try:
+        result = fetch_detail_body(
+            item.url, reg["detail_selector"], reg.get("detail_exclude"),
+            fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url,
+        )
+    except Exception as e:
+        # An unexpected error (conversion, SSRF refusal, parser) must not
+        # escape into the source-level handler and skip the rest of the feed.
+        result = {"status": "error", "reason": f"{type(e).__name__}: {e}"}
+    if result["status"] == "recovered":
+        item.body_md = result["body_md"]
+        item.extractor = result["extractor"]
+        item.raw_content = result["raw_content"]
+        item.raw_bytes = result["content_html"].encode("utf-8")
+        item.mime = "text/html"
+        return detail_fetches_done + 1, None
+    logger.warning(
+        "Detail fetch failed for new item %s (%s): %s - keeping RSS summary",
+        item.id, reg.get("id", "<unknown>"), result["reason"],
+    )
+    return detail_fetches_done + 1, result["status"]
+
+
+# Seconds between successive detail-page fetches within one run (issue
+# #109) - politeness for the plain-HTTP path, matching --refetch's own
+# default delay; FlareSolverr fetches are already paced by
+# collector.adapters.http.throttle_flaresolverr. Never applied before the
+# first detail fetch, since most runs have none or one new item.
+_DETAIL_FETCH_DELAY_SECONDS = 2.0
+
+# Issue #112 follow-up: wall-clock budget for detail-page fetches across the
+# *whole* run (every regulator, every source), mirroring
+# regradar.webhooks.DEFAULT_RUN_BUDGET_SECONDS. Without this, each failing
+# detail fetch can cost up to retries*timeout (~90s at the defaults) and
+# they happen sequentially inside run_collection_locked's lock - a run with
+# many new items against a newly-blocked regulator could hold the collector
+# lock, and starve every other cadence sharing it, for an unbounded time.
+# Once the budget is spent, remaining new items simply skip the detail
+# fetch (RSS summary kept, as on any other detail-fetch failure) and are
+# counted under "budget_exceeded" in detail_fetch_failures. Worst case for
+# one run's detail-fetch phase is DEFAULT_DETAIL_FETCH_BUDGET_SECONDS plus
+# one fetch already in flight when the budget is checked (the check runs
+# once per item, before starting its fetch, never mid-fetch). Only time
+# spent inside detail fetches counts, so feed fetching earlier in a long run
+# never uses it up.
+DEFAULT_DETAIL_FETCH_BUDGET_SECONDS = 300
+
+
+def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None,
+                    detail_fetch_budget_seconds: float = DEFAULT_DETAIL_FETCH_BUDGET_SECONDS,
+                    clock_fn=time.monotonic):
+    """`clock_fn` is injectable for tests (see DEFAULT_DETAIL_FETCH_BUDGET_SECONDS
+    above for the per-run detail-fetch time bound this enforces)."""
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
     total_errors = 0
+    detail_fetches_done = 0
+    # Counts time spent inside detail fetches only, not the whole run: a long
+    # run (44 regulators, MFSA's 8s pacing) must not starve later feeds.
+    detail_fetch_spent = 0.0
     error_detail = []
     blocked_detail = []
+    # Issue #109 follow-up: {regulator_id: {failure_status: count}}, built up
+    # as _fill_detail_body reports each detail-page enrichment failure -
+    # aggregated per regulator+reason rather than one run-log line per item,
+    # since a single blocked regulator can otherwise produce dozens.
+    detail_fetch_failure_counts: dict[str, dict[str, int]] = {}
     _exception = None
 
     # Checked once per run, before fetching anything - corruption doesn't
@@ -425,6 +520,26 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg, rules_engine=rules_engine)
                         total_fetched += len(items)
                         for item in _collectable(engine, reg["id"], source, items):
+                            if (
+                                source.get("type") == "rss"
+                                and reg.get("detail_selector")
+                                and not item_exists(engine, item.id)
+                            ):
+                                if detail_fetch_spent >= detail_fetch_budget_seconds:
+                                    # Budget spent - keep the RSS summary
+                                    # (same outcome as any other detail-fetch
+                                    # failure) rather than spending more of
+                                    # the collector lock chasing it.
+                                    failure_status = "budget_exceeded"
+                                else:
+                                    started = clock_fn()
+                                    detail_fetches_done, failure_status = _fill_detail_body(
+                                        item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
+                                    )
+                                    detail_fetch_spent += clock_fn() - started
+                                if failure_status is not None:
+                                    reg_counts = detail_fetch_failure_counts.setdefault(reg["id"], {})
+                                    reg_counts[failure_status] = reg_counts.get(failure_status, 0) + 1
                             if insert_item(engine, item):
                                 total_new += 1
                                 if taxonomy is not None:
@@ -516,7 +631,11 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
             status = "failed"
         else:
             status = "success" if total_errors == 0 else "partial"
-        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok)
+        detail_fetch_failures = [
+            f"{reg_id}: " + ", ".join(f"{status} x{count}" for status, count in counts.items())
+            for reg_id, counts in detail_fetch_failure_counts.items()
+        ]
+        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok, detail_fetch_failures=detail_fetch_failures)
         if blocked_detail:
             # Logged at error level, separately from the counts line: a
             # blocked source is the failure mode an operator most needs to

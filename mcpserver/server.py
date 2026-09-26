@@ -263,6 +263,16 @@ def get_run_log_tool(limit: int = 10) -> list[dict]:
     failures when status is "partial" or "failed". Pair with
     get_items_since_tool's `since` param, using a run's completed_at, to
     fetch exactly what that run collected.
+
+    `detail_fetch_failures` (issue #109) is a JSON array of per-regulator
+    summaries like "hu-mnb: blocked x3, not_found x1" - regulators with a
+    `detail_selector` configured where fetching a new RSS item's own article
+    page (to replace the feed-summary body with the full text) failed for
+    one or more items. Unlike error_detail this never affects `status`: the
+    feed item still collected fine, only its optional full-body enrichment
+    didn't, so a "success" run can still list detail-fetch failures. A
+    recurring "blocked" entry for a regulator is the signal to set
+    cloudflare_protected for it.
     """
     results = _safe("get_run_log_tool", get_run_log, get_engine(), limit=limit)
     return results
@@ -405,6 +415,15 @@ def get_health_tool() -> dict:
     stalls there is no threshold; one block means a workaround has stopped
     working and the source is not being watched at all, however healthy its
     HTTP status looks.
+
+    `detail_fetch_failures` (issue #109) is the latest run's list of
+    per-regulator detail-page-enrichment failure summaries, e.g.
+    ["hu-mnb: blocked x3, not_found x1"] - regulators with a
+    `detail_selector` where fetching a new item's own article page failed.
+    It never changes `status` or any source's healthy/failing state: the
+    feed items themselves still collected fine. A recurring "blocked" entry
+    is the signal to set cloudflare_protected for that regulator. See
+    get_run_log_tool for the full per-run history of this field.
 
     `dataset_import` is {cursor, generated_at, imported_at} if this database
     was seeded from a published dataset (`reg-radar import-dataset`), else

@@ -673,13 +673,15 @@ def get_run_log(engine, limit: int = 10) -> list[dict]:
         limit = 10
     sql = """
         SELECT run_id, started_at, completed_at, status,
-               total_fetched, total_new, total_errors, error_detail
+               total_fetched, total_new, total_errors, error_detail,
+               detail_fetch_failures
         FROM runs
         ORDER BY started_at DESC
         LIMIT :limit
     """
     keys = ["run_id", "started_at", "completed_at", "status",
-            "total_fetched", "total_new", "total_errors", "error_detail"]
+            "total_fetched", "total_new", "total_errors", "error_detail",
+            "detail_fetch_failures"]
     with engine.connect() as conn:
         rows = conn.execute(text(sql), {"limit": limit}).fetchall()
     return [_row_to_dict(r, keys) for r in rows]
@@ -889,10 +891,10 @@ def get_health(engine) -> dict:
     and see only what arrived after the published snapshot.
     """
     sql = """
-        SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok
+        SELECT run_id, started_at, completed_at, status, total_fetched, total_new, total_errors, db_integrity_ok, detail_fetch_failures
         FROM runs ORDER BY started_at DESC LIMIT 1
     """
-    keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors", "db_integrity_ok"]
+    keys = ["run_id", "started_at", "completed_at", "status", "total_fetched", "total_new", "total_errors", "db_integrity_ok", "detail_fetch_failures"]
     stalled_sql = """
         SELECT regulator_id, source_label, consecutive_empty_runs
         FROM source_errors WHERE consecutive_empty_runs >= :threshold
@@ -909,7 +911,7 @@ def get_health(engine) -> dict:
     if row is None:
         return {"status": "no_runs", "latest_run": None, "age_seconds": None, "db_integrity": "unknown",
                 "stalled_sources": stalled_sources, "blocked_sources": blocked_sources,
-                "dataset_import": dataset_import}
+                "detail_fetch_failures": [], "dataset_import": dataset_import}
     latest = _row_to_dict(row, keys)
     reference = latest["completed_at"] or latest["started_at"]
     age_seconds = None
@@ -921,8 +923,10 @@ def get_health(engine) -> dict:
         db_integrity = "unknown"
     else:
         db_integrity = "ok" if integrity_flag else "corrupted"
+    detail_fetch_failures = json.loads(latest.pop("detail_fetch_failures") or "[]")
     return {"status": latest["status"], "latest_run": latest, "age_seconds": age_seconds, "db_integrity": db_integrity,
             "stalled_sources": stalled_sources, "blocked_sources": blocked_sources,
+            "detail_fetch_failures": detail_fetch_failures,
             "dataset_import": dataset_import}
 
 

@@ -1,4 +1,5 @@
 import fcntl
+import json
 import sys
 import tempfile
 import os
@@ -7,6 +8,7 @@ from unittest.mock import patch, MagicMock
 
 from collector.main import load_regulators, run_collection, run_collection_locked, _acquire_lock, _release_lock
 from collector.storage import init_db, record_run_start, RunRow, SourceErrorRow
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 
@@ -531,3 +533,175 @@ def test_run_collection_without_rules_engine_writes_no_rule_labels(tmp_path, mon
             "SELECT COUNT(*) FROM classifications WHERE item_id='fixed-test-id-2' AND by='rule'"
         )).scalar()
     assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# run_collection: detail-page fetch for new RSS items (issue #109)
+# ---------------------------------------------------------------------------
+
+def _rss_reg(detail_selector=None):
+    reg = {"id": "hu-mnb", "name": "MNB", "enabled": True,
+           "sources": [{"type": "rss", "url": "https://mnb.example/feed", "label": "news", "enabled": True}]}
+    if detail_selector:
+        reg["detail_selector"] = detail_selector
+    return reg
+
+
+def _rss_item(item_id, url="https://mnb.example/article/1"):
+    from datetime import datetime, timezone
+    from collector.schema import Item
+
+    now = datetime.now(timezone.utc)
+    return Item(
+        id=item_id, regulator_id="hu-mnb", source_label="news", title="An item",
+        url=url, published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="feed summary", source_type="rss",
+        raw_content="<p>feed summary</p>", body_md="feed summary\n\n*Full text not collected.*",
+    )
+
+
+def test_run_collection_new_rss_item_gets_full_body_via_detail_selector(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _rss_item("new-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {
+            "status": "recovered", "body_md": "Full article body", "extractor": "markdownify/1.0",
+            "content_html": "<div>Full article body</div>", "raw_content": "Full article body",
+        },
+    )
+
+    run_collection(engine, [_rss_reg(".main-content")], _base_cfg())
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            sa_text("SELECT body_md, extractor FROM items WHERE id='new-item-1'")
+        ).fetchone()
+    assert row == ("Full article body", "markdownify/1.0")
+
+
+def test_run_collection_known_rss_item_is_not_refetched(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _rss_item("existing-item-1")
+    insert_item(engine, item)  # already in the DB, as if a prior run collected it
+
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [_rss_item("existing-item-1")])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("fetch_detail_body must not be called")),
+    )
+
+    run_collection(engine, [_rss_reg(".main-content")], _base_cfg())  # must not raise
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='existing-item-1'")
+        ).scalar()
+    assert body_md == item.body_md  # unchanged
+
+
+def test_run_collection_detail_fetch_failure_falls_back_to_summary_without_failing_source(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _rss_item("blocked-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {"status": "blocked", "reason": "blocked: decoy page"},
+    )
+
+    run_collection(engine, [_rss_reg(".main-content")], _base_cfg())
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='blocked-item-1'")
+        ).scalar()
+    assert body_md == item.body_md  # kept the RSS summary
+
+    with Session(engine) as session:
+        run = session.query(RunRow).one()
+        assert run.status == "success"  # not marked partial/failed
+        assert session.query(SourceErrorRow).count() == 0  # source health untouched
+        # Issue #109 follow-up: visible in the run log even though it never
+        # touched status or source-health counters.
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: blocked x1"]
+
+
+def test_run_collection_detail_fetch_exception_keeps_item_and_rest_of_feed(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    first, second = _rss_item("raises-item-1"), _rss_item("raises-item-2")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [first, second])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(ValueError("malformed page")),
+    )
+    monkeypatch.setattr("collector.main._DETAIL_FETCH_DELAY_SECONDS", 0)
+
+    run_collection(engine, [_rss_reg(".main-content")], _base_cfg())
+
+    with engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT COUNT(*) FROM items")).scalar() == 2
+    with Session(engine) as session:
+        run = session.query(RunRow).one()
+        assert run.status == "success"
+        assert session.query(SourceErrorRow).count() == 0
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: error x2"]
+
+
+def test_run_collection_rss_source_without_detail_selector_is_unchanged(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _rss_item("no-selector-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("fetch_detail_body must not be called")),
+    )
+
+    run_collection(engine, [_rss_reg(detail_selector=None)], _base_cfg())  # no detail_selector configured
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='no-selector-item-1'")
+        ).scalar()
+    assert body_md == item.body_md  # unchanged
+
+
+def test_run_collection_detail_fetch_budget_exceeded_items_still_inserted(tmp_path, monkeypatch):
+    # Issue #112: a per-run wall-clock budget for detail fetches. A fake
+    # clock puts the deadline between the two items' checks, so the first
+    # gets its detail fetch and the second is reported as budget_exceeded
+    # but still inserted with its RSS summary intact.
+    engine = init_db(str(tmp_path / "test.db"))
+    first = _rss_item("budget-item-1", url="https://mnb.example/article/1")
+    second = _rss_item("budget-item-2", url="https://mnb.example/article/2")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [first, second])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {
+            "status": "recovered", "body_md": "Full article body", "extractor": "markdownify/1.0",
+            "content_html": "<div>Full article body</div>", "raw_content": "Full article body",
+        },
+    )
+    monkeypatch.setattr("collector.main._DETAIL_FETCH_DELAY_SECONDS", 0)
+
+    # clock_fn() brackets each detail fetch: item 1 runs from 0 to 20, so 20s
+    # of the 10s budget is spent and item 2's fetch is skipped. Time outside
+    # detail fetches is never sampled, so it can't use up the budget.
+    clock_values = iter([0.0, 20.0])
+
+    run_collection(
+        engine, [_rss_reg(".main-content")], _base_cfg(),
+        detail_fetch_budget_seconds=10, clock_fn=lambda: next(clock_values),
+    )
+
+    with engine.connect() as conn:
+        rows = dict(conn.execute(sa_text("SELECT id, body_md FROM items")).fetchall())
+    assert rows["budget-item-1"] == "Full article body"  # within budget - detail fetch ran
+    assert rows["budget-item-2"] == second.body_md  # budget spent - RSS summary kept, still inserted
+
+    with Session(engine) as session:
+        run = session.query(RunRow).one()
+        assert run.status == "success"  # budget_exceeded is not a run error
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: budget_exceeded x1"]

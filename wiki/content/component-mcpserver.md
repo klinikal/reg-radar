@@ -77,14 +77,14 @@ Read-only:
 | `get_recent_tool` | Most recent items by `fetched_at`, with the same filter set as search minus the query text. |
 | `list_regulators_tool` | Every regulator in the registry with live item counts, `last_fetched_at`, `stalled` and `blocked` flags. |
 | `get_item_tool` | One item by id, including `raw_content`, `body_md` and a `document` frontmatter object; `max_content_chars` truncates both large text fields. |
-| `get_run_log_tool` | Recent collector run rows (status, counts, `error_detail`), most recent first. |
+| `get_run_log_tool` | Recent collector run rows (status, counts, `error_detail`, `detail_fetch_failures` - issue #109's per-regulator detail-page-fetch failure summaries, never status-affecting), most recent first. |
 | `get_warnings_tool` | Items tagged `warnings` at the feed level (deprecated alias for `labels={"document_type": ["warning"]}`). |
 | `count_items_tool` | Total count matching a search, without fetching rows. |
 | `get_month_facets_tool` | Item counts grouped by publish month, ignoring date filters. |
 | `list_tags_tool` | Distinct `source_tags`/`content_tags` values with counts (deprecated v1 columns). |
 | `list_labels_tool` | Every taxonomy axis with its distinct classified values and counts. |
 | `get_items_since_tool` | Deprecated polling primitive: items with `fetched_at` after `since`. Superseded by `get_changes_tool`. |
-| `get_health_tool` | Latest run status/freshness, `db_integrity`, `stalled_sources`, `blocked_sources`, `dataset_import` cursor. |
+| `get_health_tool` | Latest run status/freshness, `db_integrity`, `stalled_sources`, `blocked_sources`, `detail_fetch_failures` (issue #109, that run's per-regulator detail-page-fetch failures - informational only, never affects `status` or a source's healthy/failing state), `dataset_import` cursor. |
 | `get_taxonomy_tool` | The full taxonomy (axes, cardinality, values, aliases, version). |
 | `get_unclassified_tool` | Backlog of items missing a live classification on one axis, oldest first, for a classifier to work through. |
 | `get_changes_tool` | Cursor-based change stream (new items and reclassifications), the sync primitive; returns `{"items", "next_cursor"}`. |

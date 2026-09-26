@@ -17,6 +17,7 @@ from pathlib import Path
 
 from collector.adapters.base import FetchContext
 from collector.adapters.registry import get as get_adapter
+from collector.detail import fetch_detail_body
 from collector.main import load_regulators as _load_regulators_split
 from collector.pipeline import process_raw_documents
 from collector.schema import Item
@@ -241,7 +242,8 @@ def capture(regulator: dict, source: dict, cfg: dict, dry_run: bool = False) -> 
     return path, len(content)
 
 
-def check_source(regulator: dict, source: dict, cfg: dict, warnings: list | None = None) -> str | None:
+def check_source(regulator: dict, source: dict, cfg: dict, warnings: list | None = None,
+                  items_out: list | None = None) -> str | None:
     """Live equivalent of the offline contract test: fetches the source and
     runs the same assertions the fixture test does, plus the staleness
     assertion. Returns None on success, else a string describing the
@@ -249,17 +251,84 @@ def check_source(regulator: dict, source: dict, cfg: dict, warnings: list | None
 
     A staleness *warning* is not a failure - it would file an issue for
     every genuinely quiet regulator - so it is appended to `warnings`
-    (if a list was passed) rather than returned."""
+    (if a list was passed) rather than returned.
+
+    Pass a list as `items_out` to also collect the parsed items on success -
+    check_detail_page's caller uses this to get a real article URL to probe
+    without a second feed fetch."""
     try:
         content = fetch_raw(regulator, source, cfg)
         items = parse_fixture(source, regulator["id"], content)
         assert_contract(items)
     except Exception as e:
         return str(e)
+    if items_out is not None:
+        items_out.extend(items)
     error, warning = check_staleness(items, source)
     if warning is not None and warnings is not None:
         warnings.append(warning)
     return error
+
+
+def check_detail_page(regulator: dict, source: dict, url: str, cfg: dict) -> str | None:
+    """Issue #109 follow-up: live probe of the detail-page enrichment fetch
+    a regulator with `detail_selector` gets at collection time
+    (collector/main.py _fill_detail_body) - fetches `url` (a real item's
+    link) through the same collector/detail.py fetch_detail_body() the
+    collector itself uses, one request per regulator per nightly run.
+
+    Mirrors fetch_raw's own "retry a block through FlareSolverr even for a
+    regulator not marked cloudflare_protected" divergence (issue #85/#86):
+    this runs from a datacentre IP the production collector doesn't, so a
+    plain block here doesn't necessarily mean the collector would see one
+    too. A failure never touches the feed source's own health - it is
+    reported under its own '<regulator_id>/detail_page' key so a persistent
+    block still gets its own issue without being conflated with the feed's.
+
+    Returns None on success, else fetch_detail_body's human-readable reason.
+    """
+    used_flaresolverr = regulator.get("cloudflare_protected", False)
+    kwargs = dict(
+        detail_selector=regulator["detail_selector"],
+        detail_exclude=regulator.get("detail_exclude"),
+        user_agent=cfg.get("user_agent", DEFAULT_USER_AGENT),
+        timeout=int(source.get("timeout", cfg.get("timeout", 30))),
+        retries=int(source.get("retries", cfg.get("retries", 3))),
+    )
+    result = fetch_detail_body(url, flaresolverr_url=cfg.get("flaresolverr_url") if used_flaresolverr else None, **kwargs)
+    if result["status"] == "blocked" and not used_flaresolverr and cfg.get("flaresolverr_url"):
+        result = fetch_detail_body(url, flaresolverr_url=cfg["flaresolverr_url"], **kwargs)
+    return None if result["status"] == "recovered" else result["reason"]
+
+
+def _detail_probe_candidates(items: list[Item], limit: int = 3) -> list[str]:
+    """Up to `limit` item URLs worth probing for the detail-page enrichment
+    check (see check_detail_page_sample below), filtered to http(s) so a
+    relative or malformed url from a misconfigured source is never handed
+    to fetch_detail_body."""
+    return [i.url for i in items if i.url and i.url.startswith(("http://", "https://"))][:limit]
+
+
+def check_detail_page_sample(regulator: dict, source: dict, urls: list[str], cfg: dict) -> str | None:
+    """Issue #112 follow-up: probes up to `len(urls)` items (see
+    _detail_probe_candidates, default 3) via check_detail_page, stopping at
+    the first success. Sampling only the single first feed item was a
+    frequent false positive - one PDF-only release with no article body, or
+    one page an ad-blocker/edge quirk mangles, failed the whole regulator
+    even though every other item's detail page was fine. Only reporting a
+    failure when every sampled item fails turns that into real signal.
+
+    Returns None on the first success, else a message listing every URL
+    tried and its own failure reason."""
+    if not urls:
+        return "no item url to probe"
+    reasons = []
+    for url in urls:
+        reason = check_detail_page(regulator, source, url, cfg)
+        if reason is None:
+            return None
+        reasons.append(f"{url}: {reason}")
+    return "all " + str(len(reasons)) + " sampled item(s) failed:\n" + "\n".join(reasons)
 
 
 def issue_title(regulator_id: str, source_label: str) -> str:
@@ -351,21 +420,44 @@ def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
     Pass a dict as `warnings` to also collect non-failing staleness
     warnings, keyed the same way."""
     results: dict[str, str | None] = {}
+    detail_checked: set[str] = set()
     if file_issues:
         ensure_issue_label()
     for regulator, source in iter_enabled_sources(regulators):
         key = f"{regulator['id']}/{source['label']}"
         source_warnings: list[str] = []
-        error = check_source(regulator, source, cfg, warnings=source_warnings)
+        # #109 follow-up: probe the detail-page enrichment fetch too, once
+        # per regulator, off whichever rss source's items land first - the
+        # collector only ever makes this fetch for an rss source on a
+        # regulator with detail_selector (collector/main.py
+        # _fill_detail_body), so that is the only shape worth mirroring here.
+        wants_detail_check = (
+            bool(regulator.get("detail_selector"))
+            and source.get("type") == "rss"
+            and regulator["id"] not in detail_checked
+        )
+        items_out: list = [] if wants_detail_check else None
+        error = check_source(regulator, source, cfg, warnings=source_warnings, items_out=items_out)
         results[key] = error
         if warnings is not None and source_warnings:
             warnings[key] = source_warnings
-        if not file_issues:
-            continue
-        reported = (open_or_update_issue(regulator["id"], source["label"], error) if error
-                    else close_issue_if_open(regulator["id"], source["label"]))
-        if not reported and report_failures is not None:
-            report_failures.append(key)
+        if file_issues:
+            reported = (open_or_update_issue(regulator["id"], source["label"], error) if error
+                        else close_issue_if_open(regulator["id"], source["label"]))
+            if not reported and report_failures is not None:
+                report_failures.append(key)
+
+        if wants_detail_check and error is None and items_out:
+            detail_checked.add(regulator["id"])
+            detail_key = f"{regulator['id']}/detail_page"
+            candidate_urls = _detail_probe_candidates(items_out)
+            detail_error = check_detail_page_sample(regulator, source, candidate_urls, cfg)
+            results[detail_key] = detail_error
+            if file_issues:
+                reported = (open_or_update_issue(regulator["id"], "detail_page", detail_error) if detail_error
+                            else close_issue_if_open(regulator["id"], "detail_page"))
+                if not reported and report_failures is not None:
+                    report_failures.append(detail_key)
     return results
 
 
