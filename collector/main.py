@@ -3,6 +3,7 @@ import glob
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime, timezone
 
 import yaml
@@ -10,6 +11,7 @@ from sqlalchemy import text as sa_text
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from collector.detail import fetch_detail_body
 from collector.fetcher import fetch_source
 from collector.storage import (
     regulator_has_items,
@@ -18,6 +20,7 @@ from collector.storage import (
     get_page_watch_baseline,
     init_db,
     insert_item,
+    item_exists,
     latest_item_id,
     mark_modules_disabled,
     record_module_enabled,
@@ -356,11 +359,62 @@ def _collectable(engine, regulator_id: str, source: dict, items: list) -> list:
     return items
 
 
+def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: dict, detail_fetches_done: int) -> int:
+    """Issue #109: for a brand-new RSS item from a regulator with
+    `detail_selector` configured, fetch item.url's own detail page and
+    replace the feed-summary body (rss_body_markdown) with the full article,
+    through the same fetch/select/convert path as scripts/reprocess_bodies.py
+    --refetch (collector/detail.py). Mutates `item` in place on success.
+
+    On any failure (blocked, 404, selector miss, other fetch error) the item
+    keeps today's RSS-summary body untouched - a detail fetch is a best-
+    effort enrichment, never a reason to drop or fail an item that the feed
+    itself already delivered successfully. Deliberately does not call
+    record_source_error/record_source_blocked or touch this run's
+    error/total counters: those drive source-health tracking
+    (consecutive_failures/consecutive_blocked_runs) and this optional,
+    per-item enrichment failing is not evidence the *source* is unhealthy.
+    Logged at warning level only - see the PR description for why that
+    (rather than a run-log field) was the choice here.
+
+    Returns the updated detail_fetches_done counter (the delay is skipped
+    before the first detail fetch in a run).
+    """
+    if detail_fetches_done > 0:
+        time.sleep(_DETAIL_FETCH_DELAY_SECONDS)
+
+    result = fetch_detail_body(
+        item.url, reg["detail_selector"], reg.get("detail_exclude"),
+        fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url,
+    )
+    if result["status"] == "recovered":
+        item.body_md = result["body_md"]
+        item.extractor = result["extractor"]
+        item.raw_content = result["raw_content"]
+        item.raw_bytes = result["content_html"].encode("utf-8")
+        item.mime = "text/html"
+    else:
+        logger.warning(
+            "Detail fetch failed for new item %s (%s): %s - keeping RSS summary",
+            item.id, reg.get("id", "<unknown>"), result["reason"],
+        )
+    return detail_fetches_done + 1
+
+
+# Seconds between successive detail-page fetches within one run (issue
+# #109) - politeness for the plain-HTTP path, matching --refetch's own
+# default delay; FlareSolverr fetches are already paced by
+# collector.adapters.http.throttle_flaresolverr. Never applied before the
+# first detail fetch, since most runs have none or one new item.
+_DETAIL_FETCH_DELAY_SECONDS = 2.0
+
+
 def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None):
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
     total_errors = 0
+    detail_fetches_done = 0
     error_detail = []
     blocked_detail = []
     _exception = None
@@ -425,6 +479,14 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg, rules_engine=rules_engine)
                         total_fetched += len(items)
                         for item in _collectable(engine, reg["id"], source, items):
+                            if (
+                                source.get("type") == "rss"
+                                and reg.get("detail_selector")
+                                and not item_exists(engine, item.id)
+                            ):
+                                detail_fetches_done = _fill_detail_body(
+                                    item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
+                                )
                             if insert_item(engine, item):
                                 total_new += 1
                                 if taxonomy is not None:

@@ -42,7 +42,11 @@ specific data defect (undated FCA RSS items).
   `content_snippet` all empty - e.g. an `is_partial` RSS source, which never had an article
   body fetched at all - by fetching each item's own `source_url` and extracting the body via
   the item's regulator's `detail_selector` config key (see Regulators Registry). A regulator
-  with no `detail_selector` is skipped and reported, never guessed at.
+  with no `detail_selector` is skipped and reported, never guessed at. Since issue #109, a
+  regulator with `detail_selector` also gets this fetch for brand-new items at collection time
+  (`collector.main.run_collection`, via the shared `collector/detail.py`), so `--refetch` is now
+  mainly a backfill for items collected before that landed or whose collection-time fetch
+  failed on the day.
 
 ## Inputs
 

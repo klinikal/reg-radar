@@ -340,6 +340,15 @@ def insert_item(engine, item: Item) -> bool:
         return True
 
 
+def item_exists(engine, item_id: str) -> bool:
+    """Used by collector.main.run_collection (issue #109) to check whether
+    an RSS item is new *before* fetching its detail page - insert_item()
+    does the same session.get() check, but only after the fetch has already
+    happened, which is too late to avoid it."""
+    with Session(engine) as session:
+        return session.get(ItemRow, item_id) is not None
+
+
 def get_artefact(engine, item_id: str) -> dict | None:
     with engine.connect() as conn:
         row = conn.execute(

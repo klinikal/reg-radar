@@ -29,7 +29,12 @@ feed's own summary, or nothing) - `body_md`, `raw_content` and
 `content_snippet` all empty. This re-fetches each such item's own
 `source_url` and extracts the body via the regulator's `detail_selector`
 (config/regulators/*.yaml) - a regulator with no `detail_selector`
-configured is skipped and reported, never guessed at:
+configured is skipped and reported, never guessed at. The fetch/select/
+convert step itself lives in collector/detail.py, shared with
+collector.main.run_collection's own detail fetch for brand-new RSS items
+at collection time (issue #109) - this backfills what that collection-time
+fetch didn't cover (items collected before this landed, or whose detail
+fetch failed on the day):
 
     docker compose exec collector python -m scripts.reprocess_bodies --refetch --dry-run
     docker compose exec collector python -m scripts.reprocess_bodies --refetch --regulator hu-mnb --limit 50
@@ -42,16 +47,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bs4 import BeautifulSoup
 from sqlalchemy import text
 
 from collector.adapters.http import (
     DEFAULT_USER_AGENT,
-    BlockedFetchError,
     extract_pdf_text as _extract_pdf_text,
     fetch_html,
     observe_fetch_statuses,
 )
+from collector.detail import fetch_detail_body
 from collector.storage import add_item_artefact, init_db, update_item_body
 from regradar.document import convert_body, effective_body_md
 
@@ -153,22 +157,6 @@ def backfill_from_raw_content(engine, dry_run: bool, limit: int | None) -> int:
     return processed
 
 
-def _select_detail_html(html: str, detail_selector: str, detail_exclude: list[str] | None) -> str | None:
-    """The matched element's own HTML, with any `detail_exclude` selector's
-    matches removed from inside it (e.g. a related-links block that lives
-    nested inside the content container, as opposed to a true page sibling,
-    which selecting the container alone already excludes). None if
-    `detail_selector` matches nothing on this page."""
-    soup = BeautifulSoup(html, "lxml")
-    el = soup.select_one(detail_selector)
-    if el is None:
-        return None
-    for exclude_selector in (detail_exclude or []):
-        for node in el.select(exclude_selector):
-            node.decompose()
-    return str(el)
-
-
 def _candidates_sql(regulator_id: str | None) -> str:
     # The WHERE-guard (tasks/lessons.md): only rows genuinely empty on all
     # three body fields - never touches an item a normal collection run
@@ -222,33 +210,20 @@ def refetch(engine, regulators: list[dict], dry_run: bool, limit: int | None, re
         if reg.get("cloudflare_protected"):
             flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip() or None
 
-        try:
-            with observe_fetch_statuses() as statuses:
-                html = fetch_html(url, user_agent, timeout, retries, flaresolverr_url, detail_selector)
-        except BlockedFetchError as e:
-            report["blocked"] += 1
-            report["remaining_empty"].append({"id": item_id, "reason": f"blocked: {e}"})
+        result = fetch_detail_body(
+            url, detail_selector, reg.get("detail_exclude"), user_agent, timeout, retries, flaresolverr_url,
+            fetch_html=fetch_html, observe_fetch_statuses=observe_fetch_statuses,
+        )
+        if result["status"] != "recovered":
+            report[result["status"]] += 1
+            report["remaining_empty"].append({"id": item_id, "reason": result["reason"]})
             continue
 
-        if html is None:
-            if 404 in statuses:
-                report["not_found"] += 1
-                report["remaining_empty"].append({"id": item_id, "reason": "404 not found"})
-            else:
-                report["fetch_failed"] += 1
-                report["remaining_empty"].append({"id": item_id, "reason": "fetch failed"})
-            continue
-
-        content_html = _select_detail_html(html, detail_selector, reg.get("detail_exclude"))
-        if content_html is None:
-            report["selector_miss"] += 1
-            report["remaining_empty"].append({"id": item_id, "reason": f"detail_selector {detail_selector!r} matched nothing on the fetched page"})
-            continue
-
-        body_md, extractor = convert_body(content_html=content_html, source_url=url)
         if not dry_run:
-            update_item_body(engine, item_id, body_md, extractor)
-            add_item_artefact(engine, item_id, content_html.encode("utf-8"), "text/html", datetime.now(timezone.utc))
+            update_item_body(engine, item_id, result["body_md"], result["extractor"])
+            add_item_artefact(
+                engine, item_id, result["content_html"].encode("utf-8"), "text/html", datetime.now(timezone.utc),
+            )
         report["recovered"] += 1
 
     logger.info(

@@ -14,9 +14,13 @@ The community-maintained catalogue of every regulator reg-radar knows how to col
 The directory holds 38 files: `_template.yaml` (documentation only, never loaded, any filename starting with `_` is skipped by `collector.main.load_regulators()`) plus 37 jurisdiction files named by lower-case ISO alpha-2 id matching `config/jurisdictions.yaml` (e.g. `gb.yaml`, `eu.yaml` for supranational bodies like ESMA/EBA/EIOPA/AMLA, `us-ny.yaml`, `ae.yaml`).
 
 Each regulator entry has: `id` (unique across every file, `<jurisdiction>-<short-name>`), `name`, `full_name`, `jurisdiction` (must resolve in `config/jurisdictions.yaml`), `jurisdiction_type` (free text, unvalidated, display-only; values in use: `supranational`, `member_state`, `eea_non_eu`, `national`, `state`, `sro`, `international`), `website`, `mica_competent_authority` (bool), `enabled` (bool; `false` disables every source under it without deleting them, and overrides any module selection that names it, logging a WARNING), `cloudflare_protected` (bool; routes sources through FlareSolverr), `detail_selector`
-(optional CSS selector for an item's full body on its own `source_url` page - used only by
-`scripts/reprocess_bodies.py --refetch`, issue #17, to backfill items an `is_partial` source
-never fetched a body for; a regulator with none configured is skipped, never guessed at),
+(optional CSS selector for an item's full body on its own `source_url` page - originally used
+only by `scripts/reprocess_bodies.py --refetch`, issue #17, to backfill items an `is_partial`
+source never fetched a body for; since issue #109 it also applies at collection time, for any
+new `rss`-type item from a regulator that has it configured, `collector.main.run_collection`
+fetches the item's `source_url` and stores the full body instead of the feed summary, before it
+ever gets inserted. A regulator with none configured is skipped, never guessed at, in both
+places),
 `detail_exclude` (optional list of CSS selectors to strip from inside the matched
 `detail_selector` element before conversion - e.g. a related-links block nested inside the
 content container; a true page *sibling* of the container needs no entry, since selecting the
