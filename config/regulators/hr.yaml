@@ -9,6 +9,11 @@
   cloudflare_protected: false
   warnings_url: https://www.hanfa.hr/consumers/warnings/
   notes: "English RSS lags Croatian feed slightly."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (834 and 5056 chars recovered).
+  # Excludes are nav/breadcrumb/share chrome nested inside main.mainer.
+  detail_selector: "main.mainer"
+  detail_exclude: ["nav.navbar", ".mobilenav", ".breadcrumbs", ".grayrounder", ".sharelinks"]
   sources:
   - type: rss
     url: https://www.hanfa.hr/rss-en/

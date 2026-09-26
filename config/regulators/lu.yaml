@@ -9,6 +9,11 @@
   cloudflare_protected: false
   warnings_url: https://www.cssf.lu/en/warnings/
   notes: "767 warnings entries as of 2026-07-01 - most comprehensive warnings list in EEA. Keyword filtering available on feed URL."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (757 and 170 chars recovered).
+  # .social-share sits inside .article-container, not as a page sibling.
+  detail_selector: ".article-container"
+  detail_exclude: [".social-share"]
   sources:
   - type: rss
     url: https://www.cssf.lu/en/feed/publications

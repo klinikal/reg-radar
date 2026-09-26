@@ -9,6 +9,10 @@
   cloudflare_protected: false
   warnings_url: https://www.fi.se/en/our-registers/investor-alerts/
   notes: "Append /rss to any FI listing page URL to get a feed."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (1811 and 3206 chars recovered).
+  detail_selector: ".content.with-sub-nav .page"
+  detail_exclude: [".share-links"]
   sources:
   - type: rss
     url: https://www.fi.se/en/published/all-published-material/rss

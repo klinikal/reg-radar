@@ -8,7 +8,12 @@
   enabled: true
   cloudflare_protected: true           # F5 BIG-IP "Request Rejected" on plain HTTP since 2026-09 (#102) - REQUIRES FlareSolverr
   warnings_url: https://www.asfromania.ro/en/a/19/investor-alerts---information
-  notes: "Both feeds are behind an F5 WAF; the English RSS works via FlareSolverr (#102)."
+  notes: "Both feeds are behind an F5 WAF; the English RSS works via FlareSolverr (#102). The 'English' feed's items are actually Romanian pages under /ro/ - a labelling bug, not fixed here."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified via FlareSolverr against 2 sampled live articles (2673 and 376
+  # chars recovered) - only 1 sample was checked when this selector was
+  # first surveyed, so treat as lightly verified relative to other entries.
+  detail_selector: ".case-study-details-full-content"
   sources:
   - type: rss
     url: https://www.asfromania.ro/en/rss/rss.xml

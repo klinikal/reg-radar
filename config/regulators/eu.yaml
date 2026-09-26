@@ -67,6 +67,9 @@
   cloudflare_protected: false
   warnings_url:
   notes: "New EU AML/CFT supervisory authority (operational 2026) - directly relevant since CASPs are AML-obliged entities, distinct from ESMA/EBA's MiCA-specific roles. Document library (resources/document-library_en) is JS-rendered (facets/listing populate via client-side AJAX, confirmed empty even through FlareSolverr's real browser) and not reliably scrapeable with current tooling - known gap, not attempted. RSS news feed and the public-consultations page (server-rendered, clean markup) are both tracked instead."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (1348 and 1735 chars recovered).
+  detail_selector: "article"
   sources:
   - type: rss
     url: https://www.amla.europa.eu/node/19/rss_en
@@ -98,6 +101,9 @@
   cloudflare_protected: false
   warnings_url:
   notes: "Supervises significant ART/EMT issuers under MiCA."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (4498 and 4505 chars recovered).
+  detail_selector: "div.page__content"
   sources:
   - type: rss
     url: https://www.eba.europa.eu/news-press/news/rss.xml
@@ -116,6 +122,9 @@
   cloudflare_protected: false
   warnings_url:
   notes: "Secondary relevance - joint ESA work on MiCA and DORA."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (6870 and 7460 chars recovered).
+  detail_selector: "article"
   sources:
   - type: rss
     url: https://www.eiopa.europa.eu/node/3/rss_en

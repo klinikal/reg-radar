@@ -9,6 +9,9 @@
   cloudflare_protected: false
   warnings_url: https://www.amf-france.org/en/warnings
   notes: "Multiple confirmed RSS feeds. Warnings feed is highest priority."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (2363 and 500 chars recovered).
+  detail_selector: ".contentToc"
   sources:
   - type: rss
     url: https://www.amf-france.org/en/flux-rss/display/28
