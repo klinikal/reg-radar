@@ -301,6 +301,36 @@ def check_detail_page(regulator: dict, source: dict, url: str, cfg: dict) -> str
     return None if result["status"] == "recovered" else result["reason"]
 
 
+def _detail_probe_candidates(items: list[Item], limit: int = 3) -> list[str]:
+    """Up to `limit` item URLs worth probing for the detail-page enrichment
+    check (see check_detail_page_sample below), filtered to http(s) so a
+    relative or malformed url from a misconfigured source is never handed
+    to fetch_detail_body."""
+    return [i.url for i in items if i.url and i.url.startswith(("http://", "https://"))][:limit]
+
+
+def check_detail_page_sample(regulator: dict, source: dict, urls: list[str], cfg: dict) -> str | None:
+    """Issue #112 follow-up: probes up to `len(urls)` items (see
+    _detail_probe_candidates, default 3) via check_detail_page, stopping at
+    the first success. Sampling only the single first feed item was a
+    frequent false positive - one PDF-only release with no article body, or
+    one page an ad-blocker/edge quirk mangles, failed the whole regulator
+    even though every other item's detail page was fine. Only reporting a
+    failure when every sampled item fails turns that into real signal.
+
+    Returns None on the first success, else a message listing every URL
+    tried and its own failure reason."""
+    if not urls:
+        return "no item url to probe"
+    reasons = []
+    for url in urls:
+        reason = check_detail_page(regulator, source, url, cfg)
+        if reason is None:
+            return None
+        reasons.append(f"{url}: {reason}")
+    return "all " + str(len(reasons)) + " sampled item(s) failed:\n" + "\n".join(reasons)
+
+
 def issue_title(regulator_id: str, source_label: str) -> str:
     return f"source-health: {regulator_id}/{source_label} failing"
 
@@ -420,9 +450,8 @@ def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
         if wants_detail_check and error is None and items_out:
             detail_checked.add(regulator["id"])
             detail_key = f"{regulator['id']}/detail_page"
-            first_url = items_out[0].url
-            detail_error = (check_detail_page(regulator, source, first_url, cfg) if first_url
-                             else "no item url to probe")
+            candidate_urls = _detail_probe_candidates(items_out)
+            detail_error = check_detail_page_sample(regulator, source, candidate_urls, cfg)
             results[detail_key] = detail_error
             if file_issues:
                 reported = (open_or_update_issue(regulator["id"], "detail_page", detail_error) if detail_error

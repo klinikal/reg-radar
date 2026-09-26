@@ -666,3 +666,42 @@ def test_run_collection_rss_source_without_detail_selector_is_unchanged(tmp_path
             sa_text("SELECT body_md FROM items WHERE id='no-selector-item-1'")
         ).scalar()
     assert body_md == item.body_md  # unchanged
+
+
+def test_run_collection_detail_fetch_budget_exceeded_items_still_inserted(tmp_path, monkeypatch):
+    # Issue #112: a per-run wall-clock budget for detail fetches. A fake
+    # clock puts the deadline between the two items' checks, so the first
+    # gets its detail fetch and the second is reported as budget_exceeded
+    # but still inserted with its RSS summary intact.
+    engine = init_db(str(tmp_path / "test.db"))
+    first = _rss_item("budget-item-1", url="https://mnb.example/article/1")
+    second = _rss_item("budget-item-2", url="https://mnb.example/article/2")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [first, second])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {
+            "status": "recovered", "body_md": "Full article body", "extractor": "markdownify/1.0",
+            "content_html": "<div>Full article body</div>", "raw_content": "Full article body",
+        },
+    )
+    monkeypatch.setattr("collector.main._DETAIL_FETCH_DELAY_SECONDS", 0)
+
+    # clock_fn() is called once to set the deadline, then once per new item
+    # before its detail fetch would start: 0 -> deadline=10; 1 (< 10, item 1
+    # fetches); 20 (>= 10, item 2's fetch is skipped).
+    clock_values = iter([0.0, 1.0, 20.0])
+
+    run_collection(
+        engine, [_rss_reg(".main-content")], _base_cfg(),
+        detail_fetch_budget_seconds=10, clock_fn=lambda: next(clock_values),
+    )
+
+    with engine.connect() as conn:
+        rows = dict(conn.execute(sa_text("SELECT id, body_md FROM items")).fetchall())
+    assert rows["budget-item-1"] == "Full article body"  # within budget - detail fetch ran
+    assert rows["budget-item-2"] == second.body_md  # budget spent - RSS summary kept, still inserted
+
+    with Session(engine) as session:
+        run = session.query(RunRow).one()
+        assert run.status == "success"  # budget_exceeded is not a run error
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: budget_exceeded x1"]

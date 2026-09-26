@@ -420,13 +420,33 @@ def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: 
 # first detail fetch, since most runs have none or one new item.
 _DETAIL_FETCH_DELAY_SECONDS = 2.0
 
+# Issue #112 follow-up: wall-clock budget for detail-page fetches across the
+# *whole* run (every regulator, every source), mirroring
+# regradar.webhooks.DEFAULT_RUN_BUDGET_SECONDS. Without this, each failing
+# detail fetch can cost up to retries*timeout (~90s at the defaults) and
+# they happen sequentially inside run_collection_locked's lock - a run with
+# many new items against a newly-blocked regulator could hold the collector
+# lock, and starve every other cadence sharing it, for an unbounded time.
+# Once the budget is spent, remaining new items simply skip the detail
+# fetch (RSS summary kept, as on any other detail-fetch failure) and are
+# counted under "budget_exceeded" in detail_fetch_failures. Worst case for
+# one run's detail-fetch phase is DEFAULT_DETAIL_FETCH_BUDGET_SECONDS plus
+# one fetch already in flight when the deadline is checked (the check runs
+# once per item, before starting its fetch, never mid-fetch).
+DEFAULT_DETAIL_FETCH_BUDGET_SECONDS = 300
 
-def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None):
+
+def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rules_engine=None,
+                    detail_fetch_budget_seconds: float = DEFAULT_DETAIL_FETCH_BUDGET_SECONDS,
+                    clock_fn=time.monotonic):
+    """`clock_fn` is injectable for tests (see DEFAULT_DETAIL_FETCH_BUDGET_SECONDS
+    above for the per-run detail-fetch time bound this enforces)."""
     run_id = record_run_start(engine)
     total_fetched = 0
     total_new = 0
     total_errors = 0
     detail_fetches_done = 0
+    detail_fetch_deadline = clock_fn() + detail_fetch_budget_seconds
     error_detail = []
     blocked_detail = []
     # Issue #109 follow-up: {regulator_id: {failure_status: count}}, built up
@@ -501,9 +521,16 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                                 and reg.get("detail_selector")
                                 and not item_exists(engine, item.id)
                             ):
-                                detail_fetches_done, failure_status = _fill_detail_body(
-                                    item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
-                                )
+                                if clock_fn() >= detail_fetch_deadline:
+                                    # Budget spent - keep the RSS summary
+                                    # (same outcome as any other detail-fetch
+                                    # failure) rather than spending more of
+                                    # the collector lock chasing it.
+                                    failure_status = "budget_exceeded"
+                                else:
+                                    detail_fetches_done, failure_status = _fill_detail_body(
+                                        item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
+                                    )
                                 if failure_status is not None:
                                     reg_counts = detail_fetch_failure_counts.setdefault(reg["id"], {})
                                     reg_counts[failure_status] = reg_counts.get(failure_status, 0) + 1

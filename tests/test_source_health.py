@@ -8,9 +8,11 @@ from collector.schema import Item
 from scripts.source_health import (
     load_regulators,
     MAX_FIXTURE_BYTES,
+    _detail_probe_candidates,
     assert_contract,
     capture,
     check_detail_page,
+    check_detail_page_sample,
     check_source,
     close_issue_if_open,
     fetch_raw,
@@ -309,6 +311,44 @@ def test_check_detail_page_does_not_retry_when_already_cloudflare_protected():
     assert mock_fetch.call_count == 1
 
 
+def test_detail_probe_candidates_takes_up_to_3_http_urls():
+    items = [_make_item(url=u) for u in (
+        "https://a.example/1", "ftp://b.example/2", "https://c.example/3",
+        "http://d.example/4", "https://e.example/5",
+    )]
+    assert _detail_probe_candidates(items) == [
+        "https://a.example/1", "https://c.example/3", "http://d.example/4",
+    ]
+
+
+def test_check_detail_page_sample_returns_none_on_no_urls():
+    assert check_detail_page_sample({}, {}, [], {}) == "no item url to probe"
+
+
+def test_check_detail_page_sample_stops_at_first_success():
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss"}
+    with patch("scripts.source_health.check_detail_page",
+               side_effect=["404 not found", None]) as mock_detail:
+        result = check_detail_page_sample(
+            regulator, source, ["https://mnb.example/1", "https://mnb.example/2"], {},
+        )
+    assert result is None
+    assert mock_detail.call_count == 2
+
+
+def test_check_detail_page_sample_fails_only_when_all_attempts_fail():
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss"}
+    urls = ["https://mnb.example/1", "https://mnb.example/2", "https://mnb.example/3"]
+    reasons = ["404 not found", "blocked: challenge", "selector miss"]
+    with patch("scripts.source_health.check_detail_page", side_effect=reasons) as mock_detail:
+        result = check_detail_page_sample(regulator, source, urls, {})
+    assert mock_detail.call_count == 3
+    for url, reason in zip(urls, reasons):
+        assert f"{url}: {reason}" in result
+
+
 def test_run_all_checks_probes_detail_page_once_per_regulator():
     regulators = [{"id": "hu-mnb", "detail_selector": ".main", "sources": [
         {"label": "news", "type": "rss", "url": "https://mnb.example/feed"},
@@ -347,9 +387,59 @@ def test_run_all_checks_reports_detail_page_failure_without_touching_feed_source
          patch("scripts.source_health.close_issue_if_open") as mock_close:
         results = run_all_checks(regulators, {})
 
-    assert results == {"hu-mnb/news": None, "hu-mnb/detail_page": "blocked: challenge"}
-    mock_open.assert_called_once_with("hu-mnb", "detail_page", "blocked: challenge")
+    assert results["hu-mnb/news"] is None
+    assert "https://mnb.example/article/1: blocked: challenge" in results["hu-mnb/detail_page"]
+    mock_open.assert_called_once_with("hu-mnb", "detail_page", results["hu-mnb/detail_page"])
     mock_close.assert_called_once_with("hu-mnb", "news")  # feed source's own health unaffected
+
+
+def test_run_all_checks_detail_page_passes_when_second_of_three_items_succeeds():
+    regulators = [{"id": "hu-mnb", "detail_selector": ".main", "sources": [
+        {"label": "news", "type": "rss", "url": "https://mnb.example/feed"},
+    ]}]
+    urls = ["https://mnb.example/article/1", "https://mnb.example/article/2", "https://mnb.example/article/3"]
+
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
+        if items_out is not None:
+            items_out.extend(_make_item(url=u) for u in urls)
+        return None
+
+    with patch("scripts.source_health.check_source", side_effect=fake_check), \
+         patch("scripts.source_health.check_detail_page", side_effect=["blocked: challenge", None, None]) as mock_detail, \
+         patch("scripts.source_health.open_or_update_issue") as mock_open, \
+         patch("scripts.source_health.close_issue_if_open") as mock_close:
+        results = run_all_checks(regulators, {})
+
+    assert results == {"hu-mnb/news": None, "hu-mnb/detail_page": None}
+    assert mock_detail.call_count == 2  # stopped after the second (successful) attempt
+    mock_close.assert_any_call("hu-mnb", "detail_page")
+    mock_open.assert_not_called()
+
+
+def test_run_all_checks_detail_page_fails_only_when_all_three_items_fail():
+    regulators = [{"id": "hu-mnb", "detail_selector": ".main", "sources": [
+        {"label": "news", "type": "rss", "url": "https://mnb.example/feed"},
+    ]}]
+    urls = ["https://mnb.example/article/1", "https://mnb.example/article/2", "https://mnb.example/article/3"]
+    reasons = ["404 not found", "blocked: challenge", "selector miss"]
+
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
+        if items_out is not None:
+            items_out.extend(_make_item(url=u) for u in urls)
+        return None
+
+    with patch("scripts.source_health.check_source", side_effect=fake_check), \
+         patch("scripts.source_health.check_detail_page", side_effect=reasons) as mock_detail, \
+         patch("scripts.source_health.open_or_update_issue") as mock_open, \
+         patch("scripts.source_health.close_issue_if_open") as mock_close:
+        results = run_all_checks(regulators, {})
+
+    assert results["hu-mnb/news"] is None
+    detail_error = results["hu-mnb/detail_page"]
+    assert mock_detail.call_count == 3
+    for url, reason in zip(urls, reasons):
+        assert f"{url}: {reason}" in detail_error
+    mock_open.assert_called_once_with("hu-mnb", "detail_page", detail_error)
 
 
 def test_run_all_checks_skips_detail_page_probe_without_detail_selector():
