@@ -383,10 +383,15 @@ def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: 
     if detail_fetches_done > 0:
         time.sleep(_DETAIL_FETCH_DELAY_SECONDS)
 
-    result = fetch_detail_body(
-        item.url, reg["detail_selector"], reg.get("detail_exclude"),
-        fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url,
-    )
+    try:
+        result = fetch_detail_body(
+            item.url, reg["detail_selector"], reg.get("detail_exclude"),
+            fetch_cfg["user_agent"], fetch_cfg["timeout"], fetch_cfg["retries"], flaresolverr_url,
+        )
+    except Exception as e:
+        # An unexpected error (conversion, SSRF refusal, parser) must not
+        # escape into the source-level handler and skip the rest of the feed.
+        result = {"status": "error", "reason": f"{type(e).__name__}: {e}"}
     if result["status"] == "recovered":
         item.body_md = result["body_md"]
         item.extractor = result["extractor"]

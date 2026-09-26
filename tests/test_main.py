@@ -624,6 +624,25 @@ def test_run_collection_detail_fetch_failure_falls_back_to_summary_without_faili
         assert session.query(SourceErrorRow).count() == 0  # source health untouched
 
 
+def test_run_collection_detail_fetch_exception_keeps_item_and_rest_of_feed(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    first, second = _rss_item("raises-item-1"), _rss_item("raises-item-2")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [first, second])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(ValueError("malformed page")),
+    )
+    monkeypatch.setattr("collector.main._DETAIL_FETCH_DELAY_SECONDS", 0)
+
+    run_collection(engine, [_rss_reg(".main-content")], _base_cfg())
+
+    with engine.connect() as conn:
+        assert conn.execute(sa_text("SELECT COUNT(*) FROM items")).scalar() == 2
+    with Session(engine) as session:
+        assert session.query(RunRow).one().status == "success"
+        assert session.query(SourceErrorRow).count() == 0
+
+
 def test_run_collection_rss_source_without_detail_selector_is_unchanged(tmp_path, monkeypatch):
     engine = init_db(str(tmp_path / "test.db"))
     item = _rss_item("no-selector-item-1")
