@@ -859,6 +859,17 @@ def test_get_recent_negative_limit_is_clamped():
         os.unlink(db_path)
 
 
+def test_get_run_log_includes_detail_fetch_failures():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [], detail_fetch_failures=["hu-mnb: blocked x3"])
+        results = get_run_log(engine, limit=5)
+        assert json.loads(results[0]["detail_fetch_failures"]) == ["hu-mnb: blocked x3"]
+    finally:
+        os.unlink(db_path)
+
+
 def test_get_run_log_negative_limit_is_clamped():
     engine, db_path = setup_engine()
     try:
@@ -1085,6 +1096,30 @@ def test_get_health_reports_db_integrity_corrupted():
         record_run_complete(engine, run_id, 10, 5, 0, [], db_integrity_ok=False)
         result = get_health(engine)
         assert result["db_integrity"] == "corrupted"
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_surfaces_detail_fetch_failures_without_affecting_status():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [], detail_fetch_failures=["hu-mnb: blocked x3, not_found x1"])
+        result = get_health(engine)
+        assert result["status"] == "success"
+        assert result["detail_fetch_failures"] == ["hu-mnb: blocked x3, not_found x1"]
+        assert "detail_fetch_failures" not in result["latest_run"]
+    finally:
+        os.unlink(db_path)
+
+
+def test_get_health_detail_fetch_failures_empty_when_none_recorded():
+    engine, db_path = setup_engine()
+    try:
+        run_id = record_run_start(engine)
+        record_run_complete(engine, run_id, 10, 5, 0, [])
+        result = get_health(engine)
+        assert result["detail_fetch_failures"] == []
     finally:
         os.unlink(db_path)
 

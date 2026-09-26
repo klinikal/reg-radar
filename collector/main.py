@@ -359,7 +359,7 @@ def _collectable(engine, regulator_id: str, source: dict, items: list) -> list:
     return items
 
 
-def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: dict, detail_fetches_done: int) -> int:
+def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: dict, detail_fetches_done: int) -> tuple[int, str | None]:
     """Issue #109: for a brand-new RSS item from a regulator with
     `detail_selector` configured, fetch item.url's own detail page and
     replace the feed-summary body (rss_body_markdown) with the full article,
@@ -374,11 +374,18 @@ def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: 
     error/total counters: those drive source-health tracking
     (consecutive_failures/consecutive_blocked_runs) and this optional,
     per-item enrichment failing is not evidence the *source* is unhealthy.
-    Logged at warning level only - see the PR description for why that
-    (rather than a run-log field) was the choice here.
 
-    Returns the updated detail_fetches_done counter (the delay is skipped
-    before the first detail fetch in a run).
+    Still logged at warning level, and the failure's status (see
+    fetch_detail_body: "blocked"/"not_found"/"fetch_failed"/"selector_miss",
+    or "error" for an unexpected exception here) is returned so the caller
+    can aggregate it into the run's `detail_fetch_failures` summary
+    (run-log/get_health_tool visible, but never status-affecting) - a
+    warning alone is invisible to anyone who isn't tailing collector logs,
+    and a persistent "blocked" here is exactly the signal for setting
+    cloudflare_protected on this regulator.
+
+    Returns (updated detail_fetches_done counter, failure_status_or_None).
+    The counter's delay is skipped before the first detail fetch in a run.
     """
     if detail_fetches_done > 0:
         time.sleep(_DETAIL_FETCH_DELAY_SECONDS)
@@ -398,12 +405,12 @@ def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: 
         item.raw_content = result["raw_content"]
         item.raw_bytes = result["content_html"].encode("utf-8")
         item.mime = "text/html"
-    else:
-        logger.warning(
-            "Detail fetch failed for new item %s (%s): %s - keeping RSS summary",
-            item.id, reg.get("id", "<unknown>"), result["reason"],
-        )
-    return detail_fetches_done + 1
+        return detail_fetches_done + 1, None
+    logger.warning(
+        "Detail fetch failed for new item %s (%s): %s - keeping RSS summary",
+        item.id, reg.get("id", "<unknown>"), result["reason"],
+    )
+    return detail_fetches_done + 1, result["status"]
 
 
 # Seconds between successive detail-page fetches within one run (issue
@@ -422,6 +429,11 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
     detail_fetches_done = 0
     error_detail = []
     blocked_detail = []
+    # Issue #109 follow-up: {regulator_id: {failure_status: count}}, built up
+    # as _fill_detail_body reports each detail-page enrichment failure -
+    # aggregated per regulator+reason rather than one run-log line per item,
+    # since a single blocked regulator can otherwise produce dozens.
+    detail_fetch_failure_counts: dict[str, dict[str, int]] = {}
     _exception = None
 
     # Checked once per run, before fetching anything - corruption doesn't
@@ -489,9 +501,12 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                                 and reg.get("detail_selector")
                                 and not item_exists(engine, item.id)
                             ):
-                                detail_fetches_done = _fill_detail_body(
+                                detail_fetches_done, failure_status = _fill_detail_body(
                                     item, reg, flaresolverr_url, fetch_cfg, detail_fetches_done,
                                 )
+                                if failure_status is not None:
+                                    reg_counts = detail_fetch_failure_counts.setdefault(reg["id"], {})
+                                    reg_counts[failure_status] = reg_counts.get(failure_status, 0) + 1
                             if insert_item(engine, item):
                                 total_new += 1
                                 if taxonomy is not None:
@@ -583,7 +598,11 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
             status = "failed"
         else:
             status = "success" if total_errors == 0 else "partial"
-        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok)
+        detail_fetch_failures = [
+            f"{reg_id}: " + ", ".join(f"{status} x{count}" for status, count in counts.items())
+            for reg_id, counts in detail_fetch_failure_counts.items()
+        ]
+        record_run_complete(engine, run_id, total_fetched, total_new, total_errors, error_detail, status=status, db_integrity_ok=db_integrity_ok, detail_fetch_failures=detail_fetch_failures)
         if blocked_detail:
             # Logged at error level, separately from the counts line: a
             # blocked source is the failure mode an operator most needs to

@@ -1,4 +1,5 @@
 import fcntl
+import json
 import sys
 import tempfile
 import os
@@ -620,8 +621,12 @@ def test_run_collection_detail_fetch_failure_falls_back_to_summary_without_faili
     assert body_md == item.body_md  # kept the RSS summary
 
     with Session(engine) as session:
-        assert session.query(RunRow).one().status == "success"  # not marked partial/failed
+        run = session.query(RunRow).one()
+        assert run.status == "success"  # not marked partial/failed
         assert session.query(SourceErrorRow).count() == 0  # source health untouched
+        # Issue #109 follow-up: visible in the run log even though it never
+        # touched status or source-health counters.
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: blocked x1"]
 
 
 def test_run_collection_detail_fetch_exception_keeps_item_and_rest_of_feed(tmp_path, monkeypatch):
@@ -639,8 +644,10 @@ def test_run_collection_detail_fetch_exception_keeps_item_and_rest_of_feed(tmp_p
     with engine.connect() as conn:
         assert conn.execute(sa_text("SELECT COUNT(*) FROM items")).scalar() == 2
     with Session(engine) as session:
-        assert session.query(RunRow).one().status == "success"
+        run = session.query(RunRow).one()
+        assert run.status == "success"
         assert session.query(SourceErrorRow).count() == 0
+        assert json.loads(run.detail_fetch_failures) == ["hu-mnb: error x2"]
 
 
 def test_run_collection_rss_source_without_detail_selector_is_unchanged(tmp_path, monkeypatch):

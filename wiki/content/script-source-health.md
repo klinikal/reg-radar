@@ -1,8 +1,8 @@
 ---
 title: Source Health
 type: script
-sources: [scripts/source_health.py]
-last-verified: 2026-09-10
+sources: [scripts/source_health.py, collector/detail.py]
+last-verified: 2026-09-26
 ---
 
 ## Purpose
@@ -46,6 +46,21 @@ gets an issue filed for it).
 (`close_issue_if_open()`). Issues are found/deduplicated by title
 (`source-health: <regulator>/<source> failing`) and the `source-health` label.
 
+For a regulator with `detail_selector` configured (issue #17/#109), once its feed check
+succeeds on an `rss` source, `run_all_checks()` also calls `check_detail_page()` once per
+regulator - never per source - using that source's first parsed item's `url` as the article to
+probe. `check_detail_page()` fetches it through `collector/detail.py`'s `fetch_detail_body()`,
+the exact function the production collector calls at collection time for a brand-new RSS item
+(`collector/main.py` `_fill_detail_body`), with the same "retry a block through FlareSolverr
+even when the regulator isn't marked `cloudflare_protected`" divergence `fetch_raw()` already
+makes for the feed check itself (issue #85/#86 - this runner's IP can get challenged when the
+collector's wouldn't). One extra request per regulator with `detail_selector`, not per source.
+Its result is tracked under its own `<regulator_id>/detail_page` key - filed, updated, or
+closed as its own GitHub issue exactly like a source failure - so a persistent block or
+selector miss on the detail page gets surfaced without being conflated with the feed source's
+own health (`open_or_update_issue`/`close_issue_if_open` don't distinguish a `detail_page` key
+from a real source label; it's just a string).
+
 `main()` runs this as a standalone entrypoint: loads regulators and collector config, runs
 all checks, logs a summary plus every failure and warning, and returns exit code 1 only if a
 failure could not be reported to GitHub (`report_failures`). A source failure that *was*
@@ -69,9 +84,10 @@ where the automated tracking itself is broken and a human is the only backstop l
 
 ## Outputs and side effects
 
-Live HTTP/FlareSolverr requests to every enabled source. When run with `file_issues=True`:
-creates, comments on, or closes GitHub issues labelled `source-health`. Writes nothing to the
-reg-radar database; this module has no DB connection.
+Live HTTP/FlareSolverr requests to every enabled source, plus one extra request per regulator
+with `detail_selector` configured (the detail-page probe, issue #109). When run with
+`file_issues=True`: creates, comments on, or closes GitHub issues labelled `source-health`.
+Writes nothing to the reg-radar database; this module has no DB connection.
 
 ## How to run or invoke
 

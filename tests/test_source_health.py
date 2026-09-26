@@ -10,6 +10,7 @@ from scripts.source_health import (
     MAX_FIXTURE_BYTES,
     assert_contract,
     capture,
+    check_detail_page,
     check_source,
     close_issue_if_open,
     fetch_raw,
@@ -252,7 +253,7 @@ def test_run_all_checks_files_issue_on_failure_and_closes_on_recovery():
         {"label": "healthy", "type": "rss", "url": "https://example.com/healthy"},
     ]}]
 
-    def fake_check(regulator, source, cfg, warnings=None):
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
         return "boom" if source["label"] == "broken" else None
 
     with patch("scripts.source_health.check_source", side_effect=fake_check), \
@@ -263,6 +264,111 @@ def test_run_all_checks_files_issue_on_failure_and_closes_on_recovery():
     assert results == {"esma/broken": "boom", "esma/healthy": None}
     mock_open.assert_called_once_with("esma", "broken", "boom")
     mock_close.assert_called_once_with("esma", "healthy")
+
+
+def test_check_detail_page_returns_none_on_recovered():
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss"}
+    with patch("scripts.source_health.fetch_detail_body", return_value={"status": "recovered"}) as mock_fetch:
+        assert check_detail_page(regulator, source, "https://mnb.example/1", {}) is None
+    mock_fetch.assert_called_once()
+
+
+def test_check_detail_page_returns_reason_on_failure():
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss"}
+    with patch("scripts.source_health.fetch_detail_body",
+               return_value={"status": "not_found", "reason": "404 not found"}):
+        assert check_detail_page(regulator, source, "https://mnb.example/1", {}) == "404 not found"
+
+
+def test_check_detail_page_retries_through_flaresolverr_on_block():
+    # Same divergence fetch_raw makes for the feed check (issue #85/#86):
+    # this runner's IP can get challenged even for a regulator not marked
+    # cloudflare_protected, so a block gets one retry through FlareSolverr
+    # before being reported.
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": False}
+    source = {"label": "news", "type": "rss"}
+    cfg = {"flaresolverr_url": "http://flaresolverr:8191"}
+    with patch("scripts.source_health.fetch_detail_body", side_effect=[
+        {"status": "blocked", "reason": "blocked: challenge"},
+        {"status": "recovered"},
+    ]) as mock_fetch:
+        assert check_detail_page(regulator, source, "https://mnb.example/1", cfg) is None
+    assert mock_fetch.call_count == 2
+    assert mock_fetch.call_args_list[1].kwargs["flaresolverr_url"] == "http://flaresolverr:8191"
+
+
+def test_check_detail_page_does_not_retry_when_already_cloudflare_protected():
+    regulator = {"id": "hu-mnb", "detail_selector": ".main", "cloudflare_protected": True}
+    source = {"label": "news", "type": "rss"}
+    cfg = {"flaresolverr_url": "http://flaresolverr:8191"}
+    with patch("scripts.source_health.fetch_detail_body",
+               return_value={"status": "blocked", "reason": "blocked: challenge"}) as mock_fetch:
+        assert check_detail_page(regulator, source, "https://mnb.example/1", cfg) == "blocked: challenge"
+    assert mock_fetch.call_count == 1
+
+
+def test_run_all_checks_probes_detail_page_once_per_regulator():
+    regulators = [{"id": "hu-mnb", "detail_selector": ".main", "sources": [
+        {"label": "news", "type": "rss", "url": "https://mnb.example/feed"},
+    ]}]
+
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
+        if items_out is not None:
+            items_out.append(_make_item(url="https://mnb.example/article/1"))
+        return None
+
+    with patch("scripts.source_health.check_source", side_effect=fake_check), \
+         patch("scripts.source_health.check_detail_page", return_value=None) as mock_detail, \
+         patch("scripts.source_health.open_or_update_issue") as mock_open, \
+         patch("scripts.source_health.close_issue_if_open") as mock_close:
+        results = run_all_checks(regulators, {})
+
+    assert results == {"hu-mnb/news": None, "hu-mnb/detail_page": None}
+    mock_detail.assert_called_once_with(regulators[0], regulators[0]["sources"][0],
+                                         "https://mnb.example/article/1", {})
+    mock_close.assert_any_call("hu-mnb", "detail_page")
+
+
+def test_run_all_checks_reports_detail_page_failure_without_touching_feed_source():
+    regulators = [{"id": "hu-mnb", "detail_selector": ".main", "sources": [
+        {"label": "news", "type": "rss", "url": "https://mnb.example/feed"},
+    ]}]
+
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
+        if items_out is not None:
+            items_out.append(_make_item(url="https://mnb.example/article/1"))
+        return None
+
+    with patch("scripts.source_health.check_source", side_effect=fake_check), \
+         patch("scripts.source_health.check_detail_page", return_value="blocked: challenge"), \
+         patch("scripts.source_health.open_or_update_issue") as mock_open, \
+         patch("scripts.source_health.close_issue_if_open") as mock_close:
+        results = run_all_checks(regulators, {})
+
+    assert results == {"hu-mnb/news": None, "hu-mnb/detail_page": "blocked: challenge"}
+    mock_open.assert_called_once_with("hu-mnb", "detail_page", "blocked: challenge")
+    mock_close.assert_called_once_with("hu-mnb", "news")  # feed source's own health unaffected
+
+
+def test_run_all_checks_skips_detail_page_probe_without_detail_selector():
+    regulators = [{"id": "esma", "sources": [
+        {"label": "news", "type": "rss", "url": "https://esma.example/feed"},
+    ]}]
+
+    def fake_check(regulator, source, cfg, warnings=None, items_out=None):
+        assert items_out is None
+        return None
+
+    with patch("scripts.source_health.check_source", side_effect=fake_check), \
+         patch("scripts.source_health.check_detail_page") as mock_detail, \
+         patch("scripts.source_health.open_or_update_issue"), \
+         patch("scripts.source_health.close_issue_if_open"):
+        results = run_all_checks(regulators, {})
+
+    assert results == {"esma/news": None}
+    mock_detail.assert_not_called()
 
 
 def test_capture_writes_fixture_file(tmp_path):

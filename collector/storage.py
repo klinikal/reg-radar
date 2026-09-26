@@ -110,6 +110,14 @@ class RunRow(Base):
     total_errors = Column(Integer, default=0)
     error_detail = Column(Text)  # JSON array
     db_integrity_ok = Column(Boolean, nullable=True)  # PRAGMA integrity_check result, checked once per run
+    # Issue #109 follow-up: per-regulator summaries of detail-page enrichment
+    # fetches that failed (blocked/404/selector-miss/error), one string each
+    # e.g. "hu-mnb: blocked x3, not_found x1" - JSON array, same convention
+    # as error_detail. Deliberately separate from error_detail/total_errors:
+    # a detail-fetch failure never marks the run partial/failed (the feed
+    # item collected fine; only the optional full-body enrichment didn't),
+    # so it must not share a column that does drive that status.
+    detail_fetch_failures = Column(Text)
 
 
 class SourceErrorRow(Base):
@@ -225,6 +233,7 @@ def init_db(db_path: str):
         _ensure_column(conn, "items", "extractor", "TEXT")
         _ensure_column(conn, "items", "updated_at", "DATETIME")
         _ensure_column(conn, "runs", "db_integrity_ok", "BOOLEAN")
+        _ensure_column(conn, "runs", "detail_fetch_failures", "TEXT")
         _ensure_column(conn, "source_errors", "consecutive_empty_runs", "INTEGER DEFAULT 0")
         _ensure_column(conn, "source_errors", "consecutive_blocked_runs", "INTEGER DEFAULT 0")
         _ensure_column(conn, "source_errors", "last_blocked_reason", "TEXT")
@@ -424,7 +433,7 @@ def record_run_start(engine) -> str:
     return run_id
 
 
-def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list, status: str | None = None, db_integrity_ok: bool | None = None) -> None:
+def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int, total_errors: int, error_detail: list, status: str | None = None, db_integrity_ok: bool | None = None, detail_fetch_failures: list | None = None) -> None:
     if status is None:
         status = "success" if total_errors == 0 else "partial"
     with Session(engine) as session:
@@ -437,6 +446,7 @@ def record_run_complete(engine, run_id: str, total_fetched: int, total_new: int,
             row.total_errors = total_errors
             row.error_detail = json.dumps(error_detail)
             row.db_integrity_ok = db_integrity_ok
+            row.detail_fetch_failures = json.dumps(detail_fetch_failures or [])
             session.commit()
 
 
