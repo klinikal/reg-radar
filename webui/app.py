@@ -2,13 +2,15 @@ import calendar
 import json
 import logging
 import os
+import secrets
 import regex
 from contextlib import asynccontextmanager
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from bs4 import BeautifulSoup
-from fastapi import Body, FastAPI, Form, HTTPException, Query, Request
+from fastapi import Body, Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timezone
@@ -29,8 +31,45 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 _HERE = os.path.dirname(__file__)
+
+_basic_auth = HTTPBasic(auto_error=False)
+
+
+def _same_origin(request: Request) -> bool:
+    """A cross-site page can still make a browser submit a POST to us using
+    the victim's own cookies/basic-auth cache; the Origin header is the
+    signal a real cross-site request can't spoof. A same-origin request, or
+    a non-browser client that sends no Origin at all (curl, the MCP server,
+    scripts), is allowed through. Behind a reverse proxy, the proxy must pass
+    the browser's original Host header through or every browser write 403s."""
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    return urlparse(origin).netloc == request.headers.get("host", "")
+
+
+def require_write_access(
+    request: Request, credentials: HTTPBasicCredentials | None = Depends(_basic_auth)
+) -> bool:
+    """Guards every write route (issue #20 part A). Raises 403 on a
+    cross-site Origin, and - only when WEBUI_AUTH_TOKEN is configured -
+    raises 401 until HTTP Basic auth supplies that token as the password
+    (any username). Returns whether the caller authenticated, so a route
+    can pick a fixed human provenance instead of trusting caller input.
+    """
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="cross-site origin rejected")
+    token = os.getenv("WEBUI_AUTH_TOKEN", "")
+    if not token:
+        return False
+    if credentials is None or not secrets.compare_digest(credentials.password, token):
+        raise HTTPException(
+            status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Basic"}
+        )
+    return True
 
 
 @asynccontextmanager
@@ -45,6 +84,12 @@ async def _lifespan(app: FastAPI):
     on demand when the lifespan never ran - a TestClient not used as a
     context manager, which is how the tests inject their own config
     paths)."""
+    if not os.getenv("WEBUI_AUTH_TOKEN"):
+        logger.warning(
+            "WEBUI_AUTH_TOKEN is not set - write routes (classify, rules) are "
+            "unauthenticated. This is only safe while the webui port stays "
+            "bound to loopback, as docker-compose.yml does by default."
+        )
     get_taxonomy()
     get_activities()
     get_engine()
@@ -424,7 +469,8 @@ def item_view(request: Request, item_id: str):
 
 
 @app.post("/item/{item_id}/classify")
-def item_classify(item_id: str, axis: str = Form(...), value: str = Form(...), action: str = Form("set")):
+def item_classify(item_id: str, axis: str = Form(...), value: str = Form(...), action: str = Form("set"),
+                   _auth: bool = Depends(require_write_access)):
     # ponytail: no auth/identity system in this single-instance tool - "who"
     # made a web UI correction is a fixed provenance string, not a real name.
     by = "human:web-ui"
@@ -518,7 +564,7 @@ def rules_view(request: Request):
 @app.post("/rules")
 def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form(...),
               weight: float = Form(0.7), flags: str = Form(""), fields: list[str] = Form(["title", "body"]),
-              title_multiplier: float = Form(1.0)):
+              title_multiplier: float = Form(1.0), _auth: bool = Depends(require_write_access)):
     taxonomy = get_taxonomy()
     pattern = pattern.strip()
     if axis not in taxonomy.axes() or not taxonomy.is_valid(axis, value):
@@ -544,7 +590,7 @@ def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form
 
 
 @app.post("/rules/{index}/delete")
-def rules_delete(index: int):
+def rules_delete(index: int, _auth: bool = Depends(require_write_access)):
     min_confidence, rules = load_raw_rules(RULES_PATH)
     if 0 <= index < len(rules):
         rules.pop(index)
@@ -597,22 +643,29 @@ def api_regulators():
 
 
 @app.post("/api/items/{item_id}/classifications")
-def api_classify_item(item_id: str, body: dict = Body(...)):
+def api_classify_item(item_id: str, body: dict = Body(...), authenticated: bool = Depends(require_write_access)):
     """Human correction endpoint (../wiki/content/component-classification.md): writes through
     the same write_classification() the collector and migrations use.
 
-    Body: {"axis": str, "value": str, "by": str, "confidence"?: float,
-    "classifier_id"?: str, "remove"?: bool}. `by` should be `human:<name>`
-    for a genuine human correction (any string is accepted - validation is
-    against the taxonomy axis/value, not the provenance string). `remove:
-    true` supersedes that exact live row instead of writing a new one (used
-    to retract one instrument from a multi-valued axis).
+    Body: {"axis": str, "value": str, "by"?: str, "confidence"?: float,
+    "classifier_id"?: str, "remove"?: bool}. Provenance (issue #20) is not
+    caller-controlled: an authenticated request (WEBUI_AUTH_TOKEN, see
+    require_write_access) always writes as `human:web-ui` regardless of any
+    `by` in the body; an unauthenticated caller must supply its own non-human
+    `by` (e.g. `llm:<provider>/<model>`, `rule:<id>`) since only an
+    authenticated human editor may claim `human:*` provenance. `remove: true`
+    supersedes that exact live row instead of writing a new one (used to
+    retract one instrument from a multi-valued axis).
     """
     axis = body.get("axis")
     value = body.get("value")
-    by = body.get("by")
+    by = "human:web-ui" if authenticated else body.get("by")
     if not axis or not value or not by:
         raise HTTPException(status_code=400, detail="axis, value and by are all required")
+    if not isinstance(by, str):
+        raise HTTPException(status_code=400, detail="by must be a string")
+    if not authenticated and by.startswith("human:"):
+        raise HTTPException(status_code=403, detail="human:* provenance requires an authenticated request")
 
     taxonomy = get_taxonomy()
     if body.get("remove"):

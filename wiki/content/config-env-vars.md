@@ -40,6 +40,7 @@ The full list of environment variables reg-radar reads, as a template for the gi
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token for the "telegram" digest channel; only needed if a digest uses one; never put it in `digests.yaml`. |
 | `FEED_MAX_ITEMS` | Number of entries returned by `GET /feeds/<profile>.atom`. |
 | `MCP_EXTRA_ALLOWED_HOSTS` | Only needed if remapping the MCP server's published port (see README); comma-separated `host:port` values added to the Host-header allowlist, e.g. `127.0.0.1:8001,localhost:8001`. |
+| `WEBUI_AUTH_TOKEN` | When set, requires HTTP Basic auth (any username, this value as the password) on every web UI write route - classifying an item, adding/deleting a rule. Left blank, writes are unauthenticated: the current default, safe only while `docker-compose.yml` keeps the webui port bound to `127.0.0.1` (loopback), which it does by default. A startup log warning fires when it's unset. |
 
 ## Inputs
 
