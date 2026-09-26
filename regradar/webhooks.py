@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_BACKOFF_SECONDS = 30
 DEFAULT_BATCH_SIZE = 25
+# Wall-clock budget for one dispatch_all() run, shared across every
+# subscriber. Without this, N dead subscribers each retrying 5x with
+# doubling backoff from 30s (~450s each) could hold collector/main.py's
+# run_collection_locked lock for N*450s. Once the run-wide deadline would
+# be exceeded, a subscriber gets at most the attempt already in flight -
+# any further retries or not-yet-started subscribers are skipped (issue #19).
+DEFAULT_RUN_BUDGET_SECONDS = 60
 
 
 class WebhookConfigError(ValueError):
@@ -105,13 +112,28 @@ def sign_payload(body: bytes, secret: str) -> str:
 
 
 def _deliver_with_retry(client: httpx.Client, url: str, body: bytes, signature: str,
-                         max_retries: int, backoff_seconds: int, sleep_fn=time.sleep) -> bool:
+                         max_retries: int, backoff_seconds: int, sleep_fn=time.sleep,
+                         clock_fn=time.monotonic, deadline: float | None = None) -> bool:
     """POSTs `body` with retry and doubling backoff. Returns True on a 2xx
     response, False once max_retries attempts are exhausted. `sleep_fn` is
     injectable for tests that need to assert the backoff actually doubles
-    without a real sleep."""
+    without a real sleep.
+
+    `deadline` is a `clock_fn()`-comparable wall-clock cutoff, shared by
+    every subscriber in one dispatch_all() run (see
+    DEFAULT_RUN_BUDGET_SECONDS). If it has already passed, this makes zero
+    attempts. Otherwise it always makes the attempt already in flight, but
+    stops before any further attempt or backoff sleep that would cross the
+    deadline - so one dead subscriber can only ever cost the caller up to
+    the remaining run budget, not max_retries * backoff attempts."""
     delay = backoff_seconds
     for attempt in range(1, max_retries + 1):
+        if deadline is not None and clock_fn() >= deadline:
+            logger.warning(
+                "Webhook POST to %s: run budget exceeded before attempt %d/%d - stopping",
+                url, attempt, max_retries,
+            )
+            return False
         try:
             resp = client.post(
                 url, content=body,
@@ -123,12 +145,19 @@ def _deliver_with_retry(client: httpx.Client, url: str, body: bytes, signature: 
         except httpx.HTTPError as e:
             logger.warning("Webhook POST to %s failed (attempt %d/%d): %s", url, attempt, max_retries, e)
         if attempt < max_retries:
+            if deadline is not None and clock_fn() + delay > deadline:
+                logger.warning(
+                    "Webhook POST to %s: run budget would be exceeded by next backoff - stopping after %d/%d attempts",
+                    url, attempt, max_retries,
+                )
+                return False
             sleep_fn(delay)
             delay *= 2
     return False
 
 
-def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: str, client: httpx.Client) -> None:
+def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: str, client: httpx.Client,
+                  clock_fn=time.monotonic, deadline: float | None = None) -> None:
     """Delivers one subscriber's next batch, if any: loads its stored
     cursor, pulls get_changes() since that cursor for its profile, signs
     and POSTs the batch, and advances the cursor only on a 2xx response.
@@ -136,6 +165,10 @@ def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: st
     profile, delivery failure) - callers (dispatch_all) isolate one
     subscriber's exception from another regardless, this just avoids
     logging the same failure twice.
+
+    `deadline` is the run-wide budget cutoff from dispatch_all(), passed
+    through to _deliver_with_retry() so this subscriber's retries can't
+    push the whole run past it.
     """
     sid = subscriber_id(sub)
     secret = os.getenv(sub["secret_env"])
@@ -170,7 +203,8 @@ def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: st
     body = json.dumps(payload).encode("utf-8")
     signature = sign_payload(body, secret)
 
-    ok = _deliver_with_retry(client, sub["url"], body, signature, sub["max_retries"], sub["backoff_seconds"])
+    ok = _deliver_with_retry(client, sub["url"], body, signature, sub["max_retries"], sub["backoff_seconds"],
+                              clock_fn=clock_fn, deadline=deadline)
     if ok:
         # Only an actual item batch moves the cursor - a blocked-source-only
         # delivery must not skip past changes that arrive later.
@@ -190,12 +224,20 @@ def dispatch_one(engine, sub: dict, taxonomy, activities: dict, profiles_dir: st
 
 
 def dispatch_all(engine, config_path: str, taxonomy, activities: dict, profiles_dir: str,
-                  client: httpx.Client | None = None) -> None:
+                  client: httpx.Client | None = None, run_budget_seconds: float = DEFAULT_RUN_BUDGET_SECONDS,
+                  clock_fn=time.monotonic) -> None:
     """Runs every configured subscriber once, isolating failures so one
     subscriber's exception never blocks another. A no-op if `config_path`
     doesn't exist or has no subscribers. `client` is injectable for tests
     (e.g. an httpx.Client(transport=MockTransport(...))); a real one is
     opened and closed here otherwise.
+
+    This is called from collector/main.py's run_collection_locked() while
+    it holds the collector lock, so total time here is bounded by
+    `run_budget_seconds` (default 60s) - one deadline shared across every
+    subscriber, so N dead subscribers can't each cost up to
+    max_retries * backoff_seconds (~450s with defaults); see
+    DEFAULT_RUN_BUDGET_SECONDS. `clock_fn` is injectable for tests.
     """
     try:
         subscribers = load_subscribers(config_path)
@@ -205,13 +247,15 @@ def dispatch_all(engine, config_path: str, taxonomy, activities: dict, profiles_
     if not subscribers:
         return
 
+    deadline = clock_fn() + run_budget_seconds
     owns_client = client is None
     if owns_client:
         client = httpx.Client(timeout=30)
     try:
         for sub in subscribers:
             try:
-                dispatch_one(engine, sub, taxonomy, activities, profiles_dir, client)
+                dispatch_one(engine, sub, taxonomy, activities, profiles_dir, client,
+                             clock_fn=clock_fn, deadline=deadline)
             except Exception:
                 logger.exception(
                     "Webhook subscriber %s raised unexpectedly - continuing with next subscriber",
