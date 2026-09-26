@@ -365,6 +365,44 @@ def update_item_body(engine, item_id: str, body_md: str, extractor: str) -> None
         session.commit()
 
 
+def add_item_artefact(engine, item_id: str, content: bytes, mime: str, fetched_at: datetime) -> dict | None:
+    """Used by scripts/reprocess_bodies.py --refetch to store the fetched
+    article HTML for an item that already exists in the DB - _write_artefact
+    above only runs from insert_item()'s pre-insert path, so it can't be
+    reused directly here. Same layout and the same STORE_ARTEFACTS/
+    MAX_ARTEFACT_BYTES gate. Returns None (and writes nothing) if artefact
+    storage is disabled, `content` is empty, or it exceeds the size cap.
+    """
+    if not content or not _store_artefacts_enabled():
+        return None
+    if len(content) > _max_artefact_bytes():
+        return None
+    ext = "pdf" if mime == "application/pdf" else "html"
+    id2 = item_id[:2]
+    rel_path = f"{id2}/{item_id}.{ext}"
+    full_path = Path(_artefacts_dir()) / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(content)
+    row = {
+        "item_id": item_id,
+        "path": rel_path,
+        "mime": mime or "application/octet-stream",
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "bytes": len(content),
+        "fetched_at": fetched_at,
+    }
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "INSERT OR REPLACE INTO item_artefacts (item_id, path, mime, sha256, bytes, fetched_at) "
+                "VALUES (:item_id, :path, :mime, :sha256, :bytes, :fetched_at)"
+            ),
+            row,
+        )
+        session.commit()
+    return row
+
+
 def record_run_start(engine) -> str:
     run_id = str(uuid.uuid4())
     with Session(engine) as session:

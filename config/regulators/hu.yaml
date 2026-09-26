@@ -9,6 +9,16 @@
   cloudflare_protected: false
   warnings_url: https://www.mnb.hu/en/supervision/market-supervision/vi-1-investor-warnings
   notes: "Non-standard RSS path pattern (/enrss/{id}). Standard paths all 404."
+  # scripts/reprocess_bodies.py --refetch: CSS selector for an item's full
+  # body on its own source_url page (issue #17). Every RSS item here is
+  # is_partial, so the collector never fetches the article page itself -
+  # this is what --refetch uses to backfill it. .side-content (a nav/
+  # related-links column) is a sibling of .main-content, not a descendant,
+  # so selecting .main-content alone already excludes it - no detail_exclude
+  # needed here (verified against a live sampled article). Confirmed against
+  # 8 sampled live articles; 2/10 sampled source_urls 404 (MNB has removed
+  # the page).
+  detail_selector: ".main-content.lyt-offset.lyt-fluid"
   sources:
   - type: rss
     url: https://www.mnb.hu/enrss/14

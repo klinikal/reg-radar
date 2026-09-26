@@ -37,7 +37,12 @@ specific data defect (undated FCA RSS items).
   separate `--from-raw-content` mode backfills `items.body_md` (once, persistently) for
   pre-v2 items that have `raw_content` but no `body_md` and no artefact, using the same
   derivation (`regradar.document.effective_body_md()`) that readers already apply on the fly
-  at read time, so the persisted value matches what was already being served.
+  at read time, so the persisted value matches what was already being served. A third,
+  separate `--refetch` mode (issue #17) targets items with `body_md`, `raw_content` AND
+  `content_snippet` all empty - e.g. an `is_partial` RSS source, which never had an article
+  body fetched at all - by fetching each item's own `source_url` and extracting the body via
+  the item's regulator's `detail_selector` config key (see Regulators Registry). A regulator
+  with no `detail_selector` is skipped and reported, never guessed at.
 
 ## Inputs
 
@@ -47,7 +52,11 @@ specific data defect (undated FCA RSS items).
 - `rebuild_fts_index.py`: `--dry-run`.
 - `repair_undated_rss_items.py`: `--regulator` (default `uk-fca`), `--sources` (default
   `news,warnings`), `--apply`, `--limit`, `--db`.
-- `reprocess_bodies.py`: `--dry-run`, `--limit`, `--from-raw-content`.
+- `reprocess_bodies.py`: `--dry-run`, `--limit`, `--from-raw-content`, `--refetch` (plus
+  `--regulator` and `--delay`, meaningful only with `--refetch`). `--refetch` also reads
+  `REGULATORS_PATH`, `USER_AGENT`, `REQUEST_TIMEOUT_SECONDS`, `REQUEST_RETRIES` and
+  `FLARESOLVERR_URL` (only for a `cloudflare_protected` regulator), matching the collector's
+  own fetch config.
 
 ## Outputs and side effects
 
@@ -57,7 +66,10 @@ specific data defect (undated FCA RSS items).
   referencing table's foreign key, and makes one live HTTP request per affected item (with a
   1 second politeness delay between requests) unless in dry-run (the default).
 - `reprocess_bodies.py`: updates `items.body_md` and `items.extractor` via
-  `update_item_body()`.
+  `update_item_body()`. `--refetch` also writes an `item_artefacts` row for the fetched page
+  (via `collector.storage.add_item_artefact()`, gated by `STORE_ARTEFACTS` like every other
+  fetch) and prints a report: counts of `recovered`/`404`/`blocked`/`selector-miss`/
+  `skipped-no-selector`, plus every item still empty afterwards with its reason.
 
 ## How to run or invoke
 
@@ -74,6 +86,8 @@ specific data defect (undated FCA RSS items).
     docker compose exec collector python -m scripts.reprocess_bodies --dry-run
     docker compose exec collector python -m scripts.reprocess_bodies
     docker compose exec collector python -m scripts.reprocess_bodies --from-raw-content --dry-run
+    docker compose exec collector python -m scripts.reprocess_bodies --refetch --dry-run
+    docker compose exec collector python -m scripts.reprocess_bodies --refetch --regulator hu-mnb --limit 50
 
 ## How to test
 
@@ -88,6 +102,8 @@ reinserts inside its `rebuild()` call. `repair_undated_rss_items.py` must never 
 item id that already exists in `items` (it skips and reports a collision instead), and must
 never write anything without `--apply`. `reprocess_bodies.py`'s `--from-raw-content` mode
 must only touch items with no stored artefact and an empty `body_md`, never one already
-handled by the default artefact-based mode.
+handled by the default artefact-based mode. `--refetch`'s WHERE-guard (tasks/lessons.md) is
+just as strict: it selects only rows where `body_md`, `raw_content` AND `content_snippet` are
+all empty, so it can never overwrite a body a normal collection run already wrote.
 
 ## Related pages
