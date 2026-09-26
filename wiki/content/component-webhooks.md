@@ -72,6 +72,8 @@ times with doubling backoff (~450s each with defaults) could hold the lock
 for `N * 450s`. Once the shared deadline would be exceeded, a subscriber
 gets at most the attempt already in flight - further retries, and any
 not-yet-started subscriber, are skipped and logged instead of run.
+Worst case is therefore `run_budget_seconds` plus one in-flight request
+(the 30s client timeout), about 90s with defaults.
 
 ## Inputs
 

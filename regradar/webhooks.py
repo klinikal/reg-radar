@@ -234,7 +234,8 @@ def dispatch_all(engine, config_path: str, taxonomy, activities: dict, profiles_
 
     This is called from collector/main.py's run_collection_locked() while
     it holds the collector lock, so total time here is bounded by
-    `run_budget_seconds` (default 60s) - one deadline shared across every
+    `run_budget_seconds` (default 60s) plus one in-flight request (the 30s
+    client timeout), so ~90s worst case - one deadline shared across every
     subscriber, so N dead subscribers can't each cost up to
     max_retries * backoff_seconds (~450s with defaults); see
     DEFAULT_RUN_BUDGET_SECONDS. `clock_fn` is injectable for tests.
