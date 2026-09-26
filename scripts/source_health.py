@@ -6,6 +6,7 @@ Used by both `scripts/capture_fixture.py` (manual fixture (re)capture) and
 the nightly `source-health-nightly` workflow (live contract check), so the
 fetch path, parse path and assertion are defined exactly once.
 """
+import argparse
 import json
 import logging
 import os
@@ -368,15 +369,29 @@ def run_all_checks(regulators: list[dict], cfg: dict, file_issues: bool = True,
     return results
 
 
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Check every enabled source's live health and file/update/close GitHub issues for failures.",
+    )
+    parser.add_argument(
+        "--no-file-issues", action="store_true",
+        help="Dry run: check sources and print results, but don't open, update or close any GitHub issue.",
+    )
+    return parser.parse_args(argv)
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
     from collector.main import load_config
+
+    args = parse_args(argv)
 
     regulators = load_regulators()
     cfg = load_config()
     warnings: dict[str, list[str]] = {}
     report_failures: list[str] = []
-    results = run_all_checks(regulators, cfg, warnings=warnings, report_failures=report_failures)
+    results = run_all_checks(regulators, cfg, file_issues=not args.no_file_issues,
+                              warnings=warnings, report_failures=report_failures)
 
     failures = {k: v for k, v in results.items() if v}
     logger.info(
@@ -396,6 +411,20 @@ def main(argv=None) -> int:
             "  %d source(s) could not be reported to GitHub: %s",
             len(report_failures), ", ".join(report_failures),
         )
+    # Every checked source failing at once is not 44 regulators breaking in
+    # the same run - it's this job losing egress (DNS, proxy, firewall,
+    # runner network outage). Reporting that as ordinary source failures
+    # would bury the real cause under a wall of individually-unremarkable
+    # issues, so it gets its own loud failure instead.
+    if len(results) > 1 and len(failures) == len(results):
+        logger.error(
+            "all %d checked sources failed - this looks like an egress/network problem for this "
+            "job, not %d broken regulators. Check the runner's network access before chasing "
+            "individual source issues.",
+            len(results), len(results),
+        )
+        return 1
+
     # A failing source is already handled: it gets its own GitHub issue
     # (opened, commented on if it recurs, auto-closed on recovery), which is
     # its own notification. Failing the workflow *too* means a red run and
