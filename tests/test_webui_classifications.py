@@ -215,3 +215,24 @@ def test_index_jurisdiction_filter_narrows_regulators(tmp_path, monkeypatch):
     body = resp.text
     assert "/item/i-fca" in body
     assert "/item/i-amf" not in body
+
+
+def test_api_classify_item_rejects_non_string_by(tmp_path, monkeypatch):
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    _insert_item(engine)
+
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": 123,
+    })
+    assert resp.status_code == 400
+
+
+def test_form_classify_requires_token_and_works_with_it(tmp_path, monkeypatch):
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
+    _insert_item(engine)
+    form = {"axis": "document_type", "value": "warning"}
+
+    assert client.post("/item/i1/classify", data=form, follow_redirects=False).status_code == 401
+    resp = client.post("/item/i1/classify", data=form, auth=("editor", "secret"), follow_redirects=False)
+    assert resp.status_code in (200, 303)
+    assert json.loads(client.get("/api/items/i1").json()["labels"])["document_type"] == "warning"

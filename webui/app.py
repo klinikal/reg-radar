@@ -43,7 +43,8 @@ def _same_origin(request: Request) -> bool:
     the victim's own cookies/basic-auth cache; the Origin header is the
     signal a real cross-site request can't spoof. A same-origin request, or
     a non-browser client that sends no Origin at all (curl, the MCP server,
-    scripts), is allowed through."""
+    scripts), is allowed through. Behind a reverse proxy, the proxy must pass
+    the browser's original Host header through or every browser write 403s."""
     origin = request.headers.get("origin")
     if not origin:
         return True
@@ -661,6 +662,8 @@ def api_classify_item(item_id: str, body: dict = Body(...), authenticated: bool 
     by = "human:web-ui" if authenticated else body.get("by")
     if not axis or not value or not by:
         raise HTTPException(status_code=400, detail="axis, value and by are all required")
+    if not isinstance(by, str):
+        raise HTTPException(status_code=400, detail="by must be a string")
     if not authenticated and by.startswith("human:"):
         raise HTTPException(status_code=403, detail="human:* provenance requires an authenticated request")
 
