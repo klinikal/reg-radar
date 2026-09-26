@@ -22,17 +22,37 @@ job) and an empty body_md:
 
     docker compose exec collector python -m scripts.reprocess_bodies --from-raw-content --dry-run
     docker compose exec collector python -m scripts.reprocess_bodies --from-raw-content
+
+`--refetch` is a third, separate mode (issue #17): items collected from an
+`is_partial` RSS source have no fetched article body at all (only the
+feed's own summary, or nothing) - `body_md`, `raw_content` and
+`content_snippet` all empty. This re-fetches each such item's own
+`source_url` and extracts the body via the regulator's `detail_selector`
+(config/regulators/*.yaml) - a regulator with no `detail_selector`
+configured is skipped and reported, never guessed at:
+
+    docker compose exec collector python -m scripts.reprocess_bodies --refetch --dry-run
+    docker compose exec collector python -m scripts.reprocess_bodies --refetch --regulator hu-mnb --limit 50
 """
 import argparse
 import importlib.metadata
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from sqlalchemy import text
 
-from collector.adapters.http import extract_pdf_text as _extract_pdf_text
-from collector.storage import init_db, update_item_body
+from collector.adapters.http import (
+    DEFAULT_USER_AGENT,
+    BlockedFetchError,
+    extract_pdf_text as _extract_pdf_text,
+    fetch_html,
+    observe_fetch_statuses,
+)
+from collector.storage import add_item_artefact, init_db, update_item_body
 from regradar.document import convert_body, effective_body_md
 
 logging.basicConfig(
@@ -133,18 +153,154 @@ def backfill_from_raw_content(engine, dry_run: bool, limit: int | None) -> int:
     return processed
 
 
+def _select_detail_html(html: str, detail_selector: str, detail_exclude: list[str] | None) -> str | None:
+    """The matched element's own HTML, with any `detail_exclude` selector's
+    matches removed from inside it (e.g. a related-links block that lives
+    nested inside the content container, as opposed to a true page sibling,
+    which selecting the container alone already excludes). None if
+    `detail_selector` matches nothing on this page."""
+    soup = BeautifulSoup(html, "lxml")
+    el = soup.select_one(detail_selector)
+    if el is None:
+        return None
+    for exclude_selector in (detail_exclude or []):
+        for node in el.select(exclude_selector):
+            node.decompose()
+    return str(el)
+
+
+def _candidates_sql(regulator_id: str | None) -> str:
+    # The WHERE-guard (tasks/lessons.md): only rows genuinely empty on all
+    # three body fields - never touches an item a normal collection run
+    # already populated (see collector/pipeline.py's _body_and_extractor).
+    where = [
+        "(body_md IS NULL OR body_md = '')",
+        "(raw_content IS NULL OR raw_content = '')",
+        "(content_snippet IS NULL OR content_snippet = '')",
+    ]
+    if regulator_id:
+        where.append("regulator_id = :regulator_id")
+    return f"SELECT id, regulator_id, url FROM items WHERE {' AND '.join(where)} ORDER BY id"
+
+
+def refetch(engine, regulators: list[dict], dry_run: bool, limit: int | None, regulator_id: str | None,
+            delay: float, user_agent: str, timeout: int, retries: int) -> dict:
+    """Refetches source_url for every item with no body_md, raw_content or
+    content_snippet, using each regulator's configured `detail_selector` -
+    see the module docstring. Returns a report dict: counts under
+    "recovered"/"not_found"/"blocked"/"selector_miss"/"skipped_no_selector"/
+    "fetch_failed", plus "remaining_empty" (every item still without a body,
+    each with its own reason).
+    """
+    reg_by_id = {r["id"]: r for r in regulators}
+    params = {"regulator_id": regulator_id} if regulator_id else {}
+    with engine.connect() as conn:
+        rows = conn.execute(text(_candidates_sql(regulator_id)), params).fetchall()
+    if limit is not None:
+        rows = rows[:limit]
+
+    report = {
+        "recovered": 0, "not_found": 0, "blocked": 0, "selector_miss": 0,
+        "skipped_no_selector": 0, "fetch_failed": 0, "remaining_empty": [],
+    }
+    fetched = 0
+    for item_id, item_regulator_id, url in rows:
+        reg = reg_by_id.get(item_regulator_id)
+        detail_selector = reg.get("detail_selector") if reg else None
+        if not detail_selector:
+            report["skipped_no_selector"] += 1
+            report["remaining_empty"].append({"id": item_id, "reason": f"no detail_selector configured for {item_regulator_id}"})
+            continue
+
+        if fetched > 0:
+            # Be polite to the source - throttle_flaresolverr already paces
+            # FlareSolverr requests on its own; this covers the plain-HTTP path.
+            time.sleep(delay)
+        fetched += 1
+
+        flaresolverr_url = None
+        if reg.get("cloudflare_protected"):
+            flaresolverr_url = os.getenv("FLARESOLVERR_URL", "").strip() or None
+
+        try:
+            with observe_fetch_statuses() as statuses:
+                html = fetch_html(url, user_agent, timeout, retries, flaresolverr_url, detail_selector)
+        except BlockedFetchError as e:
+            report["blocked"] += 1
+            report["remaining_empty"].append({"id": item_id, "reason": f"blocked: {e}"})
+            continue
+
+        if html is None:
+            if 404 in statuses:
+                report["not_found"] += 1
+                report["remaining_empty"].append({"id": item_id, "reason": "404 not found"})
+            else:
+                report["fetch_failed"] += 1
+                report["remaining_empty"].append({"id": item_id, "reason": "fetch failed"})
+            continue
+
+        content_html = _select_detail_html(html, detail_selector, reg.get("detail_exclude"))
+        if content_html is None:
+            report["selector_miss"] += 1
+            report["remaining_empty"].append({"id": item_id, "reason": f"detail_selector {detail_selector!r} matched nothing on the fetched page"})
+            continue
+
+        body_md, extractor = convert_body(content_html=content_html, source_url=url)
+        if not dry_run:
+            update_item_body(engine, item_id, body_md, extractor)
+            add_item_artefact(engine, item_id, content_html.encode("utf-8"), "text/html", datetime.now(timezone.utc))
+        report["recovered"] += 1
+
+    logger.info(
+        "Refetch: %d recovered, %d 404, %d blocked, %d selector-miss, %d skipped (no detail_selector), %d other failures",
+        report["recovered"], report["not_found"], report["blocked"],
+        report["selector_miss"], report["skipped_no_selector"], report["fetch_failed"],
+    )
+    return report
+
+
+def print_refetch_report(report: dict) -> None:
+    print(f"recovered:            {report['recovered']}")
+    print(f"404:                  {report['not_found']}")
+    print(f"blocked:              {report['blocked']}")
+    print(f"selector-miss:        {report['selector_miss']}")
+    print(f"skipped-no-selector:  {report['skipped_no_selector']}")
+    if report["fetch_failed"]:
+        print(f"fetch-failed (other): {report['fetch_failed']}")
+    if report["remaining_empty"]:
+        print("\nItems still with no body:")
+        for entry in report["remaining_empty"]:
+            print(f"  {entry['id']}: {entry['reason']}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Report the count without writing")
     parser.add_argument("--limit", type=int, default=None, help="Reprocess at most this many items")
     parser.add_argument("--from-raw-content", action="store_true",
                          help="Backfill body_md from raw_content for artefact-less pre-v2 items instead")
+    parser.add_argument("--refetch", action="store_true",
+                         help="Refetch source_url for items with no body_md/raw_content/content_snippet instead")
+    parser.add_argument("--regulator", default=None, help="--refetch only: restrict to one regulator id (e.g. hu-mnb)")
+    parser.add_argument("--delay", type=float, default=2.0, help="--refetch only: seconds between requests (default 2.0)")
     args = parser.parse_args()
 
     db_path = os.getenv("DB_PATH", "/app/data/reg_radar.db")
     artefacts_dir = os.getenv("ARTEFACTS_DIR", _DEFAULT_ARTEFACTS_DIR)
     engine = init_db(db_path)
-    if args.from_raw_content:
+    if args.refetch:
+        from collector.main import load_regulators  # lazy: pulls in apscheduler, only needed here
+        regulators_path = os.getenv("REGULATORS_PATH", "/app/config/regulators")
+        regulators = load_regulators(regulators_path)
+        user_agent = os.getenv("USER_AGENT", DEFAULT_USER_AGENT)
+        timeout = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
+        retries = int(os.getenv("REQUEST_RETRIES", "3"))
+        report = refetch(
+            engine, regulators, dry_run=args.dry_run, limit=args.limit, regulator_id=args.regulator,
+            delay=args.delay, user_agent=user_agent, timeout=timeout, retries=retries,
+        )
+        print_refetch_report(report)
+    elif args.from_raw_content:
         backfill_from_raw_content(engine, dry_run=args.dry_run, limit=args.limit)
     else:
         reprocess(engine, artefacts_dir, dry_run=args.dry_run, limit=args.limit)

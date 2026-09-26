@@ -36,6 +36,18 @@
 #   mica_competent_authority: true      # true if this body is a MiCA competent authority
 #   enabled: true                       # false disables every source below without deleting them
 #   cloudflare_protected: false         # true routes every source through FlareSolverr (FLARESOLVERR_URL must be set)
+#   detail_selector: ".article-body"    # optional. CSS selector for an item's full body on its
+#                                        # own source_url page - used only by
+#                                        # scripts/reprocess_bodies.py --refetch (issue #17) to
+#                                        # backfill items an is_partial source never fetched a
+#                                        # body for. No detail_selector configured means the
+#                                        # regulator is skipped by --refetch and reported, never
+#                                        # guessed at.
+#   detail_exclude: [".related-links"]  # optional. CSS selectors to strip from inside the
+#                                        # matched detail_selector element before conversion. A
+#                                        # true page *sibling* of the container (not nested
+#                                        # inside it) needs no entry here - selecting the
+#                                        # container alone already excludes it.
 #   notes: "Why this regulator/source is configured the way it is - selector quirks, known gaps, etc."
 #   sources:
 #

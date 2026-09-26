@@ -2,9 +2,17 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
+from collector.adapters.http import _note_fetch_status
 from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item
-from scripts.reprocess_bodies import _current_extractor, _RAW_CONTENT_EXTRACTOR, backfill_from_raw_content, reprocess
+import scripts.reprocess_bodies as reprocess_bodies_module
+from scripts.reprocess_bodies import (
+    _current_extractor,
+    _RAW_CONTENT_EXTRACTOR,
+    backfill_from_raw_content,
+    refetch,
+    reprocess,
+)
 
 
 def _make_engine(tmp_path):
@@ -158,3 +166,120 @@ def test_reprocess_respects_limit(tmp_path, monkeypatch):
     processed = reprocess(engine, str(artefacts_dir), dry_run=False, limit=2)
 
     assert processed == 2
+
+
+# --- --refetch (issue #17) -------------------------------------------------
+
+_HU_MNB = {"id": "hu-mnb", "detail_selector": ".main-content"}
+
+
+def _make_empty_item(item_id_suffix, regulator_id="hu-mnb", url=None):
+    """An item with body_md, raw_content AND content_snippet all empty - the
+    only shape --refetch's WHERE-guard should ever pick up."""
+    now = datetime.now(timezone.utc)
+    url = url or f"https://example.com/{regulator_id}-{item_id_suffix}"
+    return Item(
+        id=make_item_id(regulator_id, url, now),
+        regulator_id=regulator_id, source_label="news", title="t",
+        url=url, published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="",
+        source_type="rss", raw_content="", body_md="", extractor="",
+    )
+
+
+def test_refetch_recovers_body_via_detail_selector(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_empty_item("1")
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: "<html><div class='main-content'><p>Recovered body</p></div></html>",
+    )
+
+    report = refetch(engine, [_HU_MNB], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 1
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert "Recovered body" in body_md
+
+
+def test_refetch_never_touches_an_item_that_already_has_a_body(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_empty_item("1")
+    item.body_md = "already has one"
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetch_html must not be called")),
+    )
+
+    report = refetch(engine, [_HU_MNB], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 0
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert body_md == "already has one"
+
+
+def test_refetch_dry_run_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_empty_item("1")
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: "<html><div class='main-content'><p>Recovered body</p></div></html>",
+    )
+
+    report = refetch(engine, [_HU_MNB], dry_run=True, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 1
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert body_md == ""  # unchanged - dry run wrote nothing
+
+
+def test_refetch_reports_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_empty_item("1")
+    insert_item(engine, item)
+
+    def fake_fetch_html(*a, **k):
+        _note_fetch_status(404)
+        return None
+
+    monkeypatch.setattr(reprocess_bodies_module, "fetch_html", fake_fetch_html)
+
+    report = refetch(engine, [_HU_MNB], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 0
+    assert report["not_found"] == 1
+    assert report["remaining_empty"] == [{"id": item.id, "reason": "404 not found"}]
+
+
+def test_refetch_reports_missing_detail_selector(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_empty_item("1", regulator_id="es-bde")
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetch_html must not be called")),
+    )
+
+    report = refetch(engine, [{"id": "es-bde"}], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 0
+    assert report["skipped_no_selector"] == 1
+    assert report["remaining_empty"] == [
+        {"id": item.id, "reason": "no detail_selector configured for es-bde"}
+    ]

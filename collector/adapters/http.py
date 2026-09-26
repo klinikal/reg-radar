@@ -206,6 +206,36 @@ def _note_response_size(size: int) -> None:
         sizes.append(size)
 
 
+# Same pattern as _observed_response_sizes, for a caller (scripts/
+# reprocess_bodies.py --refetch) that needs to tell "404, permanently gone"
+# apart from "fetch failed for some other reason" - fetch_html's own
+# plain-HTTP retry loop swallows httpx.HTTPStatusError into a generic
+# logger.warning and returns None either way, which is right for every
+# existing caller (an adapter has nothing useful to do with the distinction)
+# but loses the one thing a re-fetch report needs to say.
+_observed_fetch_statuses: ContextVar[list[int] | None] = ContextVar(
+    "_observed_fetch_statuses", default=None
+)
+
+
+@contextmanager
+def observe_fetch_statuses():
+    """Collects the HTTP status code of every failed plain-HTTP fetch inside
+    the block, newest last. Yields the list itself."""
+    codes: list[int] = []
+    token = _observed_fetch_statuses.set(codes)
+    try:
+        yield codes
+    finally:
+        _observed_fetch_statuses.reset(token)
+
+
+def _note_fetch_status(code: int) -> None:
+    codes = _observed_fetch_statuses.get()
+    if codes is not None:
+        codes.append(code)
+
+
 def throttle_flaresolverr(domain: str) -> None:
     last = _last_flaresolverr_request_at.get(domain, 0.0)
     elapsed = time.monotonic() - last
@@ -469,6 +499,9 @@ def fetch_html(url: str, user_agent: str, timeout: int, retries: int, flaresolve
             # Retrying a WAF block just deepens it, and #39 is explicit that
             # this layer surfaces blocks rather than routing around them.
             raise
+        except httpx.HTTPStatusError as e:
+            _note_fetch_status(e.response.status_code)
+            logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
         except Exception as e:
             logger.warning("HTTP fetch attempt %d/%d failed for %s: %s", attempt + 1, retries, url, e)
 
