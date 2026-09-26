@@ -19,7 +19,7 @@ from collector.storage import init_db
 from mcpserver.queries import get_item, get_month_facets, get_unclassified, list_regulators, search_items_advanced
 from regradar.classification import remove_classification, write_classification
 from regradar.profiles import ProfileError, get_expanded_profile, list_shipped_profiles, load_activities
-from regradar.rules import load_raw_rules, write_raw_rules
+from regradar.rules import MAX_PATTERN_LENGTH, load_raw_rules, write_raw_rules
 from regradar.taxonomy import load_and_exit_on_error
 from webui import modules as modules_state
 from mcpserver.queries import get_changes, get_latest_changes
@@ -525,6 +525,8 @@ def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form
         raise HTTPException(status_code=400, detail="unknown axis/value - see config/taxonomy.yaml")
     if not pattern:
         raise HTTPException(status_code=400, detail="pattern is required")
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        raise HTTPException(status_code=400, detail=f"pattern exceeds max length of {MAX_PATTERN_LENGTH} chars")
     try:
         re.compile(pattern)
     except re.error as e:

@@ -13,6 +13,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+import regex
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -23,22 +24,42 @@ DEFAULT_MIN_CONFIDENCE = 0.5
 # `aliases` compile into a rule at this weight, word-boundary matched,
 # case-insensitive, over both title and body.
 ALIAS_RULE_WEIGHT = 0.7
+# User-authored rule patterns come from config/rules.yaml or the /rules web
+# UI - untrusted enough to bound in length and time (issue #20 part B).
+# Taxonomy aliases stay on the stdlib `re` path below: they're generated
+# from taxonomy.yaml, not user-typed regex.
+MAX_PATTERN_LENGTH = 500
+RULE_MATCH_TIMEOUT = 0.2
 
 
 @dataclass
 class CompiledRule:
     axis: str
     value: str
-    patterns: list[tuple]  # (compiled re.Pattern, weight)
+    patterns: list[tuple]  # (compiled pattern, weight)
     fields: list[str] = field(default_factory=lambda: ["title", "body"])
     title_multiplier: float = 1.0
+    # True for user-authored explicit rules (compiled with `regex`, searched
+    # with a timeout); False for taxonomy-alias rules (stdlib `re`, no
+    # timeout needed - see _compile_alias_rules).
+    timed: bool = True
 
 
 def _compile_pattern(pattern: str, flags: str, path: str, context: str):
-    re_flags = re.IGNORECASE if flags and "i" in flags else 0
+    """Compiles a user-authored rule pattern with the `regex` engine so it
+    can be searched with a timeout (issue #20 part B) - unlike explicit
+    rules, taxonomy alias patterns are machine-generated and stay on stdlib
+    `re` (see _compile_alias_rules)."""
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        logger.warning(
+            "%s: skipping invalid pattern in %s - exceeds max length %d chars",
+            path, context, MAX_PATTERN_LENGTH,
+        )
+        return None
+    re_flags = regex.IGNORECASE if flags and "i" in flags else 0
     try:
-        return re.compile(pattern, re_flags)
-    except re.error as e:
+        return regex.compile(pattern, re_flags)
+    except regex.error as e:
         logger.warning("%s: skipping invalid pattern in %s (%r): %s", path, context, pattern, e)
         return None
 
@@ -91,7 +112,7 @@ def _compile_alias_rules(taxonomy) -> list[CompiledRule]:
                 (re.compile(r"\b" + re.escape(alias) + r"\b", re.IGNORECASE), ALIAS_RULE_WEIGHT)
                 for alias in axis_value.aliases
             ]
-            compiled.append(CompiledRule(axis=axis, value=axis_value.id, patterns=patterns))
+            compiled.append(CompiledRule(axis=axis, value=axis_value.id, patterns=patterns, timed=False))
     return compiled
 
 
@@ -107,8 +128,19 @@ def _score_rule(rule: CompiledRule, title: str, body: str) -> float:
         if not text:
             continue
         multiplier = rule.title_multiplier if field_name == "title" else 1.0
-        for regex, weight in rule.patterns:
-            if regex.search(text):
+        for pattern, weight in rule.patterns:
+            try:
+                matched = (
+                    pattern.search(text, timeout=RULE_MATCH_TIMEOUT)
+                    if rule.timed else pattern.search(text)
+                )
+            except TimeoutError:
+                logger.warning(
+                    "rule %s/%s: pattern %r timed out after %.2fs - skipping rule for this item",
+                    rule.axis, rule.value, pattern.pattern, RULE_MATCH_TIMEOUT,
+                )
+                return 0.0
+            if matched:
                 total += weight * multiplier
     return min(total, 1.0)
 
