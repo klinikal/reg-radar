@@ -2,7 +2,7 @@ import calendar
 import json
 import logging
 import os
-import re
+import regex
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
@@ -528,8 +528,8 @@ def rules_add(axis: str = Form(...), value: str = Form(...), pattern: str = Form
     if len(pattern) > MAX_PATTERN_LENGTH:
         raise HTTPException(status_code=400, detail=f"pattern exceeds max length of {MAX_PATTERN_LENGTH} chars")
     try:
-        re.compile(pattern)
-    except re.error as e:
+        regex.compile(pattern)  # same engine the collector runs rules with
+    except regex.error as e:
         raise HTTPException(status_code=400, detail=f"invalid regex pattern: {e}")
     match_entry = {"pattern": pattern, "weight": weight}
     if flags.strip():
