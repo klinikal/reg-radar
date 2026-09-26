@@ -7,11 +7,15 @@ from collector.schema import Item, make_item_id
 from collector.storage import init_db, insert_item, upsert_regulator
 
 
-def _client(tmp_path, monkeypatch):
+def _client(tmp_path, monkeypatch, auth_token=None):
     import webui.app as app_module
     monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
     monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    if auth_token is None:
+        monkeypatch.delenv("WEBUI_AUTH_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("WEBUI_AUTH_TOKEN", auth_token)
     app_module._engine = None
     app_module._taxonomy = None
     engine = app_module.get_engine()
@@ -29,37 +33,138 @@ def _insert_item(engine, item_id="i1", regulator_id="esma"):
 
 
 def test_api_classify_item_writes_and_returns_updated_labels(tmp_path, monkeypatch):
-    client, engine, app_module = _client(tmp_path, monkeypatch)
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
     _insert_item(engine)
 
     resp = client.post(f"/api/items/i1/classifications", json={
-        "axis": "document_type", "value": "warning", "by": "human:alice",
-    })
+        "axis": "document_type", "value": "warning",
+    }, auth=("editor", "secret"))
     assert resp.status_code == 200
     assert resp.json()["labels"] == {"document_type": "warning"}
 
 
 def test_api_classify_item_rejects_unknown_value(tmp_path, monkeypatch):
-    client, engine, app_module = _client(tmp_path, monkeypatch)
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
     _insert_item(engine)
 
     resp = client.post("/api/items/i1/classifications", json={
-        "axis": "document_type", "value": "not-a-real-value", "by": "human:alice",
-    })
+        "axis": "document_type", "value": "not-a-real-value",
+    }, auth=("editor", "secret"))
     assert resp.status_code == 400
 
 
 def test_api_classify_item_remove_supersedes_row(tmp_path, monkeypatch):
-    client, engine, app_module = _client(tmp_path, monkeypatch)
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
     _insert_item(engine)
     client.post("/api/items/i1/classifications", json={
-        "axis": "instrument", "value": "mica", "by": "human:alice",
-    })
+        "axis": "instrument", "value": "mica",
+    }, auth=("editor", "secret"))
     resp = client.post("/api/items/i1/classifications", json={
-        "axis": "instrument", "value": "mica", "by": "human:alice", "remove": True,
-    })
+        "axis": "instrument", "value": "mica", "remove": True,
+    }, auth=("editor", "secret"))
     assert resp.status_code == 200
     assert resp.json()["labels"] == {}
+
+
+def test_api_classify_item_unauthenticated_can_use_non_human_provenance(tmp_path, monkeypatch):
+    """Current default (no WEBUI_AUTH_TOKEN configured): writes still work
+    for an unauthenticated API/MCP-style caller, as long as it isn't
+    claiming human provenance (see test_api_classify_item_unauthenticated_rejects_human_by)."""
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    _insert_item(engine)
+
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": "llm:anthropic/claude-sonnet-5",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["labels"] == {"document_type": "warning"}
+
+
+def test_api_classify_item_unauthenticated_rejects_human_by(tmp_path, monkeypatch):
+    """Acceptance check: API clients cannot impersonate arbitrary human:* editors."""
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    _insert_item(engine)
+
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": "human:alice",
+    })
+    assert resp.status_code == 403
+
+
+def test_api_classify_item_with_token_requires_auth(tmp_path, monkeypatch):
+    """Acceptance check: with a token enabled, unauthenticated edits fail
+    (401, prompting the browser via WWW-Authenticate) and authenticated
+    edits succeed."""
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
+    _insert_item(engine)
+
+    unauthed = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": "llm:anthropic/claude-sonnet-5",
+    })
+    assert unauthed.status_code == 401
+    assert unauthed.headers.get("www-authenticate", "").lower().startswith("basic")
+
+    wrong_password = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning",
+    }, auth=("editor", "wrong"))
+    assert wrong_password.status_code == 401
+
+    authed = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning",
+    }, auth=("editor", "secret"))
+    assert authed.status_code == 200
+
+
+def test_api_classify_item_forces_human_web_ui_provenance_when_authenticated(tmp_path, monkeypatch):
+    """An authenticated caller can't set its own `by` - it always writes as
+    human:web-ui, even if it tries to claim a different identity."""
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
+    _insert_item(engine)
+
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": "human:someone-else",
+    }, auth=("editor", "secret"))
+    assert resp.status_code == 200
+
+    with engine.connect() as conn:
+        from sqlalchemy import text as sa_text
+        by = conn.execute(sa_text(
+            "SELECT by FROM classifications WHERE item_id='i1' AND superseded_at IS NULL"
+        )).scalar()
+    assert by == "human:web-ui"
+
+
+def test_cross_site_origin_rejected_on_write(tmp_path, monkeypatch):
+    """Acceptance check: a cross-site form submission is rejected."""
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    _insert_item(engine)
+
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "document_type", "value": "warning", "by": "llm:anthropic/claude-sonnet-5",
+    }, headers={"origin": "https://evil.example.com"})
+    assert resp.status_code == 403
+
+
+def test_reads_stay_public_with_token_configured(tmp_path, monkeypatch):
+    """Acceptance check: public read/search routes still work without a
+    password, even when a write token is configured."""
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
+    _insert_item(engine)
+
+    assert client.get("/item/i1").status_code == 200
+    assert client.get("/api/items/i1").status_code == 200
+    assert client.get("/rules").status_code == 200
+
+
+def test_startup_warns_when_auth_token_unset(tmp_path, monkeypatch, caplog):
+    """Acceptance check: with no token, a clear startup warning is logged."""
+    import logging
+    monkeypatch.setenv("ACTIVITIES_PATH", "config/activities.yaml")
+    client, engine, app_module = _client(tmp_path, monkeypatch)
+    with caplog.at_level(logging.WARNING, logger="webui.app"):
+        with client:
+            pass
+    assert any("WEBUI_AUTH_TOKEN" in r.message for r in caplog.records)
 
 
 def test_item_classify_form_redirects_and_persists(tmp_path, monkeypatch):
@@ -81,12 +186,13 @@ def test_item_classify_form_redirects_and_persists(tmp_path, monkeypatch):
 def test_human_correction_survives_reclassify(tmp_path, monkeypatch):
     """Acceptance criterion: a human correction via the API changes
     items.labels immediately and survives reclassify --axis instrument."""
-    client, engine, app_module = _client(tmp_path, monkeypatch)
+    client, engine, app_module = _client(tmp_path, monkeypatch, auth_token="secret")
     _insert_item(engine)
 
-    client.post("/api/items/i1/classifications", json={
-        "axis": "instrument", "value": "mica", "by": "human:alice",
-    })
+    resp = client.post("/api/items/i1/classifications", json={
+        "axis": "instrument", "value": "mica",
+    }, auth=("editor", "secret"))
+    assert resp.status_code == 200
 
     from regradar.classification import supersede_axis, materialize_labels
     from regradar.taxonomy import build_taxonomy

@@ -473,14 +473,20 @@ def classify_item_tool(item_id: str, axis: str, value: str, by: str, confidence:
     `axis`/`value` must be valid per get_taxonomy_tool. `by` records
     provenance - use `llm:<provider>/<model>` for an agent-driven
     classification (see skills/reg-radar-classifier/SKILL.md), e.g.
-    "llm:anthropic/claude-sonnet-5". `confidence` is 0.0-1.0 and
-    self-reported - prefer leaving an axis unset over guessing below 0.5.
-    Writing the same (item, axis, value, by) again is a no-op; writing a
-    different value for the same (item, axis, by) on a single-valued axis
-    supersedes the prior one rather than accumulating. An `item_id` that is
-    not in the database raises rather than recording an orphan row -
-    classify_items_tool reports the same condition per entry.
+    "llm:anthropic/claude-sonnet-5". A `by` starting with `human:` is
+    rejected - MCP callers are agents, not humans, and `human:*` provenance
+    is reserved for an authenticated web UI edit (issue #20). `confidence`
+    is 0.0-1.0 and self-reported - prefer leaving an axis unset over
+    guessing below 0.5. Writing the same (item, axis, value, by) again is a
+    no-op; writing a different value for the same (item, axis, by) on a
+    single-valued axis supersedes the prior one rather than accumulating.
+    An `item_id` that is not in the database raises rather than recording
+    an orphan row - classify_items_tool reports the same condition per
+    entry.
     """
+    if by.startswith("human:"):
+        raise ValueError("by must not start with 'human:' - MCP callers are agents, not humans")
+
     def _write():
         write_classification(get_write_engine(), get_taxonomy(), item_id, axis, value, by=by,
                               confidence=confidence, classifier_id=classifier_id)
@@ -498,11 +504,33 @@ def classify_items_tool(classifications: list[dict]) -> dict:
 
     Returns {"written": [...item ids...], "errors": [{"index", "item_id",
     "error"}, ...]} - `errors` names exactly which input entries failed and
-    why, by their position in the `classifications` list you passed in.
+    why, by their position in the `classifications` list you passed in. An
+    entry whose `by` starts with `human:` is reported as an error the same
+    way (MCP callers are agents, not humans - see classify_item_tool).
     Raises if the batch has more than 100 entries; page get_unclassified_tool
     instead of sending more than that in one call.
     """
-    return _safe("classify_items_tool", classify_batch, get_write_engine(), get_taxonomy(), classifications)
+    human_errors = []
+    kept = []  # (original_index, entry) for everything that isn't human:*
+    for i, entry in enumerate(classifications):
+        by = entry.get("by")
+        if isinstance(by, str) and by.startswith("human:"):
+            human_errors.append({
+                "index": i, "item_id": entry.get("item_id"),
+                "error": "by must not start with 'human:' - MCP callers are agents, not humans",
+            })
+        else:
+            kept.append((i, entry))
+
+    result = _safe("classify_items_tool", classify_batch, get_write_engine(), get_taxonomy(),
+                    [entry for _, entry in kept])
+    remapped_errors = [
+        {**err, "index": kept[err["index"]][0]} for err in result["errors"]
+    ]
+    return {
+        "written": result["written"],
+        "errors": sorted(human_errors + remapped_errors, key=lambda e: e["index"]),
+    }
 
 
 @mcp.tool()

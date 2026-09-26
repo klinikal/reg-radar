@@ -402,6 +402,37 @@ def test_classify_items_tool_writes_valid_and_reports_invalid(tmp_path, monkeypa
     assert result["errors"][0]["index"] == 2
 
 
+def test_classify_item_tool_rejects_human_provenance(tmp_path, monkeypatch):
+    """Acceptance check: MCP callers can't impersonate a human editor -
+    human:* provenance is reserved for an authenticated web UI edit."""
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item = _item("An item to classify")
+    insert_item(write_engine, item)
+
+    with pytest.raises(ValueError, match="human:"):
+        server.classify_item_tool(item_id=item.id, axis="document_type", value="warning", by="human:alice")
+
+
+def test_classify_items_tool_rejects_human_provenance_per_entry(tmp_path, monkeypatch):
+    from collector.storage import insert_item
+    server, write_engine = _server_with_db(tmp_path, monkeypatch)
+    item1 = _item("First item")
+    item2 = _item("Second item")
+    insert_item(write_engine, item1)
+    insert_item(write_engine, item2)
+
+    result = server.classify_items_tool(classifications=[
+        {"item_id": item1.id, "axis": "document_type", "value": "warning", "by": "human:alice"},
+        {"item_id": item2.id, "axis": "document_type", "value": "press_release", "by": "llm:anthropic/claude-sonnet-5"},
+    ])
+    assert result["written"] == [item2.id]
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["index"] == 0
+    assert result["errors"][0]["item_id"] == item1.id
+    assert "human:" in result["errors"][0]["error"]
+
+
 def test_classify_items_tool_batch_over_limit_raises(tmp_path, monkeypatch):
     server, write_engine = _server_with_db(tmp_path, monkeypatch)
     batch = [{"item_id": "x", "axis": "document_type", "value": "warning", "by": "rule"} for _ in range(101)]
