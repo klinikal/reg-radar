@@ -37,8 +37,8 @@ CAPTURE_FAILURES = {
         "403 Forbidden from dnb.nl - not marked cloudflare_protected in config, but blocked without a "
         "browser-context fetch (FlareSolverr) in this environment",
     ("ro-asf", "all_news_en"):
-        "WAF returns HTTP 200 with a 'Request Rejected' block page body instead of the feed - not "
-        "marked cloudflare_protected in config, but blocked without a browser-context fetch in this environment",
+        "F5 WAF returns HTTP 200 with a 'Request Rejected' block page body instead of the feed - "
+        "now cloudflare_protected (#102), but FlareSolverr was not running during fixture capture",
     ("es-cnmv", "sector_information"):
         "feed fetched successfully but currently has zero <item> entries - no live content available to "
         "build a meaningful fixture from at capture time",
