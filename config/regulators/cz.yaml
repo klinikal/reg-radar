@@ -9,6 +9,9 @@
   cloudflare_protected: false
   warnings_url: https://www.cnb.cz/en/supervision-financial-market/consumer-protection-and-financial-literacy/consumer-protection/notices-about-activities/
   notes: "RSS index at cnb.cz/en/general/rss/."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (2186 and 4275 chars recovered).
+  detail_selector: "main.col-lg-8"
   sources:
   - type: rss
     url: https://www.cnb.cz/en/.content/rss-feed/rss-feed_tz.xml

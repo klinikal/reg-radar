@@ -9,6 +9,9 @@
   cloudflare_protected: false
   warnings_url: https://www.fsc.bg/en/for-the-consumers/warnings/
   notes: "WordPress RSS 2.0. English warnings hub available; FSC-specific warnings are Bulgarian only."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (551 and 99 chars recovered).
+  detail_selector: "div.entry-content"
   sources:
   - type: rss
     url: https://www.fsc.bg/en/feed/

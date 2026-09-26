@@ -9,6 +9,9 @@
   cloudflare_protected: false
   warnings_url: https://www.fma.gv.at/en/warnings/
   notes: "WordPress feed - requires browser User-Agent header."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (944 and 251 chars recovered).
+  detail_selector: "div.dmbs-post-content"
   sources:
   - type: rss
     url: https://www.fma.gv.at/en/feed/

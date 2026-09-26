@@ -9,6 +9,12 @@
   cloudflare_protected: false
   warnings_url: https://nbs.sk/en/financial-market-supervision-practical-info/warnings/warning-list-of-non-authorized-business-activities-of-entities/
   notes: "Use nbs.sk (no www prefix) - www redirects 301 to non-www."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles - 1 recovered (4043 chars), 1
+  # selector_miss (a macroeconomic-projections/stats page on a different
+  # template). Accepted: stats pages missing the selector is a known,
+  # tolerated gap rather than a broken selector.
+  detail_selector: ".nbs-post__content"
   sources:
   - type: rss
     url: https://nbs.sk/en/feed

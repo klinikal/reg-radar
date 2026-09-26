@@ -9,6 +9,9 @@
   cloudflare_protected: false
   warnings_url: https://www.bafin.de/EN/verbraucherinnen-verbraucher/news-warnungen/warnmeldungen/warnmeldungen_node_en.html
   notes: "No standalone warnings-only RSS - warnings appear in general feeds. Four confirmed RSS feeds."
+  # scripts/reprocess_bodies.py --refetch / collector detail-fetch (#17):
+  # verified against 2 sampled live articles (972 and 945 chars recovered).
+  detail_selector: "div.l-article__content"
   sources:
   - type: rss
     url: https://www.bafin.de/EN/service/rss/_function/rssnewsfeed.xml?nn=187494
