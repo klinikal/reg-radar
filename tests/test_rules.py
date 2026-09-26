@@ -248,3 +248,58 @@ def test_write_raw_rules_includes_header_comment(tmp_path):
     content = path.read_text()
     assert content.startswith("#")
     assert "classification rules" in content.lower()
+
+
+# --- regex safety (issue #20 part B): oversized/catastrophic user patterns ---
+
+def test_oversized_pattern_is_skipped_at_load_time(tmp_path):
+    from regradar.rules import MAX_PATTERN_LENGTH
+
+    oversized = "a" * (MAX_PATTERN_LENGTH + 1)
+    path = _write_rules(tmp_path, (
+        "rules:\n"
+        "  - axis: document_type\n"
+        "    value: consultation\n"
+        f"    match: [{{pattern: '{oversized}', weight: 0.9}}]\n"
+        "    fields: [title]\n"
+    ))
+    engine = RulesEngine.load(path, _taxonomy())  # must not raise
+    assert engine.score(oversized, "") == {}
+
+
+def test_catastrophic_pattern_times_out_and_is_skipped_but_collection_continues(tmp_path):
+    # (a|aa)+$ exhibits classic exponential backtracking; the `(a+)+$`
+    # example from the issue is actually optimized away by the `regex`
+    # engine, so this pattern is used to force a real timeout instead.
+    path = _write_rules(tmp_path, (
+        "rules:\n"
+        "  - axis: document_type\n"
+        "    value: consultation\n"
+        "    match: [{pattern: '(a|aa)+$', weight: 0.9}]\n"
+        "    fields: [title]\n"
+        "  - axis: instrument\n"
+        "    value: dora\n"
+        "    match: [{pattern: 'DORA', weight: 0.9}]\n"
+        "    fields: [title]\n"
+    ))
+    engine = RulesEngine.load(path, _taxonomy())
+    evil_title = "a" * 40 + "!"
+    # The catastrophic rule times out and contributes nothing, but the
+    # unrelated DORA rule still scores against a different item.
+    assert engine.score(evil_title, "") == {}
+    # DORA's explicit rule (0.9) plus its taxonomy alias rule (0.7) sum and
+    # cap at 1.0 - see test_explicit_and_alias_rule_for_same_value_sum_and_cap_at_one.
+    assert engine.score("DORA update", "") == {("instrument", "dora"): 1.0}
+
+
+def test_normal_rules_still_behave_with_regex_engine(tmp_path):
+    path = _write_rules(tmp_path, (
+        "rules:\n"
+        "  - axis: document_type\n"
+        "    value: consultation\n"
+        "    match: [{pattern: 'consultation', weight: 0.6, flags: i}]\n"
+        "    fields: [title, body]\n"
+    ))
+    engine = RulesEngine.load(path, _taxonomy())
+    assert engine.score("A Consultation paper", "") == {("document_type", "consultation"): 0.6}
+    assert engine.score("nothing here", "no mention either") == {}

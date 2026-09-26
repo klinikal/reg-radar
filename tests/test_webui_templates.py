@@ -305,6 +305,23 @@ def test_rules_add_rejects_invalid_regex(monkeypatch, tmp_path):
     assert resp.status_code == 400
 
 
+def test_rules_add_rejects_oversized_pattern(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    import webui.app as app_module
+
+    monkeypatch.setenv("TAXONOMY_PATH", "config/taxonomy.yaml")
+    monkeypatch.setenv("JURISDICTIONS_PATH", "config/jurisdictions.yaml")
+    app_module._taxonomy = None
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("")
+    monkeypatch.setattr(app_module, "RULES_PATH", str(rules_path))
+
+    client = TestClient(app_module.app)
+    oversized = "a" * 501
+    resp = client.post("/rules", data={"axis": "instrument", "value": "mica", "pattern": oversized})
+    assert resp.status_code == 400
+
+
 def test_lifespan_fails_at_boot_on_invalid_taxonomy(monkeypatch, tmp_path):
     """A broken taxonomy must kill the process at startup, not turn every
     request into a 500 (load_and_exit_on_error calls sys.exit)."""
