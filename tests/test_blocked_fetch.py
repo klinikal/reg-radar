@@ -173,6 +173,30 @@ def test_detect_block_interstitial_marker_in_a_200_body():
     assert signature is not None and "interstitial" in signature
 
 
+def test_detect_block_f5_big_ip_rejection_page():
+    # #102: ASF Romania's F5 BIG-IP ASM WAF answers HTTP 200 with a 245-byte
+    # "Request Rejected" page instead of the real RSS feed. Matching on the
+    # sentence, not the support ID (unique per request).
+    body = (
+        "<html><head><title>Request Rejected</title></head><body>"
+        "The requested URL was rejected. Please consult with your "
+        "administrator.<br><br>Your support ID is: 1234567890123456789"
+        "</body></html>"
+    )
+    signature = detect_block(200, {}, body)
+    assert signature is not None and "requested url was rejected" in signature
+
+
+def test_detect_block_normal_rss_body_is_not_a_block():
+    rss = (
+        '<?xml version="1.0"?><rss version="2.0"><channel>'
+        "<title>ASF Romania</title>"
+        "<item><title>Announcement</title><link>https://example.com/1</link></item>"
+        "</channel></rss>"
+    )
+    assert detect_block(200, {}, rss) is None
+
+
 def test_detect_block_genuine_404_is_not_a_block():
     # A real 404 must stay a real 404 - misreporting it as blocked sends an
     # operator hunting a WAF that isn't there (the SEC case in the issue is

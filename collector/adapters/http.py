@@ -89,6 +89,10 @@ CHALLENGE_BODY_MARKERS = (
     "enable javascript and cookies to continue",
     "sucuri website firewall",
     "access denied - sucuri website firewall",
+    # F5 BIG-IP ASM rejection page (#102) - a 245-byte "Request Rejected"
+    # page with no ASM branding in the body, so match its one distinctive
+    # sentence rather than the support ID (which is per-request/unique).
+    "the requested url was rejected",
 )
 
 # Only the head of the body is scanned: a challenge interstitial is a small
