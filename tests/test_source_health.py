@@ -319,11 +319,57 @@ def test_main_exits_nonzero_when_a_failure_could_not_be_reported():
     with patch("scripts.source_health.load_regulators", return_value=[]), \
          patch("collector.main.load_config", return_value={}), \
          patch("scripts.source_health.run_all_checks") as mock_run:
-        def fake_run(regs, cfg, warnings=None, report_failures=None):
+        def fake_run(regs, cfg, file_issues=True, warnings=None, report_failures=None):
             report_failures.append("es-cnmv/press_releases")
             return {"es-cnmv/press_releases": "timed out"}
         mock_run.side_effect = fake_run
         assert main([]) == 1
+
+
+def test_main_no_file_issues_flag_is_honoured_as_a_dry_run():
+    # argv was previously ignored entirely - --no-file-issues must reach
+    # run_all_checks as file_issues=False so a dry run files nothing.
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks", return_value={}) as mock_run:
+        assert main(["--no-file-issues"]) == 0
+    assert mock_run.call_args.kwargs["file_issues"] is False
+
+
+def test_main_defaults_to_filing_issues():
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks", return_value={}) as mock_run:
+        assert main([]) == 0
+    assert mock_run.call_args.kwargs["file_issues"] is True
+
+
+def test_main_returns_nonzero_when_every_checked_source_fails():
+    # More than one source, all failed: an egress problem, not 44 broken
+    # regulators - must fail the job even though every failure was reported.
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks",
+               return_value={"esma/a": "timed out", "es-cnmv/b": "timed out"}):
+        assert main([]) == 1
+
+
+def test_main_returns_zero_when_only_some_sources_fail():
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks",
+               return_value={"esma/a": "timed out", "es-cnmv/b": None}):
+        assert main([]) == 0
+
+
+def test_main_single_source_failure_does_not_trip_the_all_failed_check():
+    # Exactly one source checked and it failed - a real, isolated failure,
+    # not a signal that the whole job lost egress.
+    with patch("scripts.source_health.load_regulators", return_value=[]), \
+         patch("collector.main.load_config", return_value={}), \
+         patch("scripts.source_health.run_all_checks",
+               return_value={"esma/a": "timed out"}):
+        assert main([]) == 0
 
 
 def test_fetch_raw_uses_per_source_timeout_and_retries_override():
