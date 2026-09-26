@@ -32,7 +32,8 @@ since the config format has no explicit id field.
 application/json` and `X-Reg-Radar-Signature` headers, retrying up to
 `max_retries` times with a delay that doubles each attempt starting from
 `backoff_seconds`. Returns `True` on any 2xx response, `False` once retries
-are exhausted. `sleep_fn` is injectable for tests.
+are exhausted. `sleep_fn` is injectable for tests. Retries also stop early
+if a shared `deadline` (see below) would otherwise be exceeded.
 
 `dispatch_one(engine, sub, taxonomy, activities, profiles_dir, client)`
 delivers one subscriber's next batch:
@@ -57,11 +58,22 @@ delivers one subscriber's next batch:
    cursor is not advanced.
 
 `dispatch_all(engine, config_path, taxonomy, activities, profiles_dir,
-client=None)` loads all subscribers and runs `dispatch_one` for each,
-catching and logging any unexpected exception per subscriber so one
-subscriber's failure never blocks another. A missing config or empty
-subscriber list is a no-op. Opens and closes its own `httpx.Client(timeout=
-30)` unless one is injected (for tests).
+client=None, run_budget_seconds=60)` loads all subscribers and runs
+`dispatch_one` for each, catching and logging any unexpected exception per
+subscriber so one subscriber's failure never blocks another. A missing
+config or empty subscriber list is a no-op. Opens and closes its own
+`httpx.Client(timeout=30)` unless one is injected (for tests).
+
+This runs from `collector/main.py`'s `run_collection_locked()` while it
+holds the collector lock, so `dispatch_all` bounds its own total wall-clock
+time to `run_budget_seconds` (default 60s), shared across every
+subscriber: without this, N dead subscribers each retrying `max_retries`
+times with doubling backoff (~450s each with defaults) could hold the lock
+for `N * 450s`. Once the shared deadline would be exceeded, a subscriber
+gets at most the attempt already in flight - further retries, and any
+not-yet-started subscriber, are skipped and logged instead of run.
+Worst case is therefore `run_budget_seconds` plus one in-flight request
+(the 30s client timeout), about 90s with defaults.
 
 ## Inputs
 

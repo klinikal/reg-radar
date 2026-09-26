@@ -345,3 +345,88 @@ def test_backoff_delays_double_between_retries():
     )
     assert ok is False
     assert sleeps == [2, 4, 8]
+
+
+def test_deliver_with_retry_stops_at_run_budget_for_single_dead_subscriber():
+    # Issue #19: without a budget, max_retries=5 with doubling backoff from
+    # 30s sleeps ~450s (30+60+120+240) for one dead subscriber. A 60s
+    # deadline must cut that off after the first sleep, not run to exhaustion.
+    attempts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    sleeps = []
+    fake_time = [0.0]
+
+    def clock_fn():
+        return fake_time[0]
+
+    def sleep_fn(seconds):
+        sleeps.append(seconds)
+        fake_time[0] += seconds
+
+    ok = _deliver_with_retry(
+        client, "https://hooks.example/x", b"{}", "sha256=x",
+        max_retries=5, backoff_seconds=30, sleep_fn=sleep_fn, clock_fn=clock_fn,
+        deadline=60.0,
+    )
+
+    assert ok is False
+    assert len(attempts) == 2  # not 5 - stopped once the next backoff would cross the deadline
+    assert sleeps == [30]
+    assert fake_time[0] <= 60.0
+
+
+def test_dispatch_all_shares_one_run_budget_across_dead_subscribers(tmp_path, monkeypatch, caplog):
+    # Several dead subscribers must not each get their own full retry
+    # budget: the deadline is shared across the whole dispatch_all() run, so
+    # once it's spent, later subscribers are skipped rather than retried.
+    engine = _engine()
+    upsert_regulator(engine, {"id": "esma", "name": "ESMA", "full_name": "ESMA", "jurisdiction": "eu"})
+    insert_item(engine, _item("i1"))
+    monkeypatch.setenv("WEBHOOK_SECRET_1", "s1")
+    monkeypatch.setenv("WEBHOOK_SECRET_2", "s2")
+
+    config_path = _write_config(tmp_path, [
+        {
+            "profile": "eu-casp", "url": "https://hooks.example/dead-1", "secret_env": "WEBHOOK_SECRET_1",
+            "max_retries": 5, "backoff_seconds": 0,
+        },
+        {
+            "profile": "eu-casp", "url": "https://hooks.example/dead-2", "secret_env": "WEBHOOK_SECRET_2",
+            "max_retries": 5, "backoff_seconds": 0,
+        },
+    ])
+    taxonomy, activities = _taxonomy_and_activities()
+
+    attempts_by_url = {"https://hooks.example/dead-1": [], "https://hooks.example/dead-2": []}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts_by_url[str(request.url)].append(1)
+        return httpx.Response(500)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    # Each clock_fn() call simulates 25s having elapsed (e.g. a slow dead
+    # endpoint) so the 60s run budget is exhausted partway through the
+    # first subscriber's retries, well before either subscriber reaches
+    # its own max_retries=5.
+    fake_time = [0.0]
+
+    def clock_fn():
+        fake_time[0] += 25.0
+        return fake_time[0]
+
+    with caplog.at_level("WARNING"):
+        dispatch_all(engine, config_path, taxonomy, activities, "config/profiles", client=client,
+                     run_budget_seconds=60, clock_fn=clock_fn)
+
+    total_attempts = len(attempts_by_url["https://hooks.example/dead-1"]) + len(attempts_by_url["https://hooks.example/dead-2"])
+    # 2 subscribers * max_retries=5 would be 10 attempts without a shared
+    # budget; the shared 60s deadline must keep this well under that.
+    assert total_attempts < 10
+    assert len(attempts_by_url["https://hooks.example/dead-2"]) == 0  # second subscriber skipped entirely
+    assert "run budget" in caplog.text
