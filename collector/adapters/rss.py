@@ -1,5 +1,6 @@
 """RSS/Atom adapter - wraps v1's `_parse_rss` unchanged (feedparser)."""
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 
 import feedparser
 
@@ -41,9 +42,17 @@ class RssAdapter(SourceAdapter):
         docs = []
         for entry in feed.entries:
             title = entry.get("title", "").strip()
-            url = entry.get("link", "").strip()
-            if not title or not url:
+            link = entry.get("link", "").strip()
+            if not title or not link:
                 continue
+            # nl-dnb's feeds emit relative links (#113) - urljoin resolves
+            # against the feed's own URL and leaves an already-absolute
+            # link unchanged, so this is safe for every other regulator too.
+            # id_url keeps the id hashed off the link as emitted (see
+            # RawDocument.id_url) so a feed that re-lists an item already
+            # stored under its relative link isn't re-inserted as a
+            # duplicate once resolution starts.
+            url = urljoin(source_cfg.get("url", ""), link)
 
             published_at = None
             date_inferred = False
@@ -74,6 +83,7 @@ class RssAdapter(SourceAdapter):
 
             docs.append(RawDocument(
                 url=url,
+                id_url=link,
                 title=title,
                 published_at=published_at,
                 date_inferred=date_inferred,

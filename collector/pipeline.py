@@ -131,7 +131,10 @@ def process_raw_documents(raw_docs: list[RawDocument], source: dict, regulator_i
         if source_type == "page_watch":
             item_id = make_page_watch_item_id(regulator_id, raw.url, raw.content_hash or "")
         else:
-            item_id = make_item_id(regulator_id, raw.url, published_at)
+            # id_url (set only when an adapter resolved a relative link,
+            # e.g. rss.py) keeps the id stable across that resolution -
+            # see RawDocument.id_url.
+            item_id = make_item_id(regulator_id, raw.id_url or raw.url, published_at)
 
         item = Item(
             id=item_id,
