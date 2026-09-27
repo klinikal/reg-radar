@@ -62,6 +62,46 @@ def test_parse_no_artefact_body():
     assert docs[0].mime == ""
 
 
+def test_parse_resolves_relative_link_against_feed_url():
+    # nl-dnb (#113): the feed itself emits a relative <link>.
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Item</title><link>/en/general-news/enforcement-measures-2026/item1</link></item>
+    </channel></rss>"""
+    docs = RssAdapter().parse(
+        rss, {"label": "enforcement_measures", "url": "https://www.dnb.nl/en/rss/enforcement.xml"}, "nl-dnb",
+    )
+    assert docs[0].url == "https://www.dnb.nl/en/general-news/enforcement-measures-2026/item1"
+
+
+def test_parse_keeps_id_url_as_originally_emitted_link():
+    # id_url must stay the relative form so make_item_id keeps hashing what
+    # the feed emits - resolving before hashing would change the id of an
+    # item already stored, and a re-listed item would duplicate (#113).
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Item</title><link>/en/news/item1</link></item>
+    </channel></rss>"""
+    docs = RssAdapter().parse(
+        rss, {"label": "news", "url": "https://www.dnb.nl/en/rss.xml"}, "nl-dnb",
+    )
+    assert docs[0].id_url == "/en/news/item1"
+    assert docs[0].url == "https://www.dnb.nl/en/news/item1"
+
+
+def test_parse_absolute_link_leaves_id_url_matching_url():
+    # Every other regulator's feed already emits absolute links - urljoin
+    # must be a no-op for them, and id_url must equal url so their item ids
+    # are unaffected.
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>New MiCA regulation</title><link>https://example.com/item1</link></item>
+    </channel></rss>"""
+    docs = RssAdapter().parse(rss, {"label": "all_news", "url": "https://example.com/feed.xml"}, "esma")
+    assert docs[0].url == "https://example.com/item1"
+    assert docs[0].id_url == "https://example.com/item1"
+
+
 def test_parse_entry_language_tag_overrides():
     rss = """<?xml version="1.0"?>
     <rss xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0"><channel>

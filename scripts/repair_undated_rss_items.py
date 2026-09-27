@@ -135,6 +135,13 @@ def repair(engine, regulator_id, sources, apply_changes, user_agent, timeout, re
 
     repaired = unresolved = collided = 0
     for i, (old_id, url, label, fetched_at) in enumerate(rows, 1):
+        if make_item_id(regulator_id, url, None) != old_id:
+            # The id was hashed from a different form of the link (a relative
+            # feed link since resolved and repaired, #113). Recomputing from
+            # the stored url would mint an id the collector never produces.
+            logger.warning("  [%d/%d] id not derived from stored url, left alone: %s", i, len(rows), url)
+            unresolved += 1
+            continue
         if i > 1:
             time.sleep(POLITE_DELAY_SECONDS)
         published = from_feed.get(url) or real_published_at(url, user_agent, timeout, retries)

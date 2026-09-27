@@ -89,6 +89,19 @@ class RawDocument:
     # for item id generation when present.
     content_hash: str | None = None
 
+    # The link exactly as the source emitted it, before an adapter resolves
+    # it against the source's own URL (e.g. RSS/Atom's urljoin for a feed
+    # that emits relative links). None means "url is already what was
+    # emitted" - the common case, and the only one before #113. Kept
+    # separate from `url` (which is always the resolved, storable URL) so
+    # `make_item_id` can keep hashing what the feed emits: resolving first
+    # and hashing the resolved URL would change the id of every item a feed
+    # still lists once the source starts emitting absolute links, and
+    # re-collecting would insert a duplicate under the new id rather than
+    # matching the existing row (see #67's repair script for the general
+    # shape of that failure).
+    id_url: str | None = None
+
     # Pre-resolved language override (e.g. an RSS entry's own <language> tag
     # or lang-scheme <category>) - takes precedence over the pipeline's
     # source_preferred_language/detection fallback. None means "let the

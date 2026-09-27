@@ -111,3 +111,16 @@ def test_an_item_still_in_the_feed_takes_the_feed_date_not_the_page_date(engine)
 
     with engine.connect() as c:
         assert c.execute(sa_text("SELECT id FROM items")).scalar() == make_item_id("uk-fca", URL, feed_date)
+
+
+def test_a_row_whose_id_came_from_a_relative_link_is_left_alone(engine):
+    """#113: a repaired relative-link row stores the absolute url but keeps
+    the id hashed from the relative link, so recomputing from the stored url
+    would mint an id the collector never produces."""
+    relative_id = make_item_id("uk-fca", "/news/press-releases/example", None)
+    with engine.begin() as c:
+        c.execute(sa_text("UPDATE items SET id = :i"), {"i": relative_id})
+    repaired, unresolved, _ = _run(engine, apply_changes=True)
+    assert (repaired, unresolved) == (0, 1)
+    with engine.connect() as c:
+        assert c.execute(sa_text("SELECT id FROM items")).scalar() == relative_id

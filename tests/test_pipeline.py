@@ -183,6 +183,43 @@ def test_page_watch_changed_content_produces_different_item_id():
     assert items1[0].id != items2[0].id
 
 
+def test_relisted_relative_link_item_keeps_same_id_after_resolution(monkeypatch):
+    # #113: a feed that emits a relative link, then still lists the same
+    # entry on a later run, must produce the same item id both times - the
+    # resolved url is stored (raw.url) but the id hashes raw.id_url (the
+    # link as emitted), which doesn't change between runs.
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Item</title><link>/en/general-news/item1</link>
+      <pubDate>Wed, 01 Jul 2026 10:00:00 +0000</pubDate></item>
+    </channel></rss>"""
+    source = {"label": "enforcement_measures", "url": "https://www.dnb.nl/rss.xml", "type": "rss", "tags": []}
+    docs = RssAdapter().parse(rss, source, "nl-dnb")
+    items1 = process_raw_documents(docs, source, "nl-dnb")
+    items2 = process_raw_documents(RssAdapter().parse(rss, source, "nl-dnb"), source, "nl-dnb")
+    assert items1[0].id == items2[0].id
+    assert items1[0].url == "https://www.dnb.nl/en/general-news/item1"
+
+
+def test_absolute_link_rss_item_id_unaffected_by_id_url_change():
+    # Every other regulator's feed already emits absolute links - id_url ==
+    # url for them, so the id computed here must be identical to hashing
+    # raw.url directly (the pre-#113 behaviour), proving the fix doesn't
+    # change ids for anyone but nl-dnb.
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Item</title><link>https://example.com/item1</link>
+      <pubDate>Wed, 01 Jul 2026 10:00:00 +0000</pubDate></item>
+    </channel></rss>"""
+    source = {"label": "all_news", "url": "https://example.com/feed.xml", "type": "rss", "tags": []}
+    docs = RssAdapter().parse(rss, source, "esma")
+    assert docs[0].id_url == docs[0].url
+    from collector.schema import make_item_id
+    items = process_raw_documents(docs, source, "esma")
+    expected_id = make_item_id("esma", "https://example.com/item1", items[0].published_at)
+    assert items[0].id == expected_id
+
+
 def test_generic_raw_document_with_no_content_falls_back_to_snippet_note():
     raw = RawDocument(url="https://example.com/x", title="X", published_at=None, date_inferred=True)
     source = {"label": "s", "type": "sitemap", "tags": []}
