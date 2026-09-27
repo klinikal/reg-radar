@@ -30,6 +30,14 @@ jobs:
       - name: Install dependencies
         run: pip install --no-cache-dir -r collector/requirements.txt
 
+      # ie-cbi/enforcement_actions, ie-cbi/consultation_papers and
+      # se-fi/investor_warnings are `type: browser` (Playwright) - without
+      # this, fetch_raw() would fail on every run with "Executable doesn't
+      # exist" for those three sources alone, same binary Dockerfile.collector
+      # installs into the production image.
+      - name: Install Playwright Chromium
+        run: playwright install --with-deps chromium
+
       - name: Run source health check
         env:
           REGULATORS_PATH: config/regulators

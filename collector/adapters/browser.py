@@ -54,10 +54,19 @@ class BrowserAdapter(SourceAdapter):
     type_id = "browser"
 
     def fetch(self, source_cfg: dict, ctx: FetchContext) -> list[RawDocument]:
-        html = self._render(source_cfg, ctx)
+        html = self.fetch_raw(source_cfg, ctx)
         return self.parse(html, source_cfg, ctx.regulator_id)
 
-    def _render(self, source_cfg: dict, ctx: FetchContext) -> str:
+    def fetch_raw(self, source_cfg: dict, ctx: FetchContext) -> str:
+        """The rendered DOM, as a string - unlike most adapters' fetch_raw,
+        this genuinely is a "raw" response worth capturing/diffing as a
+        fixture: a browser-type source has no other network artifact, and
+        without this override scripts/capture_fixture.py and the nightly
+        source-health check (both call adapter.fetch_raw(), never fetch())
+        could not touch a browser source at all - every one would raise
+        NotImplementedError from SourceAdapter's base default, forever,
+        regardless of environment (issue surfaced adding the first real
+        browser sources, ie-cbi/se-fi)."""
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as e:

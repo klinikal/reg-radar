@@ -78,7 +78,7 @@ def test_parse_reuses_scrape_selector_shape():
 
 def test_module_importable_without_browser_binary():
     # The whole point of this adapter guarding its own playwright import
-    # inside fetch()/_render() rather than at module scope - the package
+    # inside fetch()/fetch_raw() rather than at module scope - the package
     # (collector/requirements.txt) is a hard dependency and is importable
     # here, but a browser binary is never required just to import this
     # module or call parse().
