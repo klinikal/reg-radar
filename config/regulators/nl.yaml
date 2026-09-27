@@ -25,6 +25,11 @@
   mica_competent_authority: true
   enabled: true
   cloudflare_protected: false
+  # Collector detail-fetch (#109) / --refetch (#17): verified against 2 live
+  # enforcement notices (7022 and 5595 chars vs ~400 from the feed). Needed
+  # #113 first - the feed's links were relative until then.
+  detail_selector: ".main-grid-layout__content-components"
+  detail_exclude: [".social-sharing", ".tags-block"]
   warnings_url:
   notes: "DNB has crypto-specific filtered RSS feeds. Crypto service providers feed is directly relevant to Strike's business."
   sources:
