@@ -8,13 +8,39 @@
   enabled: true
   cloudflare_protected: false
   warnings_url: https://www.centralbank.ie/news-media/warning-notices
-  notes: "Single feed covering all content types - warning notices, press releases, speeches, blog. Best-in-class Ireland feed."
+  notes: "Single feed covering all content types - warning notices, press releases, speeches, blog. Best-in-class Ireland feed. The enforcement-actions and consultation-papers listings below are Vue.js-templated (data bound client-side into a <template v-for> table body, confirmed empty of real rows in the raw HTML response 2026-09-27) - first real production use of type: browser in this registry, previously only demonstrated in _template.yaml. enforcement_actions' links go straight to PDFs and the browser adapter has no extract_pdf_text (scrape-only feature) - title/date/link only, no PDF body text, for that source."
   sources:
   - type: rss
     url: https://www.centralbank.ie/feeds/news-media-feed
     label: all_news
     preferred_language: en
     labels: {}
+  - type: browser
+    url: https://www.centralbank.ie/news-media/legal-notices/enforcement-actions
+    label: enforcement_actions
+    preferred_language: en
+    labels:
+      document_type: enforcement
+    browser:
+      wait_selector: "table tbody tr"
+      item_selector: "table tbody tr"
+      title_selector: "td:nth-child(3) a"
+      link_selector: "td:nth-child(3) a"
+      date_selector: "td:nth-child(2)"
+      date_attribute:
+  - type: browser
+    url: https://www.centralbank.ie/publication/consultation-papers
+    label: consultation_papers
+    preferred_language: en
+    labels:
+      document_type: consultation
+    browser:
+      wait_selector: "table tbody tr"
+      item_selector: "table tbody tr"
+      title_selector: "td:nth-child(1) a"
+      link_selector: "td:nth-child(1) a"
+      date_selector: "td:nth-child(4)"
+      date_attribute:
 
 # ─── Italy ────────────────────────────────────────────────────────────────────
 

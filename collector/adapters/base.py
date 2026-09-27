@@ -134,8 +134,7 @@ class SourceAdapter:
         (bytes/str, whatever `parse()` accepts). Split out so fixture
         capture and the nightly live check (scripts/source_health.py) can
         get the real response to write/diff without going through parse()
-        twice. Not every adapter type needs a fixture-capturable raw form
-        (browser's "raw" is a rendered DOM, not a network response) - those
-        may leave this raising NotImplementedError.
+        twice. Not every adapter type needs a fixture-capturable raw form -
+        those may leave this raising NotImplementedError.
         """
         raise NotImplementedError

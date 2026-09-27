@@ -133,6 +133,7 @@
 #         date_selector: ".date"                   # optional; omit to leave every item's date inferred
 #         date_attribute: null                     # e.g. "datetime" to read date_selector's attribute instead of its text
 #         date_fuzzy: false                        # true only if the date is embedded in unrelated text (e.g. "Published: ...")
+#         date_regex: '\d{4}-\d{2}-\d{2}'           # fallback when the date is a bare text node with no element to select: first match in the item's text
 #         content_selector: null                   # optional: an element whose HTML becomes the item body
 #         extract_pdf_text: false                  # true if the item's own link IS the document (a PDF, no HTML landing page)
 #
