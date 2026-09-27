@@ -24,16 +24,9 @@
     label: investor_warnings
     preferred_language: en
     # Rendered page's warning items are `<li class="extended-click-area">`
-    # with an `<h3>` title, a link inside `<p class="introduction">`, and
-    # the publish date as a bare text node sitting directly between the two
-    # (`<h3>...</h3>2026-08-17<p>...`) - confirmed 2026-09-27 on the live
-    # rendered DOM, not just the static HTML (an FFFS-register-style JS
-    # widget, but this one does render into plain HTML once Playwright runs
-    # it). No wrapping element exists around that date text for a CSS
-    # date_selector to target (bs4's :scope/self-selection was tried and
-    # does not select the item element itself), so date_selector is left
-    # unset here - items get the collector's own fetch-time inferred date
-    # rather than the source's real publish date. Flagged, not fudged.
+    # with an `<h3>` title, a link inside `<p class="introduction">`, and the
+    # publish date as a bare text node between them (`<h3>...</h3>2026-08-17<p>`)
+    # - no element to select, so it's picked out of the item text by date_regex.
     labels:
       document_type: warning
     browser:
@@ -41,8 +34,7 @@
       item_selector: "ul.searchresults-warnings-list li"
       title_selector: "h3.headline-warnings"
       link_selector: "p.introduction a"
-      date_selector:
-      date_attribute:
+      date_regex: '\d{4}-\d{2}-\d{2}'
   - type: rss
     url: https://www.fi.se/sv/publicerat/remissvar/rss
     label: consultation_responses

@@ -1,5 +1,6 @@
 """CSS-selector scrape adapter - wraps v1's `_parse_scrape` unchanged."""
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
@@ -46,6 +47,7 @@ class ScrapeAdapter(SourceAdapter):
         content_selector = scrape_cfg.get("content_selector")
         extract_pdf = scrape_cfg.get("extract_pdf_text", False)
         date_fuzzy = scrape_cfg.get("date_fuzzy", False)
+        date_regex = scrape_cfg.get("date_regex")
         config = config or {}
 
         if not item_selector or not title_selector or not link_selector:
@@ -79,6 +81,15 @@ class ScrapeAdapter(SourceAdapter):
                         if parsed is not None:
                             published_at = parsed
                             date_inferred = False
+            if published_at is None and date_regex:
+                # For a date that sits as a bare text node with no element of
+                # its own to select (FI's investor warnings).
+                match = re.search(date_regex, element.get_text(" ", strip=True))
+                if match:
+                    parsed = _parse_date(match.group(0), False, None)
+                    if parsed is not None:
+                        published_at = parsed
+                        date_inferred = False
 
             content_html = None
             pdf_text = None

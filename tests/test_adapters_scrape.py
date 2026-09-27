@@ -288,3 +288,20 @@ def test_parse_esma_news_extracts_title_link_and_date():
     assert "Test ESMA headline" in docs[0].title
     assert docs[0].published_at is not None
     assert docs[0].date_inferred is False
+
+
+def test_date_regex_reads_a_bare_text_node_date():
+    """FI's investor warnings put the date as a bare text node between the
+    title and the link, so no date_selector can reach it."""
+    source = {**SCRAPE_SOURCE, "scrape": {**SCRAPE_SOURCE["scrape"], "date_selector": None,
+                                          "date_regex": r"\d{4}-\d{2}-\d{2}"}}
+    html = """
+    <html><body>
+      <div class="item"><h2>Warning regarding Example AB</h2>2026-08-17<a href="/w/1">link</a></div>
+      <div class="item"><h2>No date here</h2><a href="/w/2">link</a></div>
+    </body></html>
+    """
+    dated, undated = ScrapeAdapter().parse(html, source, "test_reg")
+    assert dated.published_at.date().isoformat() == "2026-08-17"
+    assert dated.date_inferred is False
+    assert undated.date_inferred is True
