@@ -34,7 +34,12 @@ convert step itself lives in collector/detail.py, shared with
 collector.main.run_collection's own detail fetch for brand-new RSS items
 at collection time (issue #109) - this backfills what that collection-time
 fetch didn't cover (items collected before this landed, or whose detail
-fetch failed on the day):
+fetch failed on the day). It also selects items whose body_md is only the
+"not collected" placeholder even when raw_content/content_snippet aren't
+literally empty (issue #115 - a scrape item from a `detail_selector`
+regulator whose listing produced no real body carries this placeholder,
+which the original all-empty check misses since the placeholder text is a
+non-empty body_md); items with a real body are never selected either way:
 
     docker compose exec collector python -m scripts.reprocess_bodies --refetch --dry-run
     docker compose exec collector python -m scripts.reprocess_bodies --refetch --regulator hu-mnb --limit 50
@@ -57,7 +62,7 @@ from collector.adapters.http import (
 )
 from collector.detail import fetch_detail_body
 from collector.storage import add_item_artefact, init_db, update_item_body
-from regradar.document import convert_body, effective_body_md
+from regradar.document import PLACEHOLDER_BODY_PREFIX, convert_body, effective_body_md
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -158,30 +163,46 @@ def backfill_from_raw_content(engine, dry_run: bool, limit: int | None) -> int:
 
 
 def _candidates_sql(regulator_id: str | None) -> str:
-    # The WHERE-guard (tasks/lessons.md): only rows genuinely empty on all
-    # three body fields - never touches an item a normal collection run
-    # already populated (see collector/pipeline.py's _body_and_extractor).
-    where = [
-        "(body_md IS NULL OR body_md = '')",
-        "(raw_content IS NULL OR raw_content = '')",
-        "(content_snippet IS NULL OR content_snippet = '')",
-    ]
+    # The WHERE-guard (tasks/lessons.md): every row selected is either
+    # genuinely empty on all three body fields, or carries the exact
+    # placeholder body (issue #115 - a scrape/RSS item whose listing/feed
+    # produced no real content still has a non-empty body_md, since
+    # convert_body/rss_body_markdown always write the "not collected" note,
+    # so the original all-empty check alone misses it). Both branches are
+    # narrow enough that a real body (any other extractor, or body_md not
+    # starting with the placeholder text) is never touched.
+    where_empty = (
+        "(body_md IS NULL OR body_md = '')"
+        " AND (raw_content IS NULL OR raw_content = '')"
+        " AND (content_snippet IS NULL OR content_snippet = '')"
+    )
+    where_placeholder = "extractor = 'raw/1' AND body_md LIKE :placeholder_pattern"
+    where = [f"(({where_empty}) OR ({where_placeholder}))"]
     if regulator_id:
         where.append("regulator_id = :regulator_id")
-    return f"SELECT id, regulator_id, url FROM items WHERE {' AND '.join(where)} ORDER BY id"
+    return (
+        "SELECT id, regulator_id, url, "
+        f"CASE WHEN ({where_empty}) THEN 0 ELSE 1 END AS is_placeholder_only "
+        f"FROM items WHERE {' AND '.join(where)} ORDER BY id"
+    )
 
 
 def refetch(engine, regulators: list[dict], dry_run: bool, limit: int | None, regulator_id: str | None,
             delay: float, user_agent: str, timeout: int, retries: int) -> dict:
     """Refetches source_url for every item with no body_md, raw_content or
-    content_snippet, using each regulator's configured `detail_selector` -
-    see the module docstring. Returns a report dict: counts under
-    "recovered"/"not_found"/"blocked"/"selector_miss"/"skipped_no_selector"/
-    "fetch_failed", plus "remaining_empty" (every item still without a body,
+    content_snippet, plus every item whose body_md is only the "not
+    collected" placeholder (issue #115), using each regulator's configured
+    `detail_selector` - see the module docstring and `_candidates_sql`.
+    Returns a report dict: counts under "recovered"/"not_found"/"blocked"/
+    "selector_miss"/"skipped_no_selector"/"fetch_failed", "placeholder_only"
+    (how many selected candidates were the placeholder-body case rather than
+    all-empty), plus "remaining_empty" (every item still without a body,
     each with its own reason).
     """
     reg_by_id = {r["id"]: r for r in regulators}
-    params = {"regulator_id": regulator_id} if regulator_id else {}
+    params = {"placeholder_pattern": f"{PLACEHOLDER_BODY_PREFIX}%"}
+    if regulator_id:
+        params["regulator_id"] = regulator_id
     with engine.connect() as conn:
         rows = conn.execute(text(_candidates_sql(regulator_id)), params).fetchall()
     if limit is not None:
@@ -189,10 +210,12 @@ def refetch(engine, regulators: list[dict], dry_run: bool, limit: int | None, re
 
     report = {
         "recovered": 0, "not_found": 0, "blocked": 0, "selector_miss": 0,
-        "skipped_no_selector": 0, "fetch_failed": 0, "remaining_empty": [],
+        "skipped_no_selector": 0, "fetch_failed": 0, "placeholder_only": 0, "remaining_empty": [],
     }
     fetched = 0
-    for item_id, item_regulator_id, url in rows:
+    for item_id, item_regulator_id, url, is_placeholder_only in rows:
+        if is_placeholder_only:
+            report["placeholder_only"] += 1
         reg = reg_by_id.get(item_regulator_id)
         detail_selector = reg.get("detail_selector") if reg else None
         if not detail_selector:
@@ -227,9 +250,11 @@ def refetch(engine, regulators: list[dict], dry_run: bool, limit: int | None, re
         report["recovered"] += 1
 
     logger.info(
-        "Refetch: %d recovered, %d 404, %d blocked, %d selector-miss, %d skipped (no detail_selector), %d other failures",
+        "Refetch: %d recovered, %d 404, %d blocked, %d selector-miss, %d skipped (no detail_selector), "
+        "%d other failures (%d of the selected candidates were placeholder-only)",
         report["recovered"], report["not_found"], report["blocked"],
         report["selector_miss"], report["skipped_no_selector"], report["fetch_failed"],
+        report["placeholder_only"],
     )
     return report
 
@@ -242,6 +267,8 @@ def print_refetch_report(report: dict) -> None:
     print(f"skipped-no-selector:  {report['skipped_no_selector']}")
     if report["fetch_failed"]:
         print(f"fetch-failed (other): {report['fetch_failed']}")
+    if report["placeholder_only"]:
+        print(f"placeholder-only candidates selected: {report['placeholder_only']}")
     if report["remaining_empty"]:
         print("\nItems still with no body:")
         for entry in report["remaining_empty"]:

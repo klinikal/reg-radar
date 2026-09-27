@@ -359,15 +359,37 @@ def _collectable(engine, regulator_id: str, source: dict, items: list) -> list:
     return items
 
 
+def _needs_detail_fetch(item, source: dict, reg: dict, engine) -> bool:
+    """Issue #115: an RSS item never carries a fetched body at all (only the
+    feed summary), so every new one qualifies. A scrape item's listing page
+    may already have a real body via `content_selector` - only fetch the
+    detail page when the listing produced nothing (item.raw_content empty,
+    the same "no real body" signal collector/pipeline.py's `_extract`/
+    `convert_body` fallback leaves behind: the "Full text not collected"
+    placeholder). `extract_pdf_text` sources are skipped - the item's href
+    *is* the document, a detail_selector fetch of it would find nothing."""
+    if not reg.get("detail_selector") or item_exists(engine, item.id):
+        return False
+    source_type = source.get("type")
+    if source_type == "rss":
+        return True
+    if source_type == "scrape":
+        if source.get("scrape", {}).get("extract_pdf_text"):
+            return False
+        return not item.raw_content
+    return False
+
+
 def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: dict, detail_fetches_done: int) -> tuple[int, str | None]:
-    """Issue #109: for a brand-new RSS item from a regulator with
-    `detail_selector` configured, fetch item.url's own detail page and
-    replace the feed-summary body (rss_body_markdown) with the full article,
-    through the same fetch/select/convert path as scripts/reprocess_bodies.py
-    --refetch (collector/detail.py). Mutates `item` in place on success.
+    """Issue #109 (RSS) / #115 (bodyless scrape): for a brand-new item from a
+    regulator with `detail_selector` configured that qualifies per
+    `_needs_detail_fetch`, fetch item.url's own detail page and replace the
+    placeholder body with the full article, through the same fetch/select/
+    convert path as scripts/reprocess_bodies.py --refetch (collector/detail.py).
+    Mutates `item` in place on success.
 
     On any failure (blocked, 404, selector miss, other fetch error) the item
-    keeps today's RSS-summary body untouched - a detail fetch is a best-
+    keeps today's placeholder body untouched - a detail fetch is a best-
     effort enrichment, never a reason to drop or fail an item that the feed
     itself already delivered successfully. Deliberately does not call
     record_source_error/record_source_blocked or touch this run's
@@ -407,7 +429,7 @@ def _fill_detail_body(item, reg: dict, flaresolverr_url: str | None, fetch_cfg: 
         item.mime = "text/html"
         return detail_fetches_done + 1, None
     logger.warning(
-        "Detail fetch failed for new item %s (%s): %s - keeping RSS summary",
+        "Detail fetch failed for new item %s (%s): %s - keeping placeholder body",
         item.id, reg.get("id", "<unknown>"), result["reason"],
     )
     return detail_fetches_done + 1, result["status"]
@@ -520,11 +542,7 @@ def run_collection(engine, regulators: list[dict], cfg: dict, taxonomy=None, rul
                         items = fetch_source(source, reg["id"], flaresolverr_url, fetch_cfg, rules_engine=rules_engine)
                         total_fetched += len(items)
                         for item in _collectable(engine, reg["id"], source, items):
-                            if (
-                                source.get("type") == "rss"
-                                and reg.get("detail_selector")
-                                and not item_exists(engine, item.id)
-                            ):
+                            if _needs_detail_fetch(item, source, reg, engine):
                                 if detail_fetch_spent >= detail_fetch_budget_seconds:
                                     # Budget spent - keep the RSS summary
                                     # (same outcome as any other detail-fetch

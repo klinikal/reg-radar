@@ -283,3 +283,72 @@ def test_refetch_reports_missing_detail_selector(tmp_path, monkeypatch):
     assert report["remaining_empty"] == [
         {"id": item.id, "reason": "no detail_selector configured for es-bde"}
     ]
+
+
+# --- --refetch placeholder-only selection (issue #115) ----------------------
+
+def _make_placeholder_item(item_id_suffix, regulator_id="mt-mfsa", url=None):
+    """A scrape item whose listing produced no real body: body_md is the
+    "Full text not collected" note (non-empty), raw_content/content_snippet
+    are empty, extractor is raw/1 - the exact shape convert_body's fallback
+    leaves behind (collector/pipeline.py). The original all-empty WHERE
+    clause misses this because body_md isn't empty."""
+    now = datetime.now(timezone.utc)
+    url = url or f"https://example.com/{regulator_id}-{item_id_suffix}"
+    return Item(
+        id=make_item_id(regulator_id, url, now),
+        regulator_id=regulator_id, source_label="news", title="t",
+        url=url, published_at=now, fetched_at=now,
+        date_inferred=False, language="en", content_snippet="",
+        source_type="scrape", raw_content="",
+        body_md=f"> Full text not collected. See {url}.", extractor="raw/1",
+    )
+
+
+_MT_MFSA = {"id": "mt-mfsa", "detail_selector": ".article-body"}
+
+
+def test_refetch_recovers_placeholder_only_item(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_placeholder_item("1")
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: "<html><div class='article-body'><p>Recovered body</p></div></html>",
+    )
+
+    report = refetch(engine, [_MT_MFSA], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 1
+    assert report["placeholder_only"] == 1
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert "Recovered body" in body_md
+
+
+def test_refetch_never_touches_an_item_with_a_real_body_even_with_raw1_extractor(tmp_path, monkeypatch):
+    # A real page_watch body can legitimately carry extractor raw/1 too
+    # (collector/adapters/page_watch.py's content_text path via convert_body)
+    # - only a body_md that actually starts with the placeholder text is a
+    # candidate, never a real body that happens to share the extractor.
+    monkeypatch.setenv("ARTEFACTS_DIR", str(tmp_path / "originals"))
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _make_placeholder_item("1")
+    item.body_md = "Some genuinely fetched plain text body"
+    item.raw_content = "Some genuinely fetched plain text body"
+    insert_item(engine, item)
+    monkeypatch.setattr(
+        reprocess_bodies_module, "fetch_html",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("fetch_html must not be called")),
+    )
+
+    report = refetch(engine, [_MT_MFSA], dry_run=False, limit=None, regulator_id=None,
+                      delay=0, user_agent="ua", timeout=5, retries=1)
+
+    assert report["recovered"] == 0
+    assert report["placeholder_only"] == 0
+    with engine.connect() as conn:
+        body_md = conn.execute(text("SELECT body_md FROM items WHERE id=:id"), {"id": item.id}).scalar()
+    assert body_md == "Some genuinely fetched plain text body"  # untouched
