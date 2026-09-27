@@ -25,6 +25,12 @@ import yaml
 
 SCHEMA_VERSION = 1
 
+# The body-not-collected placeholder's fixed prefix (the source URL varies) -
+# shared so any caller that needs to detect a placeholder body (issue #115's
+# --refetch matching a placeholder-only item) matches the same text these
+# two note constructions actually write, rather than duplicating the string.
+PLACEHOLDER_BODY_PREFIX = "> Full text not collected."
+
 _SLUG_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _BLANK_RUN = re.compile(r"\n{3,}")
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n\n?(.*)\Z", re.DOTALL)
@@ -115,7 +121,7 @@ def rss_body_markdown(html_summary: str | None, snippet: str, source_url: str) -
     "not collected" note. Returns (body_md, extractor).
     """
     converted = html_to_markdown(html_summary) if html_summary else (snippet or "")
-    note = f"> Full text not collected. See {source_url}."
+    note = f"{PLACEHOLDER_BODY_PREFIX} See {source_url}."
     body = f"{converted}\n\n{note}".strip() if converted else note
     return body, f"markdownify/{_library_version('markdownify')}"
 
@@ -139,7 +145,7 @@ def convert_body(
         return normalize_pdf_text(pdf_text), f"pypdf/{_library_version('pypdf')}"
     if plain_text and plain_text.strip():
         return plain_text.strip(), "raw/1"
-    note = f"> Full text not collected. See {source_url}."
+    note = f"{PLACEHOLDER_BODY_PREFIX} See {source_url}."
     body = f"{snippet}\n\n{note}".strip() if snippet else note
     return body, "raw/1"
 

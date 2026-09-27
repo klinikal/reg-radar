@@ -705,3 +705,147 @@ def test_run_collection_detail_fetch_budget_exceeded_items_still_inserted(tmp_pa
         run = session.query(RunRow).one()
         assert run.status == "success"  # budget_exceeded is not a run error
         assert json.loads(run.detail_fetch_failures) == ["hu-mnb: budget_exceeded x1"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #115: scrape items from a detail_selector regulator whose listing
+# produced no real body ("Full text not collected" / extractor raw/1)
+# ---------------------------------------------------------------------------
+
+def _scrape_reg(detail_selector=".article-body", extract_pdf_text=False):
+    scrape_cfg = {"item_selector": ".item", "title_selector": "h2", "link_selector": "a"}
+    if extract_pdf_text:
+        scrape_cfg["extract_pdf_text"] = True
+    reg = {"id": "mt-mfsa", "name": "MFSA", "enabled": True,
+           "sources": [{"type": "scrape", "url": "https://mfsa.example/news", "label": "news",
+                        "enabled": True, "scrape": scrape_cfg}]}
+    if detail_selector:
+        reg["detail_selector"] = detail_selector
+    return reg
+
+
+def _scrape_placeholder_item(item_id, url="https://mfsa.example/news/1"):
+    from datetime import datetime, timezone
+    from collector.schema import Item
+
+    now = datetime.now(timezone.utc)
+    return Item(
+        id=item_id, regulator_id="mt-mfsa", source_label="news", title="Regulatory action",
+        url=url, published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="", source_type="scrape",
+        raw_content="", body_md=f"> Full text not collected. See {url}.", extractor="raw/1",
+    )
+
+
+def _scrape_real_body_item(item_id, url="https://mfsa.example/news/2"):
+    from datetime import datetime, timezone
+    from collector.schema import Item
+
+    now = datetime.now(timezone.utc)
+    return Item(
+        id=item_id, regulator_id="mt-mfsa", source_label="news", title="Warning notice",
+        url=url, published_at=now, fetched_at=now, date_inferred=False, language="en",
+        content_snippet="Full notice text", source_type="scrape",
+        raw_content="Full notice text", body_md="Full notice text", extractor="markdownify/1.0",
+    )
+
+
+def test_run_collection_new_scrape_placeholder_item_gets_full_body(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _scrape_placeholder_item("mfsa-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {
+            "status": "recovered", "body_md": "Full article body", "extractor": "markdownify/1.0",
+            "content_html": "<div>Full article body</div>", "raw_content": "Full article body",
+        },
+    )
+
+    run_collection(engine, [_scrape_reg()], _base_cfg())
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            sa_text("SELECT body_md, extractor FROM items WHERE id='mfsa-item-1'")
+        ).fetchone()
+    assert row == ("Full article body", "markdownify/1.0")
+
+
+def test_run_collection_scrape_item_with_real_listing_body_is_not_refetched(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _scrape_real_body_item("mfsa-item-2")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("fetch_detail_body must not be called")),
+    )
+
+    run_collection(engine, [_scrape_reg()], _base_cfg())  # must not raise
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='mfsa-item-2'")
+        ).scalar()
+    assert body_md == item.body_md  # unchanged
+
+
+def test_run_collection_scrape_pdf_source_is_not_refetched(tmp_path, monkeypatch):
+    # extract_pdf_text sources: the item's href IS the document, so a
+    # detail_selector fetch of it would find nothing - skipped outright even
+    # though the listing produced no real body (e.g. the PDF download failed).
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _scrape_placeholder_item("mfsa-pdf-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("fetch_detail_body must not be called")),
+    )
+
+    run_collection(engine, [_scrape_reg(extract_pdf_text=True)], _base_cfg())  # must not raise
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='mfsa-pdf-item-1'")
+        ).scalar()
+    assert body_md == item.body_md  # unchanged
+
+
+def test_run_collection_scrape_detail_fetch_failure_keeps_placeholder_and_is_reported(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _scrape_placeholder_item("mfsa-blocked-item-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: {"status": "blocked", "reason": "blocked: cloudflare challenge"},
+    )
+
+    run_collection(engine, [_scrape_reg()], _base_cfg())
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='mfsa-blocked-item-1'")
+        ).scalar()
+    assert body_md == item.body_md  # placeholder kept
+
+    with Session(engine) as session:
+        run = session.query(RunRow).one()
+        assert run.status == "success"
+        assert json.loads(run.detail_fetch_failures) == ["mt-mfsa: blocked x1"]
+
+
+def test_run_collection_scrape_source_without_detail_selector_is_unchanged(tmp_path, monkeypatch):
+    engine = init_db(str(tmp_path / "test.db"))
+    item = _scrape_placeholder_item("mfsa-no-selector-1")
+    monkeypatch.setattr("collector.main.fetch_source", lambda *a, **kw: [item])
+    monkeypatch.setattr(
+        "collector.main.fetch_detail_body",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("fetch_detail_body must not be called")),
+    )
+
+    run_collection(engine, [_scrape_reg(detail_selector=None)], _base_cfg())
+
+    with engine.connect() as conn:
+        body_md = conn.execute(
+            sa_text("SELECT body_md FROM items WHERE id='mfsa-no-selector-1'")
+        ).scalar()
+    assert body_md == item.body_md  # unchanged

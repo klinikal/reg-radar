@@ -40,13 +40,17 @@ specific data defect (undated FCA RSS items).
   at read time, so the persisted value matches what was already being served. A third,
   separate `--refetch` mode (issue #17) targets items with `body_md`, `raw_content` AND
   `content_snippet` all empty - e.g. an `is_partial` RSS source, which never had an article
-  body fetched at all - by fetching each item's own `source_url` and extracting the body via
-  the item's regulator's `detail_selector` config key (see Regulators Registry). A regulator
-  with no `detail_selector` is skipped and reported, never guessed at. Since issue #109, a
-  regulator with `detail_selector` also gets this fetch for brand-new items at collection time
-  (`collector.main.run_collection`, via the shared `collector/detail.py`), so `--refetch` is now
-  mainly a backfill for items collected before that landed or whose collection-time fetch
-  failed on the day.
+  body fetched at all - plus, since issue #115, items whose `body_md` is only the "Full text not
+  collected" placeholder (extractor `raw/1`) even though `body_md` itself isn't literally empty -
+  e.g. a `scrape` source whose listing page had no `content_selector` match for that item. Both
+  shapes are fetched the same way: each item's own `source_url`, extracting the body via the
+  item's regulator's `detail_selector` config key (see Regulators Registry). A regulator with no
+  `detail_selector` is skipped and reported, never guessed at. Since issue #109/#115, a regulator
+  with `detail_selector` also gets this fetch for brand-new RSS items unconditionally, and for
+  brand-new scrape items whose listing produced no real body, at collection time
+  (`collector.main.run_collection`'s `_needs_detail_fetch`, via the shared `collector/detail.py`),
+  so `--refetch` is now mainly a backfill for items collected before that landed or whose
+  collection-time fetch failed on the day.
 
 ## Inputs
 
@@ -73,7 +77,8 @@ specific data defect (undated FCA RSS items).
   `update_item_body()`. `--refetch` also writes an `item_artefacts` row for the fetched page
   (via `collector.storage.add_item_artefact()`, gated by `STORE_ARTEFACTS` like every other
   fetch) and prints a report: counts of `recovered`/`404`/`blocked`/`selector-miss`/
-  `skipped-no-selector`, plus every item still empty afterwards with its reason.
+  `skipped-no-selector`, how many of the selected candidates were the placeholder-only case
+  (issue #115), plus every item still empty afterwards with its reason.
 
 ## How to run or invoke
 
