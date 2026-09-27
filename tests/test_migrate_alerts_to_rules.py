@@ -33,14 +33,14 @@ def test_find_target_returns_none_when_nothing_matches():
 def test_migrate_maps_and_reports_unmapped():
     alert_rules = [
         {"keyword": "MiCA", "tag": "mica"},
-        {"keyword": "Strike", "tag": "strike"},
+        {"keyword": "Acme", "tag": "acme"},
     ]
     migrated, unmapped = migrate(alert_rules, _taxonomy())
     assert len(migrated) == 1
     assert migrated[0]["axis"] == "instrument"
     assert migrated[0]["value"] == "mica"
     assert migrated[0]["match"] == [{"pattern": "MiCA", "weight": 0.7, "flags": "i"}]
-    assert unmapped == [{"keyword": "Strike", "tag": "strike"}]
+    assert unmapped == [{"keyword": "Acme", "tag": "acme"}]
 
 
 def test_load_legacy_alert_rules_parses_the_old_flat_format(tmp_path):
@@ -79,14 +79,14 @@ def test_run_dry_run_does_not_write(tmp_path):
 
 def test_real_alerts_migration_matches_mfsa_v1_defaults():
     """Sanity check against the actual (now-committed) config/rules.yaml
-    migration: MiCA/MiFID/travel-rule/enforcement-action map, Strike/CASP/
+    migration: MiCA/MiFID/travel-rule/enforcement-action map, Acme/CASP/
     VASP don't - see the task report for the reviewed migration output."""
     alert_rules = [
         {"keyword": "MiCA", "tag": "mica"},
         {"keyword": "MiFID", "tag": "mifid"},
         {"keyword": "travel rule", "tag": "travel-rule"},
         {"keyword": "enforcement action", "tag": "enforcement"},
-        {"keyword": "Strike", "tag": "strike"},
+        {"keyword": "Acme", "tag": "acme"},
         {"keyword": "CASP", "tag": "casp"},
         {"keyword": "VASP", "tag": "vasp"},
     ]
@@ -96,4 +96,4 @@ def test_real_alerts_migration_matches_mfsa_v1_defaults():
         ("instrument", "mica"), ("instrument", "mifid2"),
         ("instrument", "transfer_of_funds_regulation"), ("document_type", "enforcement"),
     }
-    assert {r["tag"] for r in unmapped} == {"strike", "casp", "vasp"}
+    assert {r["tag"] for r in unmapped} == {"acme", "casp", "vasp"}

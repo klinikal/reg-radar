@@ -31,7 +31,7 @@
   detail_selector: ".main-grid-layout__content-components"
   detail_exclude: [".social-sharing", ".tags-block"]
   warnings_url:
-  notes: "DNB has crypto-specific filtered RSS feeds. Crypto service providers feed is directly relevant to Strike's business."
+  notes: "DNB has crypto-specific filtered RSS feeds. Crypto service providers feed is directly relevant to CASPs."
   sources:
   - type: rss
     url: https://www.dnb.nl/en/rss/16451/6882/117
