@@ -1,7 +1,5 @@
 # reg-radar
 
-> Renamed from casp-radar to reg-radar. Existing install? See [Upgrade and Migration](wiki/content/runbook-upgrade-and-migration.md).
-
 Open-source regulatory intelligence tool for European (EU and UK) entities. It collects
 news, warnings and publications from EEA financial regulators (plus the UK's FCA) on a
 daily schedule, stores them in SQLite, and exposes the database via an MCP server so any

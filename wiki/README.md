@@ -74,7 +74,6 @@ names exactly which files it was written from.
 
 ## Runbooks
 
-- [Upgrade and Migration](content/runbook-upgrade-and-migration.md) — upgrading from casp-radar and migrating v1 tag data
 - [Backups and Recovery](content/runbook-backups-recovery.md) — litestream, restore, `originals/` coverage
 - [Adding a Regulator](content/runbook-adding-a-regulator.md) — points to `CONTRIBUTING.md`
 

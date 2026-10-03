@@ -1,8 +1,8 @@
 // Auto-submit the filter form as the user searches/filters, instead of
 // requiring a manual "Search" click. Text input is debounced; discrete
 // controls (checkboxes, dates) submit immediately on change.
-const PANEL_OPEN_FLAG = "caspRadarPanelOpen";
-const SEARCH_FOCUS_FLAG = "caspRadarSearchFocus";
+const PANEL_OPEN_FLAG = "regRadarPanelOpen";
+const SEARCH_FOCUS_FLAG = "regRadarSearchFocus";
 
 document.addEventListener("DOMContentLoaded", () => {
   const themeToggle = document.getElementById("theme-toggle");
