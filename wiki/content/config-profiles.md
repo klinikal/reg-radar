@@ -2,7 +2,7 @@
 title: Profiles Config
 type: config
 sources: [config/profiles/]
-last-verified: 2026-09-10
+last-verified: 2026-10-16
 ---
 
 ## Purpose
@@ -19,8 +19,9 @@ Four example profiles exist:
 - `eu-bank.yaml`: same jurisdiction/language shape, `activities: [bank]`.
 - `eu-emi.yaml`: same jurisdiction/language shape, `activities: [emi]`.
 - `uk-equities-dealer.yaml`: `jurisdictions: [gb, intl]`, `activities: [equities_dealing]`, `exclude_instruments: [mica]`, `languages: [en]` (a single English-language jurisdiction, unlike the EU profiles).
+- `mfsa-fca-casp.yaml`: `jurisdictions: [eu/*, gb, intl]`, `activities: [casp]`, `languages: []` (eu/* already includes Malta; gb adds the UK FCA).
 
-All four set `regulators: []` and `instruments: []` (deriving instruments from activities), and `include_unclassified: true`.
+All five set `regulators: []` and `instruments: []` (deriving instruments from activities), and `include_unclassified: true`.
 
 ## Inputs
 
