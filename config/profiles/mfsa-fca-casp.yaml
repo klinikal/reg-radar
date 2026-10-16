@@ -1,0 +1,13 @@
+# CASP watch for Malta (MFSA), the UK (FCA) and EU-level output. eu/* already
+# covers Malta (mt) and every other member state; gb adds the UK; intl adds
+# international standard setters. Languages stays empty (all) so member-state
+# language output is not dropped.
+name: mfsa-fca-casp
+jurisdictions: [eu/*, gb, intl]
+activities: [casp]
+instruments: []
+exclude_instruments: []
+document_types: []
+regulators: []
+languages: []
+include_unclassified: true

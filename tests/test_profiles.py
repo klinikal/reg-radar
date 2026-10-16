@@ -31,14 +31,21 @@ def test_load_activities_rejects_unknown_instrument(tmp_path):
         load_activities(str(bad), _taxonomy())
 
 
-@pytest.mark.parametrize("name", ["uk-equities-dealer", "eu-casp", "eu-emi", "eu-bank"])
+@pytest.mark.parametrize("name", ["uk-equities-dealer", "eu-casp", "eu-emi", "eu-bank", "mfsa-fca-casp"])
 def test_shipped_profile_templates_load_without_error(name):
     profile = load_profile(name, _taxonomy(), _activities())
     assert profile["name"] == name
 
 
-def test_list_shipped_profiles_finds_all_four_templates():
-    assert list_shipped_profiles("config/profiles") == ["eu-bank", "eu-casp", "eu-emi", "uk-equities-dealer"]
+def test_list_shipped_profiles_finds_all_templates():
+    assert list_shipped_profiles("config/profiles") == [
+        "eu-bank", "eu-casp", "eu-emi", "mfsa-fca-casp", "uk-equities-dealer"]
+
+
+def test_mfsa_fca_casp_covers_malta_uk_eu_and_intl():
+    expanded = expand_profile(load_profile("mfsa-fca-casp", _taxonomy(), _activities()), _taxonomy(), _activities())
+    assert {"eu", "mt", "gb", "intl"} <= expanded.jurisdiction_ids
+    assert "mica" in expanded.instrument_ids
 
 
 def test_load_profile_rejects_unknown_jurisdiction(tmp_path):
