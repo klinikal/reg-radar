@@ -62,6 +62,7 @@ names exactly which files it was written from.
 - [Backfill Scripts](content/script-backfills.md) — one-off historic-archive pulls, one per source
 - [Migration Scripts](content/script-migrations.md) — one-off v1-to-v2 data migrations, already run
 - [Maintenance Scripts](content/script-maintenance.md) — rebuild/repair/reprocess utilities
+- [Relock Script](content/script-relock.md) — `scripts/relock.sh`, regenerates hashed lockfiles
 - [Source Health](content/script-source-health.md) — `scripts/source_health.py`, the nightly contract check
 - [Capture Fixture](content/script-capture-fixture.md) — `scripts/capture_fixture.py`, manual fixture recapture
 - [Eval Classifier](content/script-eval-classifier.md) — `scripts/eval_classifier.py`, precision/recall against a gold sample

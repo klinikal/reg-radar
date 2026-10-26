@@ -11,7 +11,7 @@ A scheduled GitHub Actions workflow that checks every enabled regulator source i
 
 ## How it works
 
-Runs on `ubuntu-latest` at 03:00 UTC daily (`0 3 * * *`), three hours clear of the collector's own default 06:00 UTC run, plus `workflow_dispatch` for manual runs. It brings up a `flaresolverr` service container (`ghcr.io/flaresolverr/flaresolverr:latest`, port 8191), the same image `docker-compose.yml` uses, so `cloudflare_protected` sources are checked live rather than silently skipped. It checks out the repo, sets up Python 3.11, installs `collector/requirements.txt`, then runs `python -m scripts.source_health`.
+Runs on `ubuntu-latest` at 03:00 UTC daily (`0 3 * * *`), three hours clear of the collector's own default 06:00 UTC run, plus `workflow_dispatch` for manual runs. It brings up a `flaresolverr` service container (`ghcr.io/flaresolverr/flaresolverr:latest`, port 8191), the same image `docker-compose.yml` uses, so `cloudflare_protected` sources are checked live rather than silently skipped. It checks out the repo, sets up Python 3.11, installs `collector/requirements.lock` (hash-checked), then runs `python -m scripts.source_health`.
 
 ## Inputs
 
